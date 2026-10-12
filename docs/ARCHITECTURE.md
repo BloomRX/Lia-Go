@@ -1,6 +1,8 @@
 # Arquitetura e análise de viabilidade — Lia Go
 
-**Estado:** proposta para aprovação da pessoa responsável. Nada estrutural foi implementado ainda.
+**Estado:** primeira fatia **implementada e testada** (2026-10-12). Decisões de §11 respondidas pelo responsável:
+Docker/PostgreSQL local, sessão híbrida (cookie na web + tokens no app), SQLite nativo/IndexedDB no aparelho
+e fatia aprovada. O que já roda de verdade está descrito em §12.1.
 **Base:** decisão confirmada de stack (React + TypeScript + Capacitor) + documentos de regras.
 **Data da análise:** 2026-10-12 — medições feitas no ambiente real de execução (Arena), não estimadas.
 
@@ -199,4 +201,29 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 5. `LiaGo.bat`: instala se faltar, roda testes, grava relatório em `reports/`, faz commit/rebase/push da
    branch de trabalho e abre PR quando pedido — tudo em um duplo clique.
 
-Nada disso será iniciado antes da resposta sobre as decisões de §11.
+## 12.1 O que já está implementado (verificado com testes)
+
+| Área | Estado real | Evidência |
+|---|---|---|
+| Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites) | ✅ **54 testes** | `npm run test:domain` |
+| API Fastify + PostgreSQL + SQL versionado | ✅ **29 testes** | `npm run test:api` (banco real) |
+| Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
+| Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
+| Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
+| App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
+| Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
+| Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
+| Offline com fila local (SQLite nativo) | ⬜ | próxima fatia; servidor já é idempotente e versionado |
+
+**Decisão de implementação registrada (reversível):** o acesso a dados usa **SQL explícito + migrações
+versionadas com o driver `pg`**, em vez de ORM. Motivo: menos dependências, queries auditáveis e nenhum
+mapeamento implícito sobre dinheiro. Drizzle continua sendo uma opção caso a produtividade exija, sem
+impacto no domínio (as regras ficam em `packages/domain`).
+
+### Próxima fatia (proposta)
+1. **Offline de verdade**: cache local (SQLite nativo/IndexedDB atrás de uma interface), fila de operações
+   e sincronização por cursor (`/viagens/:id/changes` + push idempotente) — o servidor já está preparado.
+2. Reservas manuais, checklist e documentos privados com compartilhamento revogável.
+3. Roteiro por dia com revisão de impacto e versões anteriores.
+4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).

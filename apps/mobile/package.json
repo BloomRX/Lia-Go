@@ -1,0 +1,31 @@
+{
+  "name": "@lia-go/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "App do Lia Go — React + TypeScript + Capacitor (celular primeiro, web complementar)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false",
+    "cap:sync": "cap sync",
+    "cap:add:android": "cap add android",
+    "cap:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/preferences": "^8.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.4"
+  }
+}

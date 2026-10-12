@@ -14,9 +14,8 @@ coverage/
 !.env.example
 !.env.sample
 
-# Relatórios locais de execução do LiaGo.bat (os relatórios enviados são publicados em reports/)
-reports/*.local.md
-reports/*.log
+# Relatórios de execução do LiaGo.bat (gerados localmente; a pasta é criada sozinha)
+reports/
 
 # Banco de dados local de desenvolvimento
 *.sqlite

@@ -41,8 +41,11 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 7. Ao terminar, informe arquivos alterados, comportamento entregue, testes executados, limitações e próximo passo.
 
 ## Comandos de verificação
-- `node --test` roda testes de TypeScript sem build; usar para `packages/domain` e `apps/api`.
-- `npm test` roda a suíte agregada do monorepo (quando existir).
+- `npm test` roda a suíte completa: domínio (54) + API (29). Sem banco, os testes de API são pulados com aviso.
+- `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.
+- `node --test` roda testes de TypeScript sem build (é o que os pacotes usam por baixo).
+- `node tools/dev.mjs testes` roda tudo e grava relatório em `reports/`.
+- `LiaGo.bat` (opção 1) faz banco + migrações + testes + relatório + sincronização em um duplo clique.
 - `python tools/project_cli.py validate --full` roda as suítes reconhecidas localmente, sem instalar nada.
 - `LiaGo.bat` automatiza instalação, testes, relatório em `reports/` e sincronização da branch de trabalho.
 - Vite em desenvolvimento **exige** `server.host: true` e `server.allowedHosts` com o host do preview;

@@ -10,8 +10,11 @@ Celular é a plataforma principal; a versão web é complementar.
 |---|---|
 | Planejamento de produto e regras | ✅ completo em `docs/` |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
-| Viabilidade medida no ambiente | ✅ Vite/React/Capacitor testados; limites e requisitos registrados |
-| Código do produto | ⬜ não iniciado — próxima fatia em `docs/ARCHITECTURE.md` §12 |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites) | ✅ **54 testes** |
+| API (auth, viagens, convites, transições, despesas, saldos, acertos) | ✅ **29 testes** com PostgreSQL real |
+| App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
+| Automação de execução | ✅ `LiaGo.bat` (um duplo clique: banco, testes, relatório, sincronização) |
+| Offline com fila local / roteiro / reservas / documentos | ⬜ próximas fatias |
 | Ferramentas de git seguro (DevKit) | ✅ funcionando, 44 testes passando |
 
 ## Ordem de leitura
@@ -26,11 +29,15 @@ Celular é a plataforma principal; a versão web é complementar.
 9. `docs/DECISIONS_AND_OPEN_QUESTIONS.md` — decisões confirmadas e pendências.
 10. `tools/README.md` — DevKit: git seguro, validação e PR.
 
-## Como usar
-- `DevKit.bat` (menu) e `python tools/project_cli.py <comando>`: sincronizar, validar, gerar PR.
-- `LiaGo.bat` — automação de desenvolvimento do app (a criar junto da primeira fatia: instala, testa,
-  gera relatório e sincroniza em um duplo clique).
-- Nenhum segredo é versionado; configuração por variável de ambiente.
+## Como rodar
+```text
+Windows (duplo clique):  LiaGo.bat          → opção 1 faz tudo (banco, testes, relatório, sync)
+Terminal (qualquer SO):  npm install && npm run db:up && npm run migrate && npm test
+Desenvolvimento:         LiaGo.bat (opção 3) → API em :3000 e app web em :5273
+```
+Guia completo com requisitos, celular na mesma rede, Android e problemas comuns: **`docs/DEV_SETUP.md`**.
+- `DevKit.bat` / `python tools/project_cli.py <comando>`: git seguro (validar, sincronizar, PR).
+- Nenhum segredo é versionado; configuração por variável de ambiente (`.env` fica fora do Git).
 
 ## Como usar (documentação)
 - Trate `PLANEJAMENTO_MESTRE.md` e os documentos de regras como fonte de verdade.

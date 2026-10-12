@@ -1,0 +1,113 @@
+/* Identidade do Lia Go: base escura, roxo/magenta, cartões arredondados,
+   contraste e alvos de toque pensados primeiro para celular. */
+:root {
+  color-scheme: dark;
+  --fundo: #120a1c;
+  --fundo-cartao: #1d1230;
+  --fundo-cartao-alto: #261640;
+  --borda: #38235c;
+  --roxo: #a855f7;
+  --magenta: #e879f9;
+  --texto: #f5f1ff;
+  --texto-suave: #c4b5d9;
+  --bom: #34d399;
+  --atencao: #fbbf24;
+  --erro: #f87171;
+  --raio: 18px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 50% -200px, #2b1747 0%, var(--fundo) 60%);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app { max-width: 720px; margin: 0 auto; padding: 20px 16px 96px; }
+
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 24px 0 10px; }
+h3 { font-size: 1rem; margin: 0; }
+p { margin: 4px 0; color: var(--texto-suave); line-height: 1.45; }
+
+.marca { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.marca-ponto {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--roxo), var(--magenta));
+  box-shadow: 0 0 18px rgba(232, 121, 249, 0.7);
+}
+
+.cartao {
+  background: var(--fundo-cartao);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.cartao.destaque { background: var(--fundo-cartao-alto); }
+
+.linha { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.linha.entre { align-items: flex-start; }
+.etiqueta {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 4px 10px; border-radius: 999px; background: #2f1c4d; color: var(--texto-suave);
+  white-space: nowrap;
+}
+.etiqueta.estado-em_andamento { background: #14382c; color: var(--bom); }
+.etiqueta.estado-concluida { background: #1f2a44; color: #93c5fd; }
+.etiqueta.estado-cancelada { background: #3b1622; color: var(--erro); }
+.etiqueta.estado-pendente { background: #3a2f12; color: var(--atencao); }
+.etiqueta.estado-confirmada { background: #14382c; color: var(--bom); }
+.etiqueta.estado-contestada { background: #3a2f12; color: var(--atencao); }
+
+.saldo-positivo { color: var(--bom); font-weight: 600; }
+.saldo-negativo { color: var(--erro); font-weight: 600; }
+
+button {
+  font: inherit; border-radius: 14px; border: 1px solid var(--borda);
+  background: #2a1843; color: var(--texto); padding: 12px 16px; cursor: pointer;
+  min-height: 44px;
+}
+button.principal {
+  background: linear-gradient(135deg, var(--roxo), var(--magenta));
+  border: 0; color: #1b0b28; font-weight: 700;
+}
+button.sutil { background: transparent; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button.perigo { border-color: #6b2233; color: #fecdd3; }
+
+.acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+label { display: block; font-size: 0.85rem; color: var(--texto-suave); margin: 12px 0 4px; }
+input, select, textarea {
+  width: 100%; font: inherit; color: var(--texto);
+  background: #160d26; border: 1px solid var(--borda); border-radius: 12px; padding: 12px;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--roxo); outline-offset: 1px; }
+
+.aviso { border-radius: 14px; padding: 12px 14px; margin: 12px 0; font-size: 0.92rem; }
+.aviso.erro { background: #3b1622; color: #ffd9de; }
+.aviso.ok { background: #14382c; color: #d1fae5; }
+.aviso.info { background: #241840; color: var(--texto-suave); }
+.aviso.atencao { background: #3a2f12; color: #fde68a; }
+
+.barra {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: space-around;
+  background: rgba(18, 10, 28, 0.96); border-top: 1px solid var(--borda);
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  backdrop-filter: blur(8px);
+}
+.barra button { background: none; border: 0; color: var(--texto-suave); font-size: 0.78rem; }
+.barra button[aria-current="true"] { color: var(--magenta); font-weight: 700; }
+
+.carregando { display: flex; align-items: center; gap: 10px; color: var(--texto-suave); }
+.pulso { width: 10px; height: 10px; border-radius: 50%; background: var(--magenta); animation: pulsar 1.2s infinite; }
+@keyframes pulsar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.vazio { text-align: center; padding: 28px 12px; color: var(--texto-suave); }
+small.suave { color: var(--texto-suave); }

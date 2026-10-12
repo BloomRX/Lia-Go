@@ -4,11 +4,12 @@ Restrições e critérios técnicos. A **stack está decidida** (React + TypeScr
 viabilidade foi medida — detalhes e evidências em `ARCHITECTURE.md`.
 
 ## Stack
-- **Monorepo com npm workspaces**, TypeScript em todo o projeto.
+- **Monorepo com npm workspaces**, TypeScript em todo o projeto (implementado).
 - `apps/mobile` — React + TypeScript + Vite + Capacitor (uma base de código para app e web).
 - `apps/api` — servidor HTTP (Fastify) com validação por schema (zod, compartilhado em `packages/contracts`).
 - `packages/domain` — regras de negócio puras, **sem I/O e sem UI**, importadas pelo servidor e pelo app.
-- Banco **PostgreSQL** central com migrations SQL versionadas (Drizzle ORM + driver `pg`).
+- Banco **PostgreSQL** central com migrações SQL versionadas; acesso a dados em SQL explícito
+  com o driver `pg` (sem ORM, por auditabilidade — decisão registrada em `DECISIONS_AND_OPEN_QUESTIONS.md`).
 - Testes de domínio/API com `node --test` (TypeScript nativo do Node 22, sem build); interface com Vitest.
 
 ### Regra de autoridade (não negociável)
@@ -61,14 +62,18 @@ ou confirma fatos externos. Não duplicar regra de negócio na interface: import
   acessibilidade; alvos de toque e área segura do celular respeitados.
 - Estados de interface obrigatórios por tela: carregando, vazio, erro, offline/desatualizado, conflito,
   sucesso e sem permissão.
-- Configuração de desenvolvimento obrigatória no Vite: `server.host: true` e
-  `server.allowedHosts` com o host do preview, sob pena de o preview responder HTTP 403 (medido em `ARCHITECTURE.md` §2).
+- Configuração de desenvolvimento obrigatória no Vite (já aplicada em `apps/mobile/vite.config.ts`):
+  `server.host: true`, `server.allowedHosts` com o host do preview e proxy `/api` para a API local —
+  sem isso o preview responde HTTP 403 (medido em `ARCHITECTURE.md` §2).
+- A interface nunca calcula saldo oficial: ela exibe o que a API devolve. O pacote de domínio é usado
+  para prévia e para mensagens, nunca como fonte de verdade no cliente.
 
 ## Ferramentas de desenvolvimento
 - `DevKit.bat` (existente): git seguro, validação e PR.
-- `LiaGo.bat` (a criar com a primeira fatia): instala dependências se faltarem, roda testes, gera
-  relatório em `reports/`, sincroniza a branch de trabalho. Nunca instala nada silenciosamente nem
-  publica em branch protegida.
+- `LiaGo.bat` (implementado): sobe o banco, aplica migrações, roda testes, gera relatório em `reports/`
+  e sincroniza a branch de trabalho. Nunca instala nada silenciosamente nem publica em branch protegida;
+  a senha do banco aparece sempre oculta nos relatórios.
+- Guia de execução completo (Windows, Docker, Android e problemas comuns): `docs/DEV_SETUP.md`.
 - Antes de rodar no Windows: Node ≥ 22.12. Para build Android: Android Studio (Otter 2025.2.1+),
   JDK 21 e Android SDK 36. **Arena não compila Android** (sem SDK); o build nativo é local.
 

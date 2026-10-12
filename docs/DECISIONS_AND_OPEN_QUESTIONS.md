@@ -46,6 +46,25 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **Consolidação de instruções:** `docs/AGENTS.md` é a fonte das instruções permanentes; o `AGENTS.md`
   da raiz apenas aponta para ela.
 
+### Implementação (2026-10-12) — hipóteses reversíveis registradas
+- **Interpretação de valor digitado em pt-BR:** vírgula é sempre decimal; ponto com 1–2 dígitos depois é
+  decimal (`12.50` → R$ 12,50) e ponto sozinho com exatamente 3 dígitos é milhar (`1.234` → R$ 1.234,00).
+  Valores são sempre convertidos para centavos inteiros; nada de float em dinheiro.
+- **Distribuição de centavos:** método do maior resto, com empate resolvido pela ordem dos participantes;
+  a interface explica quem recebeu o centavo extra.
+- **Conflito de estado:** transições e edições usam `versao`; versão divergente devolve **409** com a versão
+  atual, nunca sobrescreve.
+- **Privacidade de acesso:** quem nunca teve vínculo recebe **404** (não revela existência); quem saiu ou foi
+  removido recebe **403** explicativo.
+- **Limite de tentativas em duas camadas:** por conta (10 em 15 min) e por origem/IP (50 em 15 min) para não
+  bloquear uma rede compartilhada inteira; sucesso limpa as falhas daquela conta.
+- **Convite sem e-mail nesta etapa:** o organizador recebe o token uma única vez e envia o link; o aceite
+  exige sessão com o mesmo e-mail convidado. Quando houver provedor de e-mail (decisão pendente), o envio
+  passa a ser automático.
+- **Acesso a dados com SQL explícito + migrações versionadas (`pg`)**, sem ORM, pela auditabilidade.
+- **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
+- **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
+
 ## Questões que podem ser resolvidas durante a implementação
 - Pequenos detalhes de layout, microcopy e organização visual, desde que não alterem regras.
 - Bibliotecas auxiliares e padrões reversíveis adequados à stack decidida.

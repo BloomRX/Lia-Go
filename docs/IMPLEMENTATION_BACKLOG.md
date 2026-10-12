@@ -9,31 +9,32 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Medir viabilidade do React + TypeScript + Capacitor no ambiente e documentar requisitos (Node 22,
   Android Studio Otter 2025.2.1+, JDK 21, SDK 36; iOS exige macOS + Xcode 26).
 - ✅ Definir padrão de erros da API, estados de carregamento e acessibilidade.
-- ⬜ Criar monorepo (npm workspaces): `apps/mobile`, `apps/api`, `packages/domain`, `packages/contracts`.
-- ⬜ Criar `.gitignore`, `devkit.json` (suítes de teste reais) e configuração de Vite validada
-  (`host: true` + `allowedHosts`; sem isso o preview responde 403).
-- ⬜ Criar `LiaGo.bat`: instala se faltar, roda testes, gera relatório em `reports/`, sincroniza a branch.
-- ⬜ Shell/navegação mobile (barra inferior: Visão geral, Roteiro, Gastos, Documentos + Mais) com
-  identidade escura roxo/magenta e estados loading/vazio/erro/offline/sem permissão.
+- ✅ Monorepo (npm workspaces) com `apps/mobile`, `apps/api` e `packages/domain` em uso de verdade
+  (`packages/contracts` foi postergado: os tipos de entrada/saída vivem em `apps/api/src` e no app por ora).
+- ✅ `.gitignore`, `devkit.json` (suítes reais) e Vite validado com `host: true` + `allowedHosts`.
+- ✅ `LiaGo.bat` + `tools/dev.mjs`: sobe banco, migra, testa, gera relatório em `reports/` e sincroniza.
+- 🔄 Barra inferior com Visão geral, Gastos e Mais, identidade escura roxo/magenta e estados
+  carregando/vazio/erro/sem permissão implementados; Roteiro e Documentos entram nas próximas fatias.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
-- ⬜ `packages/domain`: dinheiro em centavos, transições de estado, papéis e validações puras + testes reais.
-- ⬜ Banco PostgreSQL central com migrations versionadas (Drizzle + `pg`); nada de SQLite central.
-- ⬜ API: registro, login, logout, sessão e revogação (scrypt + cookie HttpOnly + limite de tentativas).
-- ⬜ API: CRUD de viagem/rascunho com autorização server-side e `version` (concorrência otimista).
-- ⬜ Papéis organizador/participante; convites individuais com cancelamento; saída ≠ remoção ≠ exclusão.
-- ⬜ Transições Em andamento/Concluída/Pendente/Cancelada conforme regras, com auditoria de quem confirmou.
-- ⬜ App: login, lista de viagens, criação de viagem e troca de estado contra a API real.
-- ⬜ Testes negativos de acesso cruzado entre viagens e participantes.
+- ✅ `packages/domain` com 54 testes cobrindo dinheiro, rateio, estados, papéis, despesas, saldos e convites.
+- ✅ PostgreSQL central com migrações versionadas (`0001_init.sql`) e SQL explícito via `pg`.
+- ✅ Registro/login/logout/sessão/revogação, scrypt, cookie HttpOnly, tokens nativos e limite de tentativas.
+- ✅ Criar/editar/consultar viagem com autorização no servidor e concorrência otimista (409 em conflito).
+- ✅ Papéis, convites com cancelamento, aceite por e-mail, saída e remoção com histórico preservado.
+- ✅ Transições com motivo obrigatório em Pendente, sugestão sem aplicação automática e auditoria.
+- ✅ App com login/cadastro, lista, criação, troca de estado, convites e gastos contra a API real.
+- ✅ Testes negativos: acesso cruzado, convite de outra pessoa, membro que saiu, rateio com não-membro.
 
 ## Fase 2 — Núcleo financeiro determinístico (início já na primeira etapa)
-- ⬜ Rateio: igualitário, participantes específicos, valores fixos e percentual, com soma exata de centavos.
-- ⬜ Despesa pendente → confirmação por pessoa diferente do autor → contestação (fora do saldo oficial).
+- ✅ Rateio igualitário, por valores e percentual (bps), com soma exata e explicação do centavo.
+- ✅ Ciclo completo implementado e testado, inclusive correção com motivo e histórico antes/depois.
 - ⬜ Orçamento coletivo/individual, realizado versus comprometido, alertas 75/90/100% configuráveis.
 - ⬜ Moeda estrangeira com valor original, taxa, referência temporal e convertido (histórico preservado).
-- ⬜ Saldos, transferências sugeridas, acertos manuais, pagamento informado × confirmado × parcial.
+- 🔄 Saldos e transferências sugeridas prontos; acerto informado → confirmado pelo recebedor pronto.
+  Pagamento parcial e reembolso ligado à despesa ficam para a próxima fatia.
 - ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
-- ⬜ Testes abrangentes de dinheiro (limites, arredondamento, restos) e de permissões.
+- 🔄 54 testes de domínio + 29 de integração cobrem limites, restos e permissões; câmbio entra com o módulo de moedas.
 
 ## Fase 3 — Roteiro, reservas e documentos
 - ⬜ Roteiro por dia (timeline), atividades com estados manuais e versões anteriores.

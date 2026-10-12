@@ -1,0 +1,26 @@
+{
+  "name": "lia-go",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lia Go — organização de viagens em grupo (app mobile + web + API)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test:domain && npm run test:api",
+    "test:domain": "npm run test --workspace @lia-go/domain",
+    "test:api": "npm run test --workspace @lia-go/api",
+    "db:up": "node tools/db.mjs up",
+    "db:down": "node tools/db.mjs down",
+    "migrate": "npm run migrate --workspace @lia-go/api",
+    "dev:api": "npm run dev --workspace @lia-go/api",
+    "dev:web": "npm run dev --workspace @lia-go/mobile",
+    "build:web": "npm run build --workspace @lia-go/mobile",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

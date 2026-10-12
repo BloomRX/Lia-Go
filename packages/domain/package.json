@@ -1,0 +1,14 @@
+{
+  "name": "@lia-go/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Regras de negócio do Lia Go — puras, sem I/O e sem interface",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

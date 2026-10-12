@@ -1,0 +1,7 @@
+{
+  "project": "Lia Go",
+  "repo_description": "Lia Go — organização de viagens em grupo (app mobile + web + API)",
+  "base_branch": "main",
+  "ignore_dirs": ["reports"],
+  "full_tests": [["npm", "test"]]
+}
