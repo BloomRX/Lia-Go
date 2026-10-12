@@ -41,7 +41,8 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 7. Ao terminar, informe arquivos alterados, comportamento entregue, testes executados, limitações e próximo passo.
 
 ## Comandos de verificação
-- `npm test` roda a suíte completa: domínio (54) + API (29). Sem banco, os testes de API são pulados com aviso.
+- `npm test` roda a suíte completa: domínio (54) + API (30). Sem banco, os testes de API são pulados com aviso.
+- `npm run typecheck` confere os tipos dos três pacotes e é pré-requisito da automação antes de sincronizar.
 - `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.
 - `node --test` roda testes de TypeScript sem build (é o que os pacotes usam por baixo).
 - `node tools/dev.mjs testes` roda tudo e grava relatório em `reports/`.

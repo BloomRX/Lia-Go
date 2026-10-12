@@ -23,7 +23,7 @@ import { ErroHttp, entradaInvalida } from "../errors.ts";
 import { centavosDoCorpo, comIdempotencia, exigirAutenticacao, idempotencyKey, tratarErroDeValidacao } from "../http.ts";
 import { exigirContexto, exigirPermissao, exigirVersao, participantesAtivos, type ContextoViagem } from "../authz.ts";
 import { registrarAuditoria } from "../audit.ts";
-import { carregarDespesa, despesaParaJson, gravarEvento, gravarPartes, rateioParaJson } from "../repo.ts";
+import { carregarDespesa, despesaParaJson, gravarEvento, gravarPartes } from "../repo.ts";
 import { novoId } from "../tokens.ts";
 
 const esquemaParteValor = z.object({ participanteId: z.uuid(), valorCentavos: z.string().regex(/^\d+$/) });
@@ -450,7 +450,8 @@ export function rotasDespesas(app: FastifyInstance, deps: { pool: pg.Pool; confi
   app.post("/viagens/:viagemId/movimentos/:movimentoId/confirmar", async (request) => {
     const autenticado = await exigirAutenticacao(request, http);
     const { viagemId, movimentoId } = request.params as { viagemId: string; movimentoId: string };
-    const contexto = await exigirContexto(pool, autenticado.usuarioId, viagemId);
+    // Só o vínculo ativo importa aqui: quem confirma é quem recebeu, checado logo abaixo.
+    await exigirContexto(pool, autenticado.usuarioId, viagemId);
     return emTransacao(pool, async (cliente) => {
       const { rows } = await cliente.query<{ para_id: string; estado: string }>(
         "SELECT para_id, estado FROM movimentos WHERE id = $1 AND viagem_id = $2 FOR UPDATE",
@@ -473,7 +474,6 @@ export function rotasDespesas(app: FastifyInstance, deps: { pool: pg.Pool; confi
         entidade: "movimento",
         entidadeId: movimentoId,
       });
-      void contexto;
       return { id: movimentoId, estado: "confirmado" };
     });
   });
@@ -481,7 +481,7 @@ export function rotasDespesas(app: FastifyInstance, deps: { pool: pg.Pool; confi
   app.post("/viagens/:viagemId/movimentos/:movimentoId/contestar", async (request) => {
     const autenticado = await exigirAutenticacao(request, http);
     const { viagemId, movimentoId } = request.params as { viagemId: string; movimentoId: string };
-    const contexto = await exigirContexto(pool, autenticado.usuarioId, viagemId);
+    await exigirContexto(pool, autenticado.usuarioId, viagemId);
     const corpo = esquemaContestar.parse(request.body);
     return emTransacao(pool, async (cliente) => {
       const { rows } = await cliente.query<{ para_id: string; de_id: string; estado: string }>(
@@ -503,7 +503,6 @@ export function rotasDespesas(app: FastifyInstance, deps: { pool: pg.Pool; confi
         entidadeId: movimentoId,
         motivo: corpo.motivo,
       });
-      void contexto;
       return { id: movimentoId, estado: "contestado", motivo: corpo.motivo };
     });
   });
@@ -523,5 +522,4 @@ export function rotasDespesas(app: FastifyInstance, deps: { pool: pg.Pool; confi
     return { movimentos: rows };
   });
 
-  void rateioParaJson;
 }

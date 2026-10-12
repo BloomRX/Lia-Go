@@ -65,8 +65,11 @@ cd apps\mobile && npx cap open android
 ## 5. Testes
 
 - Domínio (regras puras, sem banco): `npm run test:domain` — 54 testes.
-- API (integração com PostgreSQL real): `npm run test:api` — 29 testes.
+- Tipos dos três pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
+- API (integração com PostgreSQL real): `npm run test:api` — 30 testes.
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
+- A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
+  aborta a sincronização — nada é enviado com o projeto em estado inconsistente.
 - Relatórios de execução: `reports/relatorio-*.md` (segredos são ocultados).
 
 ## 6. Problemas comuns

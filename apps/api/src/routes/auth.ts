@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { Config } from "../config.ts";
 import { emTransacao } from "../db.ts";
 import { ErroHttp, entradaInvalida, naoAutenticado } from "../errors.ts";
-import { exigirAutenticacao, idempotencyKey, registrarTentativa, tratarErroDeValidacao, verificarLimiteDeTentativas } from "../http.ts";
+import { exigirAutenticacao, registrarTentativa, tratarErroDeValidacao, verificarLimiteDeTentativas } from "../http.ts";
 import { criarSenha, verificarSenha } from "../password.ts";
 import { gerarToken, hashDados, hashToken, novoId, somarDias, somarMinutos } from "../tokens.ts";
 
@@ -197,9 +197,8 @@ export function rotasAuth(app: FastifyInstance, deps: { pool: pg.Pool; config: C
     return reply.status(204).send();
   });
 
-  // Chave de idempotência aceita também em /auth/registro evita contas duplicadas em reenvio de rede.
-  void idempotencyKey;
-  void entradaInvalida;
+  // Sem chave de idempotência no registro de propósito: o e-mail único já impede conta duplicada.
+  // Um reenvio de rede recebe 409 "e-mail em uso" e o app entra normalmente com as mesmas credenciais.
 }
 
 function opcoesCookie(config: Config, maxAgeSegundos: number) {

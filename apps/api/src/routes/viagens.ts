@@ -504,7 +504,7 @@ export function rotasViagens(app: FastifyInstance, deps: { pool: pg.Pool; config
     const contexto = await exigirContexto(pool, autenticado.usuarioId, viagemId);
     exigirPermissao(contexto, "viagem:participante:remover");
     if (usuarioId === autenticado.usuarioId) {
-      throw new entradaInvalida("Para sair da viagem use a ação de sair (o organizador não pode se remover).");
+      throw entradaInvalida("Para sair da viagem use a ação de sair (o organizador não pode se remover).");
     }
     const alvo = await carregarContexto(pool, usuarioId, viagemId);
     if (!alvo) {

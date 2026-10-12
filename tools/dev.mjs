@@ -84,7 +84,17 @@ function subirBanco() {
   return true;
 }
 
+/** Checagem de tipos de todos os pacotes: nada entra no repositório sem passar por aqui. */
+function rodarTipos() {
+  titulo("Checagem de tipos (domain, api e mobile)");
+  const resultado = rodar(NPM, ["run", "typecheck"], { capturar: true });
+  if (resultado.status !== 0) console.error(resultado.saida.trim() || "(tsc não explicou o motivo)");
+  else console.log("Tipos conferidos sem erro.");
+  return { status: resultado.status, saida: resultado.saida };
+}
+
 function rodarTestes() {
+  const tipos = rodarTipos();
   titulo("Testes (domínio + API)");
   const resultado = rodar(NPM, ["test"], { capturar: true });
   const saida = resultado.saida;
@@ -101,7 +111,7 @@ function rodarTestes() {
       if (m[1] === "skipped") pulados += Number(m[2]);
     }
   }
-  return { status: resultado.status, passou, falhou, pulados, saida };
+  return { status: resultado.status, passou, falhou, pulados, saida, tipos };
 }
 
 function gitInfo() {
@@ -138,6 +148,7 @@ function gravarRelatorio(resultadoTestes) {
     `| Falharam | ${resultadoTestes.falhou} |`,
     `| Pulados | ${resultadoTestes.pulados} |`,
     `| Código de saída | ${resultadoTestes.status} |`,
+    `| Checagem de tipos (\`npm run typecheck\`) | ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"} |`,
     ``,
     `> Testes de integração são pulados quando não há banco disponível. Suba com \`npm run db:up\`.`,
     ``,
@@ -211,6 +222,10 @@ function comandoTestes() {
   const caminho = gravarRelatorio(resultado);
   if (resultado.falhou > 0 || resultado.status !== 0) {
     console.error(`\nExistem ${resultado.falhou} teste(s) falhando. Corrija antes de sincronizar.`);
+    return 1;
+  }
+  if (resultado.tipos?.status !== 0) {
+    console.error("\nA checagem de tipos falhou. Corrija antes de sincronizar.");
     return 1;
   }
   console.log(`\nTudo verde: ${resultado.passou} teste(s) passaram.`);

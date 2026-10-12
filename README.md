@@ -11,7 +11,7 @@ Celular é a plataforma principal; a versão web é complementar.
 | Planejamento de produto e regras | ✅ completo em `docs/` |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
 | Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites) | ✅ **54 testes** |
-| API (auth, viagens, convites, transições, despesas, saldos, acertos) | ✅ **29 testes** com PostgreSQL real |
+| API (auth, viagens, convites, transições, despesas, saldos, acertos) | ✅ **30 testes** com PostgreSQL real |
 | App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
 | Automação de execução | ✅ `LiaGo.bat` (um duplo clique: banco, testes, relatório, sincronização) |
 | Offline com fila local / roteiro / reservas / documentos | ⬜ próximas fatias |

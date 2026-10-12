@@ -327,3 +327,27 @@ test("organizador único: a viagem tem exatamente um organizador ativo", { skip:
     "o banco impede dois organizadores ativos",
   );
 });
+
+test("o organizador não pode se remover: precisa usar a ação de sair", { skip: !disponivel && "sem banco de teste" }, async () => {
+  const { usuario: organizadora } = await registrarUsuario(ambiente.app);
+  const viagemId = await criarViagem(ambiente.app, organizadora);
+
+  // Remover a si mesmo deixaria a viagem sem organizador — a API recusa antes de chegar ao banco.
+  const removerASi = await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${viagemId}/participantes/${organizadora.id}/remover`,
+    headers: comSessao(organizadora),
+  });
+  assert.equal(removerASi.statusCode, 400);
+  assert.equal(removerASi.json().erro, "entrada_invalida");
+  assert.match(removerASi.json().mensagem, /sair/i);
+
+  // E a saída voluntária do organizador também é recusada: a viagem não fica órfã.
+  const sair = await ambiente.app.inject({ method: "POST", url: `/viagens/${viagemId}/sair`, headers: comSessao(organizadora) });
+  assert.ok(sair.statusCode >= 400, "o organizador não abandona a viagem sem transferir o papel");
+  const vinculo = await ambiente.pool.query<{ estado: string; papel: string }>(
+    "SELECT estado, papel FROM membros_viagem WHERE viagem_id = $1 AND usuario_id = $2",
+    [viagemId, organizadora.id],
+  );
+  assert.equal(vinculo.rows[0]?.estado, "ativo", "o vínculo da organizadora continua ativo");
+});

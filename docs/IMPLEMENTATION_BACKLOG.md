@@ -34,7 +34,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - 🔄 Saldos e transferências sugeridas prontos; acerto informado → confirmado pelo recebedor pronto.
   Pagamento parcial e reembolso ligado à despesa ficam para a próxima fatia.
 - ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
-- 🔄 54 testes de domínio + 29 de integração cobrem limites, restos e permissões; câmbio entra com o módulo de moedas.
+- 🔄 54 testes de domínio + 30 de integração cobrem limites, restos e permissões; câmbio entra com o módulo de moedas.
 
 ## Fase 3 — Roteiro, reservas e documentos
 - ⬜ Roteiro por dia (timeline), atividades com estados manuais e versões anteriores.

@@ -207,7 +207,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
 | Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites) | ✅ **54 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado | ✅ **29 testes** | `npm run test:api` (banco real) |
+| API Fastify + PostgreSQL + SQL versionado | ✅ **30 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |

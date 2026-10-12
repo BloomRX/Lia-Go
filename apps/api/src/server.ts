@@ -41,12 +41,12 @@ export async function construirServidor(deps: Dependencias): Promise<FastifyInst
     if (erro instanceof ErroDeDominio) {
       return reply.status(400).send({ erro: "regra_violada", mensagem: erro.message });
     }
-    const status = erro instanceof ErroHttp ? erro.status : (erro.statusCode ?? 500);
+    const status = erro instanceof ErroHttp ? erro.status : statusDoErro(erro);
     const codigo = erro instanceof ErroHttp ? erro.codigo : status === 500 ? "erro_interno" : "requisicao_invalida";
     const detalhes = erro instanceof ErroHttp ? erro.detalhes : undefined;
     if (status >= 500) {
       // Log sem dados sensíveis: só o tipo e a mensagem técnica.
-      app.log.error({ tipo: erro.name, mensagem: erro.message }, "Falha inesperada na API");
+      app.log.error({ tipo: nomeDoErro(erro), mensagem: mensagemTecnica(erro) }, "Falha inesperada na API");
     }
     return reply.status(status).send({
       erro: codigo,
@@ -65,4 +65,25 @@ export async function construirServidor(deps: Dependencias): Promise<FastifyInst
   rotasDespesas(app, deps);
 
   return app;
+}
+
+/**
+ * O erro que chega ao handler é `unknown`: qualquer coisa pode ter sido lançada.
+ * Estes leitores nunca confiam no formato e nunca devolvem dado sensível.
+ */
+function statusDoErro(erro: unknown): number {
+  if (typeof erro === "object" && erro !== null) {
+    const bruto = (erro as { statusCode?: unknown }).statusCode;
+    if (typeof bruto === "number" && Number.isInteger(bruto) && bruto >= 100 && bruto <= 599) return bruto;
+  }
+  return 500;
+}
+
+function nomeDoErro(erro: unknown): string {
+  return erro instanceof Error ? erro.name : typeof erro;
+}
+
+function mensagemTecnica(erro: unknown): string {
+  if (erro instanceof Error) return erro.message;
+  return typeof erro === "string" ? erro : "Erro sem mensagem";
 }

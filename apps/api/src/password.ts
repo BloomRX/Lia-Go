@@ -4,9 +4,19 @@
  * Nenhuma senha, hash ou token é registrado em log.
  */
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
+import type { ScryptOptions } from "node:crypto";
 import { promisify } from "node:util";
 
-const scrypt = promisify(scryptCb);
+/**
+ * `promisify` só enxerga a sobrecarga de 3 argumentos de `crypto.scrypt`, mas usamos
+ * a sobrecarga com custo (N, r, p). O tipo abaixo diz a verdade sem `any`.
+ */
+const scrypt = promisify(scryptCb) as (
+  senha: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+  opcoes?: ScryptOptions,
+) => Promise<Buffer>;
 
 export interface ParametrosScrypt {
   N: number;
