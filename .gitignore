@@ -14,8 +14,12 @@ coverage/
 !.env.example
 !.env.sample
 
-# Relatórios de execução do LiaGo.bat (gerados localmente; a pasta é criada sozinha)
-reports/
+# JavaScript emitido por engano pelo tsc (o app é TypeScript puro: fontes .ts/.tsx)
+apps/mobile/src/**/*.js
+apps/mobile/*.config.js
+
+# Relatórios de execução antigos (os recentes são versionados para você ver no GitHub)
+reports/*.log
 
 # Banco de dados local de desenvolvimento
 *.sqlite

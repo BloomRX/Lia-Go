@@ -191,6 +191,16 @@ class GitFlowTests(unittest.TestCase):
         self.assertEqual(self.git('rev-parse','origin/main').stdout.strip(), self.initial)
         self.assertTrue((self.repo / '.env').exists())
 
+    def test_sync_accepts_file_already_staged_as_deleted(self):
+        b = self.start_branch()
+        # `git rm` marca a remoção no índice antes do sync: o caminho não existe mais
+        # nem no disco nem no índice, e `git add -A` recusaria esse caminho.
+        self.git('rm', 'src/app.mjs')
+        self.cli('sync', '--message', 'test: remoção já preparada no índice')
+        tree = self.git('ls-tree', '-r', '--name-only', f'origin/{b}').stdout
+        self.assertNotIn('src/app.mjs', tree)
+        self.assertIn('index.html', tree)
+
     def test_no_push_commits_offline_without_remote(self):
         self.start_branch()
         self.git('remote','remove','origin')

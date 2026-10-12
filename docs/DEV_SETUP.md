@@ -70,7 +70,9 @@ cd apps\mobile && npx cap open android
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
   aborta a sincronização — nada é enviado com o projeto em estado inconsistente.
-- Relatórios de execução: `reports/relatorio-*.md` (segredos são ocultados).
+- Relatórios de execução: `reports/relatorio-*.md` (segredos são ocultados). Os **20 mais recentes ficam
+  versionados**, então o resultado da sua execução aparece no GitHub depois do envio — é o "voltar" do
+  `LiaGo.bat`. Relatórios antigos são apagados automaticamente para o repositório não inchar.
 
 ## 6. Problemas comuns
 

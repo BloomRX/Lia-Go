@@ -14,7 +14,7 @@
  * imprime segredo: a DATABASE_URL é sempre exibida com a senha oculta.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +39,21 @@ function rodar(comando, args, opcoes = {}) {
     status: resultado.status ?? 1,
     saida: `${resultado.stdout ?? ""}${resultado.stderr ?? ""}`,
   };
+}
+
+/** Lê o .env do projeto (mesmo arquivo que a API usa). Nunca imprime os valores. */
+function lerEnv() {
+  const caminho = path.join(RAIZ, ".env");
+  if (!existsSync(caminho)) return {};
+  const valores = {};
+  for (const linha of readFileSync(caminho, "utf8").split("\n")) {
+    const limpa = linha.trim();
+    if (!limpa || limpa.startsWith("#")) continue;
+    const igual = limpa.indexOf("=");
+    if (igual <= 0) continue;
+    valores[limpa.slice(0, igual).trim()] = limpa.slice(igual + 1).trim().replace(/^["']|["']$/g, "");
+  }
+  return valores;
 }
 
 function ocultarUrl(url) {
@@ -128,7 +143,9 @@ function gravarRelatorio(resultadoTestes) {
   const caminho = path.join(DIR_RELATORIOS, `relatorio-${carimbo}.md`);
   const git = gitInfo();
   const dockerOk = rodar("docker", ["info"], { capturar: true }).status === 0;
-  const banco = process.env.DATABASE_URL ?? "(não definida — testes de API pulados)";
+  const env = lerEnv();
+  const banco =
+    process.env.DATABASE_URL ?? env.DATABASE_URL ?? "(não definida — os testes de integração serão pulados)";
   const arquivosNaoRastreados = git.status ? git.status.split("\n").length : 0;
 
   const conteudo = [
@@ -150,7 +167,8 @@ function gravarRelatorio(resultadoTestes) {
     `| Código de saída | ${resultadoTestes.status} |`,
     `| Checagem de tipos (\`npm run typecheck\`) | ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"} |`,
     ``,
-    `> Testes de integração são pulados quando não há banco disponível. Suba com \`npm run db:up\`.`,
+    `> Os testes de integração são pulados (com aviso, nunca em silêncio) quando o banco não responde.`,
+    `> Banco local: \`LiaGo.bat\` opção 4, ou \`npm run db:up\` com o Docker aberto.`,
     ``,
     `## Alterações em andamento`,
     ``,
@@ -175,6 +193,13 @@ function gravarRelatorio(resultadoTestes) {
   ].join("\n");
 
   writeFileSync(caminho, conteudo, "utf8");
+
+  // Mantém os 20 relatórios mais recentes: histórico suficiente sem acumular arquivos no Git.
+  const todos = readdirSync(DIR_RELATORIOS)
+    .filter((nome) => /^relatorio-.*\.md$/.test(nome))
+    .sort();
+  for (const antigo of todos.slice(0, -20)) unlinkSync(path.join(DIR_RELATORIOS, antigo));
+
   console.log(`Relatório gravado em ${path.relative(RAIZ, caminho)}`);
   return caminho;
 }
