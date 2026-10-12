@@ -216,6 +216,10 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
 | Offline com fila local (SQLite nativo) | ⬜ | próxima fatia; servidor já é idempotente e versionado |
 
+**Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
+mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere
+pacote por pacote antes de pular o `npm install`.
+
 **Decisão de implementação registrada (reversível):** o acesso a dados usa **SQL explícito + migrações
 versionadas com o driver `pg`**, em vez de ORM. Motivo: menos dependências, queries auditáveis e nenhum
 mapeamento implícito sobre dinheiro. Drizzle continua sendo uma opção caso a produtividade exija, sem

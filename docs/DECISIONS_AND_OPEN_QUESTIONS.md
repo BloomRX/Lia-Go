@@ -65,6 +65,14 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
 - **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
 
+### Dependências: 3 avisos moderados do `npm audit` (aceitos, reavaliar a cada versão)
+`@capacitor/cli` → `xcode` → `uuid` (GHSA-w5hq-g745-h8pq). É **ferramenta de desenvolvimento**
+(só é usada para ler/escrever o projeto iOS; não roda no app, nem na API, nem no build Android que
+o grupo usaria). `npm audit fix --force` resolveria **rebaixando** o `@capacitor/cli` para 8.4.3 —
+mudança de versão que quebra a compatibilidade com o Capacitor 8. Por isso:
+**não rodar `npm audit fix --force`**; atualizar apenas quando o Capacitor publicar a correção.
+Revisão: `npm audit` antes de cada release.
+
 ## Questões que podem ser resolvidas durante a implementação
 - Pequenos detalhes de layout, microcopy e organização visual, desde que não alterem regras.
 - Bibliotecas auxiliares e padrões reversíveis adequados à stack decidida.

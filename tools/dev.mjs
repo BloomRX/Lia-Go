@@ -72,8 +72,15 @@ function verificarNode() {
   }
 }
 
+/**
+ * Uma pasta node_modules existir não quer dizer que está completa: uma instalação parcial
+ * (interrompida, ou um `npm install` de outro pacote) já deixou a API sem o driver do banco.
+ * Por isso conferimos os pacotes de que cada parte depende, um por um.
+ */
+const PACOTES_OBRIGATORIOS = ["fastify", "@fastify/cookie", "pg", "zod", "vite", "react", "@capacitor/core"];
+
 function dependenciasInstaladas() {
-  return existsSync(path.join(RAIZ, "node_modules", "fastify")) && existsSync(path.join(RAIZ, "node_modules", "vite"));
+  return PACOTES_OBRIGATORIOS.every((nome) => existsSync(path.join(RAIZ, "node_modules", ...nome.split("/"))));
 }
 
 function instalarDependencias() {
