@@ -4,7 +4,7 @@
  */
 import type pg from "pg";
 import { type Acao, type ContextoAutorizacao, type DecisaoAutorizacao, decidirAutorizacao } from "@lia-go/domain";
-import { ErroHttp, naoEncontrado, semPermissao } from "./errors.ts";
+import { ErroHttp, naoEncontrado, semPermissao, conflitoDeVersao } from "./errors.ts";
 
 export interface LinhaViagem {
   id: string;
@@ -87,9 +87,7 @@ export function exigirPermissao(contexto: ContextoViagem, acao: Acao): void {
 export function exigirVersao(versaoEnviada: number | undefined, versaoAtual: number): void {
   if (versaoEnviada === undefined) return;
   if (versaoEnviada !== versaoAtual) {
-    throw new ErroHttp(409, "conflito", "Este registro mudou desde a sua última atualização; revise antes de salvar.", {
-      versaoAtual,
-    });
+    throw conflitoDeVersao("Este registro mudou desde a sua última atualização; revise antes de salvar.", versaoAtual);
   }
 }
 

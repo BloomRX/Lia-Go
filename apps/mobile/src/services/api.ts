@@ -21,7 +21,9 @@ export class ErroApi extends Error {
   }
 }
 
-const BASE = import.meta.env.VITE_API_URL ?? "/api";
+// No navegador/app sempre é a própria origem (`/api`) — o Vite faz o proxy para a API local,
+// então nunca existe "localhost" no código que roda no navegador. Em testes (Node) cai no /api.
+const BASE = (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL ?? "/api";
 
 interface OpcoesRequisicao {
   metodo?: "GET" | "POST" | "PATCH" | "DELETE";
@@ -150,6 +152,35 @@ export interface DespesaApi {
   historico: { acao: string; autorId: string; em: string; motivo: string | null }[];
 }
 
+/** Resposta da sincronização incremental (ver apps/api/src/routes/sincronizacao.ts). */
+export interface MudancasApi {
+  cursor: string;
+  temMais: boolean;
+  mudancas: number;
+  viagem: DetalheViagem["viagem"];
+  papel: string;
+  participantes: Participante[];
+  pendencias: { despesas: number; convites: number };
+  sugestao: DetalheViagem["sugestao"];
+  permissoes: DetalheViagem["permissoes"];
+  despesas: DespesaApi[];
+  movimentos: MovimentoApi[];
+  convites: Record<string, unknown>[];
+}
+
+export interface MovimentoApi {
+  id: string;
+  de_id: string;
+  para_id: string;
+  valor_centavos: string;
+  estado: string;
+  despesa_id: string | null;
+  criado_em: string;
+  confirmado_em: string | null;
+  de_nome: string;
+  para_nome: string;
+}
+
 export interface SaldosApi {
   realizado: string;
   comprometido: string;
@@ -208,16 +239,23 @@ export const api = {
     return requisitar("/viagens");
   },
 
-  async criarViagem(dados: {
-    nome: string;
-    destino: string;
-    dataInicio: string | null;
-    dataFim: string | null;
-  }): Promise<{ id: string }> {
+  async criarViagem(
+    dados: {
+      nome: string;
+      destino: string;
+      dataInicio: string | null;
+      dataFim: string | null;
+    },
+    /**
+     * Chave de idempotência. Quando a escrita vem da fila offline, é o id da operação:
+     * reenviar depois de uma queda de rede nunca cria duas viagens.
+     */
+    idempotencia: string = crypto.randomUUID(),
+  ): Promise<{ id: string }> {
     return requisitar("/viagens", {
       metodo: "POST",
       corpo: { ...dados, fusoHorario: "America/Sao_Paulo", moeda: "BRL" },
-      idempotencia: crypto.randomUUID(),
+      idempotencia,
     });
   },
 
@@ -225,8 +263,16 @@ export const api = {
     return requisitar(`/viagens/${viagemId}`);
   },
 
-  async transicionar(viagemId: string, para: string, motivo?: string): Promise<{ estado: string; rotuloEstado: string }> {
-    return requisitar(`/viagens/${viagemId}/transicoes`, { metodo: "POST", corpo: { para, motivo } });
+  async transicionar(
+    viagemId: string,
+    para: string,
+    motivo?: string,
+    versao?: number,
+  ): Promise<{ estado: string; rotuloEstado: string }> {
+    return requisitar(`/viagens/${viagemId}/transicoes`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { para, motivo } : { para, motivo, versao },
+    });
   },
 
   async impactosCancelamento(viagemId: string): Promise<{ impactos: string[] }> {
@@ -255,11 +301,12 @@ export const api = {
       pagadorId: string;
       participantes: string[];
     },
+    idempotencia: string = crypto.randomUUID(),
   ): Promise<DespesaApi> {
     return requisitar(`/viagens/${viagemId}/despesas`, {
       metodo: "POST",
       corpo: { ...dados, moeda: "BRL" },
-      idempotencia: crypto.randomUUID(),
+      idempotencia,
     });
   },
 
@@ -271,7 +318,45 @@ export const api = {
     return requisitar(`/viagens/${viagemId}/despesas/${despesaId}/contestar`, { metodo: "POST", corpo: { motivo } });
   },
 
+  async sairDaViagem(viagemId: string): Promise<void> {
+    await requisitar(`/viagens/${viagemId}/sair`, { metodo: "POST" });
+  },
+
   async saldos(viagemId: string): Promise<SaldosApi> {
     return requisitar(`/viagens/${viagemId}/saldos`);
+  },
+
+  /** Sincronização incremental: só o que mudou desde o cursor (sequência de auditoria). */
+  async mudancas(viagemId: string, cursor: string | null): Promise<MudancasApi> {
+    const desde = cursor ?? "0";
+    return requisitar(`/viagens/${viagemId}/mudancas?desde=${encodeURIComponent(desde)}`);
+  },
+
+  async listarMovimentos(viagemId: string): Promise<{ movimentos: MovimentoApi[] }> {
+    return requisitar(`/viagens/${viagemId}/movimentos`);
+  },
+
+  /** Acerto entre duas pessoas. Nada é transferido de verdade: é registro do que combinaram. */
+  async criarMovimento(
+    viagemId: string,
+    dados: { deId: string; paraId: string; valorCentavos: string; despesaId?: string | null },
+    idempotencia: string = crypto.randomUUID(),
+  ): Promise<MovimentoApi> {
+    return requisitar(`/viagens/${viagemId}/movimentos`, {
+      metodo: "POST",
+      corpo: { ...dados, despesaId: dados.despesaId ?? null },
+      idempotencia,
+    });
+  },
+
+  async confirmarMovimento(viagemId: string, movimentoId: string): Promise<MovimentoApi> {
+    return requisitar(`/viagens/${viagemId}/movimentos/${movimentoId}/confirmar`, { metodo: "POST" });
+  },
+
+  async contestarMovimento(viagemId: string, movimentoId: string, motivo: string): Promise<MovimentoApi> {
+    return requisitar(`/viagens/${viagemId}/movimentos/${movimentoId}/contestar`, {
+      metodo: "POST",
+      corpo: { motivo },
+    });
   },
 };

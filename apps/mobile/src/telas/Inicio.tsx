@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
 import { api, ErroApi, type ViagemResumo } from "../services/api.ts";
 import { ROTULO_ESTADO, formatarData } from "../services/formato.ts";
+import type { Sincronizador } from "../offline/sincronizador.ts";
 
 interface Props {
   abrirViagem: (id: string) => void;
   aceitarConvite: (token: string) => void;
+  sincronizador: Sincronizador;
 }
 
-/** Início: viagens próximas, pendências e convites pendentes (nada de tela demonstrativa). */
-export function Inicio({ abrirViagem, aceitarConvite }: Props): React.ReactElement {
-  const [viagens, setViagens] = useState<ViagemResumo[] | null>(null);
-  const [convites, setConvites] = useState<{ id: string; viagem_nome: string }[]>([]);
+/**
+ * Início: lista lida do **aparelho** (funciona sem sinal) e renovada pelo sincronizador.
+ * Criar viagem também funciona offline: a viagem entra na fila e sobe quando houver rede.
+ */
+export function Inicio({ abrirViagem, aceitarConvite, sincronizador }: Props): React.ReactElement {
+  const [estado, setEstado] = useState(sincronizador.obter());
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
   const [destino, setDestino] = useState("");
@@ -19,50 +24,52 @@ export function Inicio({ abrirViagem, aceitarConvite }: Props): React.ReactEleme
   const [fim, setFim] = useState("");
   const [token, setToken] = useState("");
 
-  async function carregar(): Promise<void> {
-    setErro(null);
-    try {
-      const dados = await api.listarViagens();
-      setViagens(dados.viagens);
-      setConvites(dados.convitesPendentes);
-    } catch (falha) {
-      setErro(falha instanceof ErroApi ? falha.message : "Falha ao carregar suas viagens.");
-      setViagens([]);
-    }
-  }
+  useEffect(() => sincronizador.assinar(setEstado), [sincronizador]);
 
   useEffect(() => {
-    void carregar();
-  }, []);
+    void sincronizador.sincronizarAgora().catch(() => {
+      /* sem rede não é erro para quem está no meio de uma viagem: o cache continua na tela */
+    });
+  }, [sincronizador]);
+
+  const viagens = estado.carga.viagens as unknown as ViagemResumo[];
+  const convites = estado.carga.convitesParaMim as unknown as { id: string; viagem_nome: string }[];
 
   async function criar(evento: React.FormEvent): Promise<void> {
     evento.preventDefault();
     setErro(null);
+    const operacao = {
+      tipo: "criar_viagem" as const,
+      corpo: { nome, destino, dataInicio: inicio || null, dataFim: fim || null },
+      descricao: `Viagem: ${nome}`,
+    };
+    await sincronizador.enfileirar(operacao);
+    setCriando(false);
+    setNome("");
+    setDestino("");
+    setInicio("");
+    setFim("");
+    setAviso(
+      estado.online
+        ? "Viagem criada. Ela aparece na lista assim que o servidor confirmar."
+        : "Viagem guardada no aparelho. Ela vai para o servidor quando o sinal voltar.",
+    );
+  }
+
+  async function aceitar(): Promise<void> {
+    setErro(null);
     try {
-      const criada = await api.criarViagem({
-        nome,
-        destino,
-        dataInicio: inicio || null,
-        dataFim: fim || null,
-      });
-      setCriando(false);
-      setNome("");
-      setDestino("");
-      setInicio("");
-      setFim("");
-      abrirViagem(criada.id);
+      await api.aceitarConvite(token.trim());
+      await sincronizador.sincronizarAgora();
+      setToken("");
+      setAviso("Convite aceito! A viagem já aparece na sua lista.");
     } catch (falha) {
-      setErro(falha instanceof ErroApi ? falha.message : "Não foi possível criar a viagem.");
+      setErro(falha instanceof ErroApi ? falha.message : "Não foi possível aceitar o convite.");
     }
   }
 
-  if (viagens === null) {
-    return (
-      <main className="app">
-        <div className="carregando"><span className="pulso" /> Carregando suas viagens…</div>
-      </main>
-    );
-  }
+  // A lista só "carrega" na primeira vez: depois disso o aparelho sempre tem o que mostrar.
+  const primeiraCarga = viagens.length === 0 && estado.sincronizando && estado.ultimaSincronizacao === null;
 
   return (
     <main className="app">
@@ -72,6 +79,7 @@ export function Inicio({ abrirViagem, aceitarConvite }: Props): React.ReactEleme
       </div>
 
       {erro ? <div className="aviso erro" role="alert">{erro}</div> : null}
+      {aviso ? <div className="aviso ok">{aviso}</div> : null}
 
       {convites.length > 0 ? (
         <section>
@@ -81,20 +89,11 @@ export function Inicio({ abrirViagem, aceitarConvite }: Props): React.ReactEleme
               <div className="linha">
                 <div>
                   <h3>{convite.viagem_nome}</h3>
-                  <p>Você foi convidada(o). Entre e aceite para ver o roteiro e os gastos.</p>
+                  <p>Você foi convidada(o). Cole o token abaixo para aceitar.</p>
                 </div>
               </div>
             </div>
           ))}
-          <div className="cartao">
-            <label htmlFor="token-convite">Cole o link/token do convite</label>
-            <input id="token-convite" value={token} onChange={(e) => setToken(e.target.value)} placeholder="token recebido do organizador" />
-            <div className="acoes">
-              <button className="principal" onClick={() => aceitarConvite(token.trim())} disabled={token.trim().length < 10}>
-                Aceitar convite
-              </button>
-            </div>
-          </div>
         </section>
       ) : null}
 
@@ -105,7 +104,7 @@ export function Inicio({ abrirViagem, aceitarConvite }: Props): React.ReactEleme
         </div>
 
         {criando ? (
-          <form className="cartao destaque" onSubmit={criar}>
+          <form className="cartao destaque" onSubmit={(evento) => void criar(evento)}>
             <label htmlFor="nome-viagem">Nome da viagem</label>
             <input id="nome-viagem" value={nome} onChange={(e) => setNome(e.target.value)} required minLength={2} />
             <label htmlFor="destino">Destino</label>
@@ -117,10 +116,28 @@ export function Inicio({ abrirViagem, aceitarConvite }: Props): React.ReactEleme
             <div className="acoes">
               <button className="principal" type="submit">Salvar rascunho</button>
             </div>
+            <p><small className="suave">
+              Sem internet também funciona: a viagem fica guardada no aparelho e sobe sozinha quando houver sinal.
+            </small></p>
           </form>
         ) : null}
 
-        {viagens.length === 0 && !criando ? (
+        <div className="cartao">
+          <label htmlFor="token-convite">Recebeu um convite? Cole o link/token</label>
+          <input id="token-convite" value={token} onChange={(e) => setToken(e.target.value)} placeholder="token recebido do organizador" />
+          <div className="acoes">
+            <button className="principal" onClick={() => void aceitar()} disabled={token.trim().length < 10}>
+              Aceitar convite
+            </button>
+          </div>
+          <p><small className="suave">Aceitar convite precisa de internet (é o servidor que confirma o seu acesso).</small></p>
+        </div>
+
+        {primeiraCarga ? (
+          <div className="carregando"><span className="pulso" /> Buscando suas viagens…</div>
+        ) : null}
+
+        {viagens.length === 0 && !criando && !primeiraCarga ? (
           <div className="cartao vazio">
             <p>Você ainda não tem viagens.</p>
             <button className="principal" onClick={() => setCriando(true)}>Criar viagem</button>

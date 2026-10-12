@@ -111,3 +111,33 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--roxo); outl
 
 .vazio { text-align: center; padding: 28px 12px; color: var(--texto-suave); }
 small.suave { color: var(--texto-suave); }
+
+/* ---------------------------------------------------------------
+   Sincronização: a pessoa sempre sabe onde o dado dela está.
+   Estados: sincronizado (verde), aguardando/enviando (azul), problema (amarelo).
+   --------------------------------------------------------------- */
+.topo { position: sticky; top: 0; z-index: 5; background: #14101f; padding: 12px 16px 0; }
+.topo-linha { max-width: 720px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+
+.barra-sincro {
+  max-width: 720px;
+  margin: 8px auto 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.barra-sincro .ponto { width: 10px; height: 10px; border-radius: 50%; background: currentColor; display: inline-block; }
+.barra-sincro .ponto[data-estado="sincronizado"] { background: #43d17a; }
+.barra-sincro .ponto[data-estado="pendente"], .barra-sincro .ponto[data-estado="enviando"] { background: #58a6ff; }
+.barra-sincro .ponto[data-estado="problema"] { background: #ffb020; }
+
+.lista-fila { list-style: none; margin: 8px 0 0; padding: 0; }
+.item-fila { border-top: 1px solid rgba(255, 255, 255, 0.12); padding: 8px 0; }
+.item-fila:first-child { border-top: none; }
+
+.conflito { margin-top: 8px; background: rgba(0, 0, 0, 0.25); border-radius: 10px; padding: 10px; }
+.tabela-conflito { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.tabela-conflito th, .tabela-conflito td {
+  text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); vertical-align: top;
+}
+.tabela-conflito th { color: #cbb8ff; font-weight: 600; }

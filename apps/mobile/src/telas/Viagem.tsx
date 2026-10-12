@@ -1,21 +1,43 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, ErroApi, type DetalheViagem, type DespesaApi, type SaldosApi } from "../services/api.ts";
-import { ROTULO_DESPESA, ROTULO_ESTADO, formatarBRL, formatarData, hojeIso, paraCentavos } from "../services/formato.ts";
+import { useEffect, useState } from "react";
+import { api, ErroApi, type DespesaApi, type MovimentoApi, type SaldosApi } from "../services/api.ts";
+import {
+  ROTULO_DESPESA,
+  ROTULO_ESTADO,
+  formatarBRL,
+  formatarData,
+  hojeIso,
+  paraCentavos,
+} from "../services/formato.ts";
+import type { Sincronizador } from "../offline/sincronizador.ts";
+import { Platform } from "../services/plataforma.ts";
+import { rotuloDeArmazenamento } from "../services/tokens.ts";
 
 interface Props {
   viagemId: string;
   usuarioId: string;
   voltar: () => void;
+  sincronizador: Sincronizador;
 }
 
 type Aba = "visao" | "gastos" | "mais";
 
-/** Dashboard da viagem: estado, participantes, gastos e acertos — tudo vindo da API real. */
-export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactElement {
+interface Participante {
+  usuario_id: string;
+  nome: string;
+  papel: string;
+  estado: string;
+}
+
+/**
+ * Tela da viagem. Lê do aparelho primeiro (funciona sem sinal) e escreve pela fila:
+ * o que a pessoa faz aqui vale na hora e sobe para o servidor quando houver rede.
+ * Saldos sempre vêm do servidor — o app nunca calcula dinheiro oficial.
+ */
+export function Viagem({ viagemId, usuarioId, voltar, sincronizador }: Props): React.ReactElement {
   const [aba, setAba] = useState<Aba>("visao");
-  const [detalhe, setDetalhe] = useState<DetalheViagem | null>(null);
-  const [despesas, setDespesas] = useState<DespesaApi[]>([]);
+  const [estado, setEstado] = useState(sincronizador.obter());
   const [saldos, setSaldos] = useState<SaldosApi | null>(null);
+  const [saldosEm, setSaldosEm] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [impactos, setImpactos] = useState<string[] | null>(null);
@@ -28,41 +50,73 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
     tipo: "compartilhada" as "pessoal" | "compartilhada",
   });
   const [motivoContestacao, setMotivoContestacao] = useState<{ id: string; texto: string } | null>(null);
-  const [ocupado, setOcupado] = useState(false);
+  const [acerto, setAcerto] = useState({ deId: "", paraId: "", valor: "" });
 
-  const recarregar = useCallback(async (): Promise<void> => {
-    setErro(null);
-    try {
-      const [d, s] = await Promise.all([api.detalheViagem(viagemId), api.saldos(viagemId)]);
-      setDetalhe(d);
-      setSaldos(s);
-      if (d.permissoes.registrarDespesa.permitido || d.participantes.length > 0) {
-        const lista = await api.listarDespesas(viagemId);
-        setDespesas(lista.despesas);
-      }
-    } catch (falha) {
-      setErro(falha instanceof ErroApi ? falha.message : "Não foi possível carregar a viagem.");
-    }
-  }, [viagemId]);
+  useEffect(() => sincronizador.assinar(setEstado), [sincronizador]);
 
   useEffect(() => {
-    void recarregar();
-  }, [recarregar]);
+    void sincronizador.abrirViagem(viagemId);
+    return () => {
+      void sincronizador.abrirViagem(null);
+    };
+  }, [sincronizador, viagemId]);
 
-  async function executar(acao: () => Promise<void>): Promise<void> {
-    setOcupado(true);
-    setErro(null);
-    try {
-      await acao();
-      await recarregar();
-    } catch (falha) {
-      setErro(falha instanceof ErroApi ? falha.message : "Não foi possível concluir a ação.");
-    } finally {
-      setOcupado(false);
-    }
-  }
+  useEffect(() => {
+    void sincronizador.sincronizarAgora().catch(() => {
+      /* sem rede: mostramos o que já está no aparelho e dizemos quando foi atualizado */
+    });
+  }, [sincronizador, viagemId]);
 
-  if (!detalhe) {
+  // Saldos: sempre do servidor; guardados para mostrar a última informação conhecida sem rede.
+  useEffect(() => {
+    let cancelado = false;
+    void (async () => {
+      const guardado = await sincronizador.lerSaldos(viagemId);
+      if (guardado && !cancelado) {
+        setSaldos(guardado.saldos);
+        setSaldosEm(guardado.em);
+      }
+      if (!sincronizador.obter().online) return;
+      try {
+        const atual = await api.saldos(viagemId);
+        if (cancelado) return;
+        setSaldos(atual);
+        setSaldosEm(new Date().toISOString());
+        await sincronizador.guardarSaldos(viagemId, atual);
+      } catch {
+        /* mantém o último saldo conhecido */
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [sincronizador, viagemId, estado.ultimaSincronizacao, estado.resumo.total]);
+
+  const detalhe = estado.carga.viagem;
+  const viagem = detalhe?.viagem ?? null;
+  const participantes = (detalhe?.participantes ?? []) as unknown as Participante[];
+  const permissoes = detalhe?.permissoes as
+    | {
+        editar: { permitido: boolean; motivo?: string };
+        cancelar: { permitido: boolean; motivo?: string };
+        convidar: { permitido: boolean; motivo?: string };
+        registrarDespesa: { permitido: boolean; motivo?: string };
+        transicoesPermitidas: string[];
+      }
+    | undefined;
+  const sugestao = detalhe?.sugestao as { sugestao: string; motivo: string } | null | undefined;
+  const pendencias = detalhe?.pendencias as { despesas: number; convites: number } | undefined;
+  const despesas = estado.carga.despesas as unknown as DespesaApi[];
+  const movimentos = estado.carga.movimentos as unknown as MovimentoApi[];
+
+  const nomePorId = new Map(participantes.map((pessoa) => [pessoa.usuario_id, pessoa.nome]));
+  const ativos = participantes.filter((pessoa) => pessoa.estado === "ativo");
+  const eu = participantes.find((pessoa) => pessoa.usuario_id === usuarioId);
+  const podeRegistrar = permissoes?.registrarDespesa.permitido ?? false;
+  const sou = (despesa: DespesaApi) => despesa.autorId === usuarioId;
+  const nome = (id: string) => nomePorId.get(id) ?? "alguém";
+
+  if (!viagem) {
     return (
       <main className="app">
         {erro ? <div className="aviso erro" role="alert">{erro}</div> : null}
@@ -72,10 +126,23 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
     );
   }
 
-  const { viagem, permissoes, participantes, sugestao, pendencias } = detalhe;
-  const nomePorId = new Map(participantes.map((p) => [p.usuario_id, p.nome]));
-  const podeRegistrar = permissoes.registrarDespesa.permitido;
-  const eu = participantes.find((p) => p.usuario_id === usuarioId);
+  /** Toda escrita passa por aqui: enfileira e explica o que vai acontecer. */
+  async function enfileirar(operacao: Parameters<Sincronizador["enfileirar"]>[0], mensagem: string): Promise<void> {
+    setErro(null);
+    await sincronizador.enfileirar(operacao);
+    setAviso(estado.online ? mensagem : `${mensagem} Ficou guardado no aparelho e sobe quando o sinal voltar.`);
+  }
+
+  async function executarOnline(acao: () => Promise<void>, mensagem: string): Promise<void> {
+    setErro(null);
+    try {
+      await acao();
+      setAviso(mensagem);
+      await sincronizador.sincronizarAgora();
+    } catch (falha) {
+      setErro(falha instanceof ErroApi ? falha.message : "Não foi possível concluir a ação.");
+    }
+  }
 
   return (
     <main className="app">
@@ -83,26 +150,38 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
 
       <div className="linha entre" style={{ marginTop: 8 }}>
         <div>
-          <h1>{viagem.nome}</h1>
-          <p>{viagem.destino || "sem destino"} · {formatarData(viagem.data_inicio)} a {formatarData(viagem.data_fim)}</p>
+          <h1>{viagem.nome as string}</h1>
+          <p>
+            {(viagem.destino as string) || "sem destino"} · {formatarData(viagem.data_inicio as string | null)} a{" "}
+            {formatarData(viagem.data_fim as string | null)}
+          </p>
         </div>
-        <span className={`etiqueta estado-${viagem.estado}`}>{viagem.rotuloEstado ?? ROTULO_ESTADO[viagem.estado]}</span>
+        <span className={`etiqueta estado-${viagem.estado as string}`}>
+          {(viagem.rotuloEstado as string) ?? ROTULO_ESTADO[viagem.estado as string] ?? (viagem.estado as string)}
+        </span>
       </div>
 
       {erro ? <div className="aviso erro" role="alert">{erro}</div> : null}
       {aviso ? <div className="aviso ok">{aviso}</div> : null}
 
-      {sugestao ? (
+      {sugestao && permissoes ? (
         <div className="aviso atencao">
           <strong>Sugestão:</strong> {sugestao.motivo}
           <div className="acoes">
             <button
               className="principal"
-              disabled={ocupado}
-              onClick={() => executar(async () => {
-                const resultado = await api.transicionar(viagemId, sugestao.sugestao);
-                setAviso(`Viagem agora está: ${resultado.rotuloEstado}. Registramos quem confirmou.`);
-              })}
+              onClick={() =>
+                void enfileirar(
+                  {
+                    tipo: "transicao_viagem",
+                    viagemId,
+                    para: sugestao.sugestao,
+                    versao: Number(viagem.versao),
+                    descricao: `Viagem: ${ROTULO_ESTADO[sugestao.sugestao] ?? sugestao.sugestao}`,
+                  },
+                  `Confirmado: a viagem passa para ${ROTULO_ESTADO[sugestao.sugestao] ?? sugestao.sugestao}. Registramos quem confirmou.`,
+                )
+              }
             >
               Confirmar “{ROTULO_ESTADO[sugestao.sugestao] ?? sugestao.sugestao}”
             </button>
@@ -115,32 +194,42 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
           <section className="cartao destaque">
             <h2>Organização</h2>
             <p>
-              Você é <strong>{detalhe.papel === "organizador" ? "organizador(a)" : "participante"}</strong>.
-              {pendencias.despesas > 0 ? ` ${pendencias.despesas} despesa(s) aguardando confirmação.` : " Nenhuma pendência financeira."}
+              Você é <strong>{detalhe?.papel === "organizador" ? "organizador(a)" : "participante"}</strong>.
+              {pendencias && pendencias.despesas > 0
+                ? ` ${pendencias.despesas} despesa(s) aguardando confirmação.`
+                : " Nenhuma pendência financeira."}
             </p>
-            {permissoes.transicoesPermitidas.length > 0 ? (
+            {permissoes && permissoes.transicoesPermitidas.length > 0 ? (
               <div className="acoes">
-                {permissoes.transicoesPermitidas.map((estado) => (
+                {permissoes.transicoesPermitidas.map((destino) => (
                   <button
-                    key={estado}
-                    disabled={ocupado}
+                    key={destino}
                     onClick={() => {
-                      if (estado === "cancelada") {
-                        void api.impactosCancelamento(viagemId).then((r) => setImpactos(r.impactos)).catch(() => setErro("Não foi possível ver os impactos."));
+                      if (destino === "cancelada") {
+                        void api
+                          .impactosCancelamento(viagemId)
+                          .then((r) => setImpactos(r.impactos))
+                          .catch(() => setErro("Não foi possível ver os impactos."));
                         return;
                       }
-                      void executar(async () => {
-                        const resultado = await api.transicionar(viagemId, estado);
-                        setAviso(`Viagem agora está: ${resultado.rotuloEstado}.`);
-                      });
+                      void enfileirar(
+                        {
+                          tipo: "transicao_viagem",
+                          viagemId,
+                          para: destino,
+                          versao: Number(viagem.versao),
+                          descricao: `Viagem: ${ROTULO_ESTADO[destino] ?? destino}`,
+                        },
+                        `A viagem passa para ${ROTULO_ESTADO[destino] ?? destino}.`,
+                      );
                     }}
                   >
-                    Mover para {ROTULO_ESTADO[estado] ?? estado}
+                    Mover para {ROTULO_ESTADO[destino] ?? destino}
                   </button>
                 ))}
               </div>
             ) : (
-              <p><small className="suave">{permissoes.editar.motivo}</small></p>
+              <p><small className="suave">{permissoes?.editar.motivo}</small></p>
             )}
           </section>
 
@@ -151,11 +240,21 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
                 {impactos.map((impacto) => (<li key={impacto}>{impacto}</li>))}
               </ul>
               <div className="acoes">
-                <button className="perigo" disabled={ocupado} onClick={() => void executar(async () => {
-                  await api.transicionar(viagemId, "cancelada");
-                  setImpactos(null);
-                  setAviso("Viagem cancelada. Registros preservados e pendências continuam acessíveis.");
-                })}>
+                <button
+                  className="perigo"
+                  onClick={() =>
+                    void enfileirar(
+                      {
+                        tipo: "transicao_viagem",
+                        viagemId,
+                        para: "cancelada",
+                        versao: Number(viagem.versao),
+                        descricao: "Viagem: cancelada",
+                      },
+                      "Cancelamento registrado. Os registros continuam preservados e acessíveis.",
+                    ).then(() => setImpactos(null))
+                  }
+                >
                   Confirmar cancelamento
                 </button>
                 <button className="sutil" onClick={() => setImpactos(null)}>Voltar atrás</button>
@@ -167,9 +266,7 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
             <h2>Participantes</h2>
             {participantes.map((pessoa) => (
               <div className="linha" key={pessoa.usuario_id} style={{ marginBottom: 6 }}>
-                <span>
-                  {pessoa.nome} {pessoa.usuario_id === usuarioId ? "(você)" : ""}
-                </span>
+                <span>{pessoa.nome} {pessoa.usuario_id === usuarioId ? "(você)" : ""}</span>
                 <span className="etiqueta">
                   {pessoa.papel === "organizador" ? "organizador" : "participante"}
                   {pessoa.estado !== "ativo" ? ` · ${pessoa.estado}` : ""}
@@ -180,17 +277,22 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
 
           <section className="cartao">
             <h2>Convidar pessoa</h2>
-            {permissoes.convidar.permitido ? (
+            {permissoes?.convidar.permitido ? (
               <>
                 <label htmlFor="email-convite">E-mail de quem vai participar</label>
                 <input id="email-convite" type="email" value={conviteEmail} onChange={(e) => setConviteEmail(e.target.value)} />
                 <div className="acoes">
-                  <button className="principal" disabled={ocupado || !conviteEmail.includes("@")} onClick={() => void executar(async () => {
-                    const convite = await api.criarConvite(viagemId, conviteEmail);
-                    setLinkConvite(convite.token);
-                    setConviteEmail("");
-                    setAviso("Convite criado. Envie o link para a pessoa: ela entra com o mesmo e-mail para aceitar.");
-                  })}>
+                  <button
+                    className="principal"
+                    disabled={!conviteEmail.includes("@")}
+                    onClick={() =>
+                      void executarOnline(async () => {
+                        const convite = await api.criarConvite(viagemId, conviteEmail);
+                        setLinkConvite(convite.token);
+                        setConviteEmail("");
+                      }, "Convite criado. Envie o link: a pessoa entra com o mesmo e-mail para aceitar.")
+                    }
+                  >
                     Gerar convite
                   </button>
                 </div>
@@ -198,13 +300,16 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
                   <div className="aviso info">
                     Link do convite (aparece só uma vez): <code>{`${location.origin}/?convite=${linkConvite}`}</code>
                     <div className="acoes">
-                      <button onClick={() => void navigator.clipboard?.writeText(`${location.origin}/?convite=${linkConvite}`)}>Copiar link</button>
+                      <button onClick={() => void navigator.clipboard?.writeText(`${location.origin}/?convite=${linkConvite}`)}>
+                        Copiar link
+                      </button>
                     </div>
                   </div>
                 ) : null}
+                <p><small className="suave">Gerar convite precisa de internet: o token só existe no servidor.</small></p>
               </>
             ) : (
-              <p><small className="suave">{permissoes.convidar.motivo}</small></p>
+              <p><small className="suave">{permissoes?.convidar.motivo}</small></p>
             )}
           </section>
         </>
@@ -216,7 +321,10 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
             <h2>Resumo</h2>
             <div className="linha"><span>Confirmado (oficial)</span><strong>{formatarBRL(saldos?.realizado ?? "0")}</strong></div>
             <div className="linha"><span>Aguardando confirmação</span><strong>{formatarBRL(saldos?.comprometido ?? "0")}</strong></div>
-            <p><small className="suave">{saldos?.aviso}</small></p>
+            <p><small className="suave">
+              {saldos?.aviso}
+              {saldosEm ? ` · Última atualização do servidor: ${new Date(saldosEm).toLocaleString("pt-BR")}.` : ""}
+            </small></p>
           </section>
 
           {saldos && saldos.saldos.length > 0 ? (
@@ -237,6 +345,19 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
                   {saldos.transferenciasSugeridas.map((sugestaoAcerto) => (
                     <p key={`${sugestaoAcerto.deId}-${sugestaoAcerto.paraId}-${sugestaoAcerto.valorCentavos}`}>
                       {sugestaoAcerto.deNome} → {sugestaoAcerto.paraNome}: <strong>{formatarBRL(sugestaoAcerto.valorCentavos)}</strong>
+                      <button
+                        className="sutil"
+                        style={{ marginLeft: 8 }}
+                        onClick={() =>
+                          setAcerto({
+                            deId: sugestaoAcerto.deId,
+                            paraId: sugestaoAcerto.paraId,
+                            valor: (Number(sugestaoAcerto.valorCentavos) / 100).toFixed(2).replace(".", ","),
+                          })
+                        }
+                      >
+                        Registrar acerto
+                      </button>
                     </p>
                   ))}
                   <div className="aviso atencao">Sugestão apenas: nada é transferido pelo app. Combine o Pix por fora e registre o acerto.</div>
@@ -245,23 +366,75 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
             </section>
           ) : null}
 
-          {podeRegistrar ? (
-            <form className="cartao" onSubmit={(evento) => {
+          <form
+            className="cartao"
+            onSubmit={(evento) => {
               evento.preventDefault();
-              void executar(async () => {
+              void enfileirar(
+                {
+                  tipo: "criar_movimento",
+                  viagemId,
+                  corpo: {
+                    deId: acerto.deId,
+                    paraId: acerto.paraId,
+                    valorCentavos: paraCentavos(acerto.valor),
+                  },
+                  descricao: `Acerto: ${nome(acerto.deId)} paga ${nome(acerto.paraId)}`,
+                },
+                "Acerto registrado. Quem recebeu precisa confirmar para valer nos saldos.",
+              ).then(() => setAcerto({ deId: "", paraId: "", valor: "" }));
+            }}
+          >
+            <h2>Registrar acerto (pagamento combinado)</h2>
+            <label htmlFor="acerto-de">Quem pagou</label>
+            <select id="acerto-de" value={acerto.deId} onChange={(e) => setAcerto({ ...acerto, deId: e.target.value })} required>
+              <option value="">escolha…</option>
+              {ativos.map((pessoa) => (
+                <option key={pessoa.usuario_id} value={pessoa.usuario_id}>{pessoa.nome}</option>
+              ))}
+            </select>
+            <label htmlFor="acerto-para">Quem recebeu</label>
+            <select id="acerto-para" value={acerto.paraId} onChange={(e) => setAcerto({ ...acerto, paraId: e.target.value })} required>
+              <option value="">escolha…</option>
+              {ativos.map((pessoa) => (
+                <option key={pessoa.usuario_id} value={pessoa.usuario_id}>{pessoa.nome}</option>
+              ))}
+            </select>
+            <label htmlFor="acerto-valor">Valor (ex.: 87,50)</label>
+            <input id="acerto-valor" inputMode="decimal" value={acerto.valor} onChange={(e) => setAcerto({ ...acerto, valor: e.target.value })} required />
+            <div className="acoes">
+              <button className="principal" type="submit" disabled={!acerto.deId || !acerto.paraId || acerto.deId === acerto.paraId}>
+                Registrar acerto
+              </button>
+            </div>
+            <p><small className="suave">Nada é transferido pelo app: é o registro do que vocês combinaram fora dele.</small></p>
+          </form>
+
+          {podeRegistrar ? (
+            <form
+              className="cartao"
+              onSubmit={(evento) => {
+                evento.preventDefault();
                 const valorCentavos = paraCentavos(novaDespesa.valor);
-                const criada = await api.criarDespesa(viagemId, {
-                  tipo: novaDespesa.tipo,
-                  valorCentavos,
-                  data: hojeIso(),
-                  descricao: novaDespesa.descricao,
-                  pagadorId: novaDespesa.pagadorId || usuarioId,
-                  participantes: participantes.filter((p) => p.estado === "ativo").map((p) => p.usuario_id),
-                });
-                setNovaDespesa({ descricao: "", valor: "", pagadorId: "", tipo: "compartilhada" });
-                setAviso(`Despesa de ${formatarBRL(criada.valorCentavos)} registrada como pendente. Outra pessoa precisa confirmar.`);
-              });
-            }}>
+                const descricao = novaDespesa.descricao;
+                void enfileirar(
+                  {
+                    tipo: "criar_despesa",
+                    viagemId,
+                    corpo: {
+                      tipo: novaDespesa.tipo,
+                      valorCentavos,
+                      data: hojeIso(),
+                      descricao,
+                      pagadorId: novaDespesa.pagadorId || usuarioId,
+                      participantes: ativos.map((pessoa) => pessoa.usuario_id),
+                    },
+                    descricao: `Despesa: ${descricao} (${formatarBRL(valorCentavos)})`,
+                  },
+                  "Despesa registrada como pendente. Outra pessoa precisa confirmar.",
+                ).then(() => setNovaDespesa({ descricao: "", valor: "", pagadorId: "", tipo: "compartilhada" }));
+              }}
+            >
               <h2>Nova despesa</h2>
               <label htmlFor="descricao">Descrição</label>
               <input id="descricao" value={novaDespesa.descricao} onChange={(e) => setNovaDespesa({ ...novaDespesa, descricao: e.target.value })} required minLength={2} />
@@ -274,90 +447,122 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
               </select>
               <label htmlFor="pagador">Quem pagou</label>
               <select id="pagador" value={novaDespesa.pagadorId || usuarioId} onChange={(e) => setNovaDespesa({ ...novaDespesa, pagadorId: e.target.value })}>
-                {participantes.filter((p) => p.estado === "ativo").map((p) => (
-                  <option key={p.usuario_id} value={p.usuario_id}>{p.nome}{p.usuario_id === usuarioId ? " (você)" : ""}</option>
+                {ativos.map((pessoa) => (
+                  <option key={pessoa.usuario_id} value={pessoa.usuario_id}>{pessoa.nome}{pessoa.usuario_id === usuarioId ? " (você)" : ""}</option>
                 ))}
               </select>
               <div className="acoes">
-                <button className="principal" type="submit" disabled={ocupado}>Registrar despesa</button>
+                <button className="principal" type="submit">Registrar despesa</button>
               </div>
+              <p><small className="suave">Funciona sem internet: fica guardada no aparelho e sobe quando o sinal voltar.</small></p>
             </form>
           ) : (
-            <div className="aviso info">{permissoes.registrarDespesa.motivo}</div>
+            <div className="aviso info">{permissoes?.registrarDespesa.motivo}</div>
           )}
 
           <section>
             <h2>Despesas</h2>
             {despesas.length === 0 ? <div className="cartao vazio"><p>Nenhuma despesa registrada ainda.</p></div> : null}
-            {despesas.map((despesa) => {
-              const sou = despesa.autorId === usuarioId;
-              return (
-                <article className="cartao" key={despesa.id}>
-                  <div className="linha entre">
-                    <div>
-                      <h3>{despesa.descricao}</h3>
-                      <p>
-                        {formatarBRL(despesa.valorCentavos)} · pago por {nomePorId.get(despesa.pagadorId) ?? "alguém"} ·{" "}
-                        {formatarData(despesa.data)} · {despesa.tipo === "pessoal" ? "pessoal" : "compartilhada"}
-                      </p>
-                      <p><small className="suave">{despesa.rateio.explicacao || `Lançado por ${nomePorId.get(despesa.autorId) ?? "alguém"}`}</small></p>
-                    </div>
-                    <span className={`etiqueta estado-${despesa.estado}`}>{ROTULO_DESPESA[despesa.estado]}</span>
+            {despesas.map((despesa) => (
+              <article className="cartao" key={despesa.id}>
+                <div className="linha entre">
+                  <div>
+                    <h3>{despesa.descricao}</h3>
+                    <p>
+                      {formatarBRL(despesa.valorCentavos)} · pago por {nome(despesa.pagadorId)} · {formatarData(despesa.data)} ·{" "}
+                      {despesa.tipo === "pessoal" ? "pessoal" : "compartilhada"}
+                    </p>
+                    <p><small className="suave">{despesa.rateio.explicacao || `Lançado por ${nome(despesa.autorId)}`}</small></p>
                   </div>
+                  <span className={`etiqueta estado-${despesa.estado}`}>{ROTULO_DESPESA[despesa.estado]}</span>
+                </div>
 
-                  {despesa.motivoContestacao ? <div className="aviso atencao">Contestação: {despesa.motivoContestacao}</div> : null}
+                {despesa.motivoContestacao ? <div className="aviso atencao">Contestação: {despesa.motivoContestacao}</div> : null}
 
-                  {despesa.estado !== "confirmada" ? (
-                    <div className="acoes">
-                      <button
-                        disabled={ocupado || sou}
-                        title={sou ? "Quem lançou não confirma o próprio lançamento" : "Confirmar esta despesa"}
-                        onClick={() => void executar(async () => {
-                          await api.confirmarDespesa(viagemId, despesa.id);
-                          setAviso("Despesa confirmada e incluída nos saldos oficiais.");
-                        })}
-                      >
-                        Confirmar
+                {despesa.estado !== "confirmada" ? (
+                  <div className="acoes">
+                    <button
+                      disabled={sou(despesa)}
+                      title={sou(despesa) ? "Quem lançou não confirma o próprio lançamento" : "Confirmar esta despesa"}
+                      onClick={() =>
+                        void enfileirar(
+                          { tipo: "confirmar_despesa", viagemId, despesaId: despesa.id, descricao: `Confirmar: ${despesa.descricao}` },
+                          "Despesa confirmada. Ela passa a contar nos saldos oficiais.",
+                        )
+                      }
+                    >
+                      Confirmar
+                    </button>
+                    {!sou(despesa) ? (
+                      <button className="sutil" onClick={() => setMotivoContestacao({ id: despesa.id, texto: motivoContestacao?.texto ?? "" })}>
+                        Contestar
                       </button>
-                      {!sou ? (
-                        <button
-                          className="sutil"
-                          disabled={ocupado}
-                          onClick={() => setMotivoContestacao({ id: despesa.id, texto: motivoContestacao?.texto ?? "" })}
-                        >
-                          Contestar
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
+                ) : null}
 
-                  {motivoContestacao?.id === despesa.id ? (
-                    <form onSubmit={(evento) => {
+                {motivoContestacao?.id === despesa.id ? (
+                  <form
+                    onSubmit={(evento) => {
                       evento.preventDefault();
-                      void executar(async () => {
-                        await api.contestarDespesa(viagemId, despesa.id, motivoContestacao.texto);
-                        setMotivoContestacao(null);
-                        setAviso("Despesa contestada: segue visível e fora dos saldos oficiais até a resolução.");
-                      });
-                    }}>
-                      <label htmlFor="motivo">Motivo da contestação</label>
-                      <textarea
-                        id="motivo"
-                        value={motivoContestacao.texto}
-                        onChange={(e) => setMotivoContestacao({ id: despesa.id, texto: e.target.value })}
-                        rows={3}
-                        required
-                        minLength={5}
-                      />
-                      <div className="acoes">
-                        <button className="principal" type="submit" disabled={ocupado}>Enviar contestação</button>
-                        <button type="button" className="sutil" onClick={() => setMotivoContestacao(null)}>Cancelar</button>
-                      </div>
-                    </form>
-                  ) : null}
-                </article>
-              );
-            })}
+                      const texto = motivoContestacao.texto;
+                      void enfileirar(
+                        { tipo: "contestar_despesa", viagemId, despesaId: despesa.id, motivo: texto, descricao: `Contestar: ${despesa.descricao}` },
+                        "Despesa contestada: segue visível e fora dos saldos oficiais até a resolução.",
+                      ).then(() => setMotivoContestacao(null));
+                    }}
+                  >
+                    <label htmlFor="motivo">Motivo da contestação</label>
+                    <textarea
+                      id="motivo"
+                      value={motivoContestacao.texto}
+                      onChange={(e) => setMotivoContestacao({ id: despesa.id, texto: e.target.value })}
+                      rows={3}
+                      required
+                      minLength={5}
+                    />
+                    <div className="acoes">
+                      <button className="principal" type="submit">Enviar contestação</button>
+                      <button type="button" className="sutil" onClick={() => setMotivoContestacao(null)}>Cancelar</button>
+                    </div>
+                  </form>
+                ) : null}
+              </article>
+            ))}
+          </section>
+
+          <section>
+            <h2>Acertos registrados</h2>
+            {movimentos.length === 0 ? <div className="cartao vazio"><p>Nenhum acerto registrado.</p></div> : null}
+            {movimentos.map((movimento) => (
+              <article className="cartao" key={movimento.id}>
+                <div className="linha entre">
+                  <div>
+                    <h3>{movimento.de_nome} → {movimento.para_nome}</h3>
+                    <p>{formatarBRL(movimento.valor_centavos)} · {formatarData(movimento.criado_em.slice(0, 10))}</p>
+                  </div>
+                  <span className="etiqueta">{movimento.estado}</span>
+                </div>
+                {movimento.estado !== "confirmado" ? (
+                  <div className="acoes">
+                    {movimento.para_id === usuarioId ? (
+                      <button
+                        onClick={() =>
+                          void enfileirar(
+                            { tipo: "confirmar_movimento", viagemId, movimentoId: movimento.id, descricao: `Confirmar recebimento de ${formatarBRL(movimento.valor_centavos)}` },
+                            "Recebimento confirmado: o acerto passa a contar nos saldos.",
+                          )
+                        }
+                      >
+                        Confirmar recebimento
+                      </button>
+                    ) : (
+                      <p><small className="suave">Só quem recebeu confirma este acerto.</small></p>
+                    )}
+                  </div>
+                ) : null}
+              </article>
+            ))}
           </section>
         </>
       ) : null}
@@ -366,9 +571,9 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
         <>
           <section className="cartao">
             <h2>Ficha da viagem</h2>
-            <div className="linha"><span>Estado</span><strong>{viagem.rotuloEstado ?? ROTULO_ESTADO[viagem.estado]}</strong></div>
-            <div className="linha"><span>Fuso</span><span>{(viagem as unknown as { fuso_horario?: string }).fuso_horario ?? "America/Sao_Paulo"}</span></div>
-            <div className="linha"><span>Versão dos dados</span><span>{viagem.versao}</span></div>
+            <div className="linha"><span>Estado</span><strong>{(viagem.rotuloEstado as string) ?? ROTULO_ESTADO[viagem.estado as string]}</strong></div>
+            <div className="linha"><span>Fuso</span><span>{(viagem.fuso_horario as string) ?? "America/Sao_Paulo"}</span></div>
+            <div className="linha"><span>Versão dos dados</span><span>{viagem.versao as number}</span></div>
             <p><small className="suave">
               Cada alteração relevante é registrada com autor e horário. A data da viagem nunca muda o estado sozinha.
             </small></p>
@@ -376,17 +581,17 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
 
           <section className="cartao">
             <h2>Você</h2>
-            <p>{eu?.nome ?? "participante"} · {detalhe.papel}</p>
+            <p>{eu?.nome ?? "participante"} · {detalhe?.papel}</p>
             {eu?.papel !== "organizador" ? (
               <div className="acoes">
                 <button
                   className="perigo"
-                  disabled={ocupado}
-                  onClick={() => void executar(async () => {
-                    await fetch("/api/viagens/" + viagemId + "/sair", { method: "POST", credentials: "include" });
-                    setAviso("Você saiu da viagem. O histórico permanece com o grupo.");
-                    voltar();
-                  })}
+                  onClick={() =>
+                    void executarOnline(async () => {
+                      await api.sairDaViagem(viagemId);
+                      voltar();
+                    }, "Você saiu da viagem. O histórico permanece com o grupo.")
+                  }
                 >
                   Sair da viagem
                 </button>
@@ -394,6 +599,33 @@ export function Viagem({ viagemId, usuarioId, voltar }: Props): React.ReactEleme
             ) : (
               <p><small className="suave">Organizador(a) não sai sem passar a organização para outra pessoa.</small></p>
             )}
+          </section>
+
+          <section className="cartao">
+            <h2>Este aparelho</h2>
+            <div className="linha"><span>Dados guardados para uso sem internet</span><span>{estado.armazenamento}</span></div>
+            <div className="linha"><span>Alterações na fila</span><span>{estado.resumo.total}</span></div>
+            <div className="linha">
+              <span>Sua sessão fica em</span>
+              <span>{Platform.ehWeb() ? "cookie HttpOnly do navegador" : rotuloDeArmazenamento()}</span>
+            </div>
+            <p><small className="suave">
+              Guardamos apenas o que você já pode ver nesta viagem, para o app funcionar sem sinal.
+              Os saldos oficiais são sempre calculados no servidor.
+            </small></p>
+            <div className="acoes">
+              <button
+                className="sutil"
+                onClick={() => {
+                  void sincronizador.limparDadosLocais().then(() => {
+                    setAviso("Dados locais apagados. O app vai baixar de novo quando você usar com internet.");
+                    voltar();
+                  });
+                }}
+              >
+                Apagar dados deste aparelho
+              </button>
+            </div>
           </section>
         </>
       ) : null}

@@ -27,6 +27,14 @@ export const naoEncontrado = (): ErroHttp =>
 export const conflito = (mensagem: string, detalhes?: unknown): ErroHttp =>
   new ErroHttp(409, "conflito", mensagem, detalhes);
 
+/**
+ * Conflito de versão é diferente de "esta operação não se aplica mais": aqui a alteração é
+ * legítima, só chegou sobre uma versão antiga. O app mostra as duas versões e deixa a pessoa
+ * decidir (nunca sobrescreve). Por isso o código próprio `conflito_versao`.
+ */
+export const conflitoDeVersao = (mensagem: string, versaoAtual: number): ErroHttp =>
+  new ErroHttp(409, "conflito_versao", mensagem, { versaoAtual });
+
 export const entradaInvalida = (mensagem: string): ErroHttp => new ErroHttp(400, "entrada_invalida", mensagem);
 
 export const limiteExcedido = (mensagem: string): ErroHttp => new ErroHttp(429, "limite_excedido", mensagem);

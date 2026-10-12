@@ -11,16 +11,15 @@ import {
   type Viagem,
   consequenciasDeSaida,
   impactosDeCancelamento,
-  sugerirEstado,
-  transicoesPermitidas,
   transicionar,
 } from "@lia-go/domain";
 import type { Config } from "../config.ts";
 import { emTransacao } from "../db.ts";
-import { ErroHttp, entradaInvalida } from "../errors.ts";
+import { ErroHttp, conflitoDeVersao, entradaInvalida } from "../errors.ts";
 import { comIdempotencia, exigirAutenticacao, idempotencyKey, tratarErroDeValidacao } from "../http.ts";
-import { carregarContexto, decidir, exigirContexto, exigirPermissao, exigirVersao, type ContextoViagem } from "../authz.ts";
+import { carregarContexto, exigirContexto, exigirPermissao, exigirVersao, type ContextoViagem } from "../authz.ts";
 import { registrarAuditoria } from "../audit.ts";
+import { carregarDetalheViagem } from "../detalhe.ts";
 import { gerarToken, hashToken, novoId } from "../tokens.ts";
 
 const esquemaCriarViagem = z.object({
@@ -158,42 +157,8 @@ export function rotasViagens(app: FastifyInstance, deps: { pool: pg.Pool; config
     const autenticado = await exigirAutenticacao(request, http);
     const { viagemId } = request.params as { viagemId: string };
     const contexto = await exigirContexto(pool, autenticado.usuarioId, viagemId);
-    const participantes = await pool.query(
-      `SELECT m.usuario_id, u.nome, m.papel, m.estado, m.entrou_em::text AS entrou_em
-         FROM membros_viagem m JOIN usuarios u ON u.id = m.usuario_id
-        WHERE m.viagem_id = $1 AND m.estado IN ('ativo','convidado')
-        ORDER BY m.papel DESC, m.entrou_em`,
-      [viagemId],
-    );
-    const pendencias = await pool.query<{ despesas: number; convites: number }>(
-      `SELECT
-         (SELECT count(*)::int FROM despesas WHERE viagem_id = $1 AND estado IN ('pendente','contestada')) AS despesas,
-         (SELECT count(*)::int FROM convites WHERE viagem_id = $1 AND estado = 'pendente') AS convites`,
-      [viagemId],
-    );
-    const sugestao = sugerirEstado(viagemParaDominio(contexto.viagem), new Date().toISOString());
-    const permissoes = {
-      editar: decidir(contexto, "viagem:editar"),
-      cancelar: decidir(contexto, "viagem:cancelar"),
-      convidar: decidir(contexto, "viagem:convite:gerenciar"),
-      registrarDespesa: decidir(contexto, "despesa:criar"),
-      // Mesma lista do domínio; só o organizador pode cancelar/rascunhar.
-      transicoesPermitidas: transicoesPermitidas(contexto.viagem.estado).filter((destino) => {
-        if (contexto.contexto.papel === "organizador") return true;
-        return destino === "em_andamento" || destino === "concluida" || destino === "pendente";
-      }),
-    };
-    return {
-      viagem: {
-        ...contexto.viagem,
-        rotuloEstado: ROTULOS_ESTADO[contexto.viagem.estado],
-      },
-      papel: contexto.contexto.papel,
-      participantes: participantes.rows,
-      pendencias: pendencias.rows[0] ?? { despesas: 0, convites: 0 },
-      sugestao,
-      permissoes,
-    };
+    // Mesma composição usada pela sincronização incremental (apps/api/src/detalhe.ts).
+    return carregarDetalheViagem(pool, contexto);
   });
 
   app.patch("/viagens/:viagemId", async (request) => {
@@ -297,7 +262,7 @@ export function rotasViagens(app: FastifyInstance, deps: { pool: pg.Pool; config
         [viagemId, viagem.estado, contexto.viagem.versao],
       );
       if (!atualizado.rows[0]) {
-        throw new ErroHttp(409, "conflito", "A viagem mudou de estado em outra sessão; recarregue antes de tentar de novo.");
+        throw conflitoDeVersao("A viagem mudou de estado em outra sessão; recarregue antes de tentar de novo.", contexto.viagem.versao);
       }
       await registrarAuditoria(cliente, {
         viagemId,

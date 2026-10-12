@@ -1,6 +1,6 @@
 # Arquitetura e análise de viabilidade — Lia Go
 
-**Estado:** primeira fatia **implementada e testada** (2026-10-12). Decisões de §11 respondidas pelo responsável:
+**Estado:** primeira fatia e **sincronização offline** implementadas e testadas (2026-10-12). Decisões de §11 respondidas pelo responsável:
 Docker/PostgreSQL local, sessão híbrida (cookie na web + tokens no app), SQLite nativo/IndexedDB no aparelho
 e fatia aprovada. O que já roda de verdade está descrito em §12.1.
 **Base:** decisão confirmada de stack (React + TypeScript + Capacitor) + documentos de regras.
@@ -207,14 +207,16 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
 | Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites) | ✅ **54 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado | ✅ **30 testes** | `npm run test:api` (banco real) |
+| API Fastify + PostgreSQL + SQL versionado | ✅ **39 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Offline com fila local (SQLite nativo) | ⬜ | próxima fatia; servidor já é idempotente e versionado |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **38 testes** no pacote + 13 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
+| Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
 mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere
@@ -224,6 +226,33 @@ pacote por pacote antes de pular o `npm install`.
 versionadas com o driver `pg`**, em vez de ORM. Motivo: menos dependências, queries auditáveis e nenhum
 mapeamento implícito sobre dinheiro. Drizzle continua sendo uma opção caso a produtividade exija, sem
 impacto no domínio (as regras ficam em `packages/domain`).
+
+### Offline: como funciona (implementado)
+
+O princípio: **o aparelho é a verdade imediata; o servidor é a verdade compartilhada.** Usar o app com
+ou sem internet passa pelo mesmo caminho de código (`packages/sync` + `apps/mobile/src/offline/`).
+
+| Peça | O que faz |
+|---|---|
+| Fila de envio (`packages/sync/src/fila.ts`) | toda escrita entra na fila antes de sair; `aguardando → enviando → sincronizado / falhou / conflito` |
+| Idempotência | a chave enviada é o **id da operação**: reenviar depois de queda de rede nunca aplica duas vezes (o servidor já garante) |
+| Ordem causal | a fila é enviada na ordem de criação; uma alteração que espera o relógio bloqueia as seguintes, mas o que precisa de decisão humana **não** trava o resto |
+| Recuo exponencial | 2s, 4s, 8s… até 5 min; erro de rede volta para a fila, erro de regra de negócio para de tentar e aparece para a pessoa |
+| Cursor de mudanças | `auditoria.id` (sequência), nunca horário: relógio de celular errado não faz ninguém perder dado. Resposta paginada (`temMais`) |
+| Conflito | `409 conflito_versao` com `detalhes.versaoAtual`; a tela mostra as duas versões e a pessoa escolhe. **Dinheiro nunca é resolvido sozinho** |
+| Cache local | IndexedDB (web) ou armazenamento do app (nativo), atrás de `ArmazenamentoLocal` — uma interface, três implementações (a terceira é memória, para testes) |
+| Saldos | sempre calculados no servidor; o aparelho guarda a última informação conhecida e mostra quando ela é de |
+
+Arquivos: `packages/sync/src/{tipos,fila,conflito,carga,motor}.ts`,
+`apps/mobile/src/offline/{armazenamento,servidor,sincronizador}.ts`,
+`apps/mobile/src/componentes/BarraSincronizacao.tsx`.
+
+**Onde o cofre fica (decisão registrada).** Tokens de sessão: cookie HttpOnly na web; Android Keystore /
+iOS Keychain no app nativo, com aviso honesto quando o aparelho não oferece armazenamento seguro.
+Dados de viagem em cache: arquivos internos do app (no iOS já são cifrados pela proteção de dados do
+sistema). **Próximo passo nativo:** banco local criptografado (SQLCipher com chave no Keystore) — troca
+de **um arquivo** (`apps/mobile/src/offline/armazenamento.ts`), motivo e contexto em
+`DECISIONS_AND_OPEN_QUESTIONS.md`.
 
 ### Próxima fatia (proposta)
 1. **Offline de verdade**: cache local (SQLite nativo/IndexedDB atrás de uma interface), fila de operações

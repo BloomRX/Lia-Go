@@ -31,7 +31,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Ciclo completo implementado e testado, inclusive correção com motivo e histórico antes/depois.
 - ⬜ Orçamento coletivo/individual, realizado versus comprometido, alertas 75/90/100% configuráveis.
 - ⬜ Moeda estrangeira com valor original, taxa, referência temporal e convertido (histórico preservado).
-- 🔄 Saldos e transferências sugeridas prontos; acerto informado → confirmado pelo recebedor pronto.
+- ✅ Saldos, transferências sugeridas e acertos (informado → confirmado por quem recebeu) na tela e na API.
   Pagamento parcial e reembolso ligado à despesa ficam para a próxima fatia.
 - ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
 - 🔄 54 testes de domínio + 30 de integração cobrem limites, restos e permissões; câmbio entra com o módulo de moedas.
@@ -43,7 +43,9 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ⬜ Criação por conversa/formulário alternáveis (sem perguntas repetidas) — depende da camada de IA.
 
 ## Fase 4 — Offline, notificações e fechamento
-- ⬜ Cache offline + outbox com idempotência (UUIDv7) e resolução explícita de conflitos.
+- ✅ Cache offline + fila de envio (outbox) com idempotência e resolução explícita de conflitos.
+  Ids de operação usam `crypto.randomUUID()` (UUIDv4); trocar para UUIDv7 (ordenável por tempo) é uma
+  melhoria pequena e localizada, sem impacto no servidor.
 - ⬜ Central de notificações com filtros, leitura ≠ dispensa ≠ resolução.
 - ⬜ Fechamento (previsto × realizado), exportação conforme permissões e resumo pós-viagem.
 

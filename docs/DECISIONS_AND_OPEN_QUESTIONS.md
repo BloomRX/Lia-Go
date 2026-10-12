@@ -73,6 +73,51 @@ mudança de versão que quebra a compatibilidade com o Capacitor 8. Por isso:
 **não rodar `npm audit fix --force`**; atualizar apenas quando o Capacitor publicar a correção.
 Revisão: `npm audit` antes de cada release.
 
+### Offline e privacidade no aparelho (2026-10-12, segunda rodada)
+
+**Pesquisa de mercado feita antes de decidir** (fontes consultadas nesta data):
+OWASP MASTG (armazenamento de chaves no Android), documentação e discussões sobre a depreciação de
+`EncryptedSharedPreferences`/`EncryptedFile` e a recomendação atual (DataStore + Tink/Keystore, ou
+SQLCipher para bancos), Apple sobre classes de proteção de dados do iOS, e guias de arquitetura
+offline-first (padrão "outbox", estados queued/syncing/synced/failed, conflito explícito em vez de
+last-write-wins para dinheiro).
+
+**O que ficou decidido:**
+
+1. **Tokens de sessão:** cookie HttpOnly na web (JavaScript não lê); no app nativo, armazenamento seguro
+   do sistema (Android Keystore / iOS Keychain). Se o aparelho não oferecer armazenamento seguro,
+   o app usa o armazenamento comum **e diz isso na tela** ("Mais → Este aparelho") — nunca finge.
+   Motivo: a recomendação de mercado é unânime em não guardar token em armazenamento comum.
+2. **Dados de viagem em cache:** arquivos internos do app (não há "cartão SD" no caminho). No iOS já são
+   cifrados pela proteção de dados do sistema (classe padrão para apps de terceiros). No Android, o
+   armazenamento é privado do app; em aparelho com root, um banco local cifrado é a proteção correta —
+   por isso o **próximo passo nativo** é SQLCipher com a chave no Keystore. A troca acontece em um arquivo
+   (`apps/mobile/src/offline/armazenamento.ts`), sem tocar em telas nem no motor de sincronização.
+   Enquanto isso: o cache guarda apenas o que a pessoa já pode ver, o botão "Apagar dados deste aparelho"
+   limpa tudo, e sair da conta também limpa.
+3. **Conflito nunca é "last-write-wins" para dinheiro.** Mesmo campo alterado nos dois lados → decisão
+   humana, com "no seu aparelho" e "no servidor" lado a lado em português simples. Campos diferentes
+   alterados em cada lado são mesclados. Valores, moeda, rateio, participantes e quem pagou **sempre**
+   exigem decisão explícita.
+4. **Cursor de sincronização é sequência, não horário** (`auditoria.id`): relógio de celular adiantado ou
+   atrasado não faz ninguém perder mudança. Resposta paginada com `temMais`.
+5. **Estado de envio visível, sempre** (`aguardando → enviando → sincronizado / falhou / conflito`):
+   falha silenciosa e sucesso falso são os dois erros clássicos de app offline e estão proibidos aqui.
+6. **Saldos são só do servidor.** Sem rede, a tela mostra a última informação conhecida **com a hora**;
+   o app nunca calcula saldo oficial no aparelho.
+7. **Escrita que não se resolve sozinha para de tentar** e aparece para a pessoa resolver (regra de
+   negócio violada, sem permissão). Erro de rede volta para a fila com espera crescente (2s → 5 min).
+8. **`conflito_versao` é um código próprio** (409), separado de "esta operação não se aplica mais":
+   só o primeiro pede decisão de versão, o segundo é falha definitiva com mensagem clara.
+9. **Ordem de uso escolhida pelo responsável:** offline primeiro; **hospedagem/HTTPS só quando o app
+   estiver mais completo** (dados reais continuam proibidos até lá).
+
+### Interpretação de "o app funciona sem sinal"
+Funciona **ler e escrever**: criar viagem, lançar/confirmar/contestar despesa, registrar e confirmar
+acerto e trocar o estado da viagem entram na fila e sobem depois. Continuam exigindo internet (o servidor
+é quem decide): login/cadastro, aceitar convite (o token só existe no servidor), gerar convite,
+ver saldos atualizados e sair da viagem.
+
 ## Questões que podem ser resolvidas durante a implementação
 - Pequenos detalhes de layout, microcopy e organização visual, desde que não alterem regras.
 - Bibliotecas auxiliares e padrões reversíveis adequados à stack decidida.

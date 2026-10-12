@@ -62,11 +62,35 @@ cd apps\mobile && npx cap open android
 - A pasta `apps/mobile/android` **não é versionada** (é gerada): cada máquina gera a sua.
 - Antes de qualquer dado real no celular, a API precisa estar em **HTTPS**.
 
+## 4.1 Testando o modo offline (o coração desta fatia)
+
+1. Abra o app (`LiaGo.bat` opção 3) e entre na sua conta.
+2. No navegador, abra o DevTools (`F12`) → aba **Network** → marque **Offline**
+   (no celular, ative o **modo avião**).
+3. Faça coisas: **crie uma viagem**, **lance uma despesa**, **confirme/conteste** uma despesa.
+   - A barra no topo diz *"Sem conexão — trabalhando no aparelho (N para enviar quando o sinal voltar)"*.
+   - Clique em **Ver alterações**: cada item aparece com o texto do que vai ser enviado.
+4. Desligue o modo Offline (ou o modo avião) e não faça nada: a fila sobe sozinha.
+   - A barra passa por *"Enviando…"* e termina em *"Tudo sincronizado às HH:MM"*.
+5. **Feche e reabra o app no meio do processo** (com a fila ainda cheia): nada se perde — a fila fica
+   guardada no aparelho.
+6. **Conflito (importante):** em duas janelas/sessões diferentes, mude a mesma coisa (por exemplo, duas
+   pessoas movendo o estado da viagem). A segunda tentativa recebe `conflito_versao` e a barra mostra
+   *"1 alteração precisa da sua decisão"*, com **"No seu aparelho" x "No servidor"** lado a lado e os botões
+   *Manter o que fiz* / *Usar a versão do servidor*. Um valor de despesa **nunca** é resolvido sozinho.
+7. **Limpar o aparelho:** aba *Mais* → **Apagar dados deste aparelho**. A fila e o cache somem (útil antes
+   de emprestar o celular).
+
+O que **não** funciona sem internet (de propósito, porque quem decide é o servidor): entrar/cadastrar,
+aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses casos a tela avisa.
+
 ## 5. Testes
 
 - Domínio (regras puras, sem banco): `npm run test:domain` — 54 testes.
-- Tipos dos três pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
-- API (integração com PostgreSQL real): `npm run test:api` — 30 testes.
+- Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 38 testes.
+- App (armazenamento local e sincronizador, com IndexedDB simulado): `npm run test:app` — 13 testes.
+- API (integração com PostgreSQL real): `npm run test:api` — 39 testes.
+- Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
   aborta a sincronização — nada é enviado com o projeto em estado inconsistente.
