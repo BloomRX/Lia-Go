@@ -1,5 +1,9 @@
 # Mapa de telas e comportamentos — Lia Go
 
+**Plataforma principal: celular** (app Capacitor); a versão web é complementar e reaproveita a mesma base
+de código (React + TypeScript). Layout, alvos de toque e área segura devem ser desenhados primeiro para
+telas pequenas.
+
 ## Navegação principal
 Barra inferior: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações.
 

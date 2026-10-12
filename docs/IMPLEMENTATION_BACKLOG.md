@@ -1,50 +1,57 @@
-# Backlog inicial — Lia Go
+# Backlog — Lia Go
 
-Prioridade sugerida. Antes de começar, inspecionar o repositório existente e adaptar este backlog ao que já estiver implementado.
+Atualizado em 2026-10-12, alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
-- [ ] Identificar stack, estrutura, comandos, estado de build e testes.
-- [ ] Resumir riscos, lacunas e arquitetura existente antes de grandes alterações.
-- [ ] Garantir instruções de execução local e configuração segura.
-- [ ] Criar shell/navegação adaptável para mobile com identidade básica.
-- [ ] Definir padrão de erros, estados de carregamento e acessibilidade.
+- ✅ Identificar stack, estrutura, comandos, estado de build e testes (44 testes do DevKit executados).
+- ✅ Resumir riscos, lacunas e arquitetura existente (`docs/ARCHITECTURE.md`).
+- ✅ Medir viabilidade do React + TypeScript + Capacitor no ambiente e documentar requisitos (Node 22,
+  Android Studio Otter 2025.2.1+, JDK 21, SDK 36; iOS exige macOS + Xcode 26).
+- ✅ Definir padrão de erros da API, estados de carregamento e acessibilidade.
+- ⬜ Criar monorepo (npm workspaces): `apps/mobile`, `apps/api`, `packages/domain`, `packages/contracts`.
+- ⬜ Criar `.gitignore`, `devkit.json` (suítes de teste reais) e configuração de Vite validada
+  (`host: true` + `allowedHosts`; sem isso o preview responde 403).
+- ⬜ Criar `LiaGo.bat`: instala se faltar, roda testes, gera relatório em `reports/`, sincroniza a branch.
+- ⬜ Shell/navegação mobile (barra inferior: Visão geral, Roteiro, Gastos, Documentos + Mais) com
+  identidade escura roxo/magenta e estados loading/vazio/erro/offline/sem permissão.
 
-## Fase 1 — Contas, viagens e acesso
-- [ ] Fluxos de autenticação compatíveis com o ambiente.
-- [ ] Modelos e CRUD de viagem/rascunho.
-- [ ] Papéis organizador/participante e convites.
-- [ ] Autorização server-side e testes de acesso cruzado.
-- [ ] Dashboard e estados da viagem.
-- [ ] Transições Em andamento/Concluída/Pendente/Cancelada conforme regras documentadas.
+## Fase 1 — Contas, viagens e acesso (primeira etapa)
+- ⬜ `packages/domain`: dinheiro em centavos, transições de estado, papéis e validações puras + testes reais.
+- ⬜ Banco PostgreSQL central com migrations versionadas (Drizzle + `pg`); nada de SQLite central.
+- ⬜ API: registro, login, logout, sessão e revogação (scrypt + cookie HttpOnly + limite de tentativas).
+- ⬜ API: CRUD de viagem/rascunho com autorização server-side e `version` (concorrência otimista).
+- ⬜ Papéis organizador/participante; convites individuais com cancelamento; saída ≠ remoção ≠ exclusão.
+- ⬜ Transições Em andamento/Concluída/Pendente/Cancelada conforme regras, com auditoria de quem confirmou.
+- ⬜ App: login, lista de viagens, criação de viagem e troca de estado contra a API real.
+- ⬜ Testes negativos de acesso cruzado entre viagens e participantes.
 
-## Fase 2 — Roteiro e conteúdo de viagem
-- [ ] Criação guiada e conversa com dados compartilhados.
-- [ ] Timeline por dia e edição.
-- [ ] Revisão de impacto e versões anteriores.
-- [ ] Atividades com estados manuais.
-- [ ] Reservas manuais, checklist e documentos privados.
+## Fase 2 — Núcleo financeiro determinístico (início já na primeira etapa)
+- ⬜ Rateio: igualitário, participantes específicos, valores fixos e percentual, com soma exata de centavos.
+- ⬜ Despesa pendente → confirmação por pessoa diferente do autor → contestação (fora do saldo oficial).
+- ⬜ Orçamento coletivo/individual, realizado versus comprometido, alertas 75/90/100% configuráveis.
+- ⬜ Moeda estrangeira com valor original, taxa, referência temporal e convertido (histórico preservado).
+- ⬜ Saldos, transferências sugeridas, acertos manuais, pagamento informado × confirmado × parcial.
+- ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
+- ⬜ Testes abrangentes de dinheiro (limites, arredondamento, restos) e de permissões.
 
-## Fase 3 — Finanças confiáveis
-- [ ] Orçamentos coletivo/individual e realizado versus comprometido.
-- [ ] Despesas pendentes, confirmação por pessoa diferente do autor e contestação.
-- [ ] Rateios com métodos definidos e soma exata.
-- [ ] Moeda/câmbio com histórico; definir fonte e comportamento offline antes da integração.
-- [ ] Saldos, transferências sugeridas e acertos manuais.
-- [ ] Reembolsos e correções auditáveis.
-- [ ] Testes abrangentes de dinheiro e permissões.
+## Fase 3 — Roteiro, reservas e documentos
+- ⬜ Roteiro por dia (timeline), atividades com estados manuais e versões anteriores.
+- ⬜ Revisão de impacto antes de substituir o roteiro vigente.
+- ⬜ Reservas manuais assistidas, checklist e documentos privados com compartilhamento revogável.
+- ⬜ Criação por conversa/formulário alternáveis (sem perguntas repetidas) — depende da camada de IA.
 
-## Fase 4 — Operação do grupo
-- [ ] Central de notificações e preferências.
-- [ ] Agrupamento sem ocultar urgência ou ação necessária.
-- [ ] Offline básico e sincronização com resolução explícita de conflitos.
-- [ ] Resumo de viagem concluída e exportação conforme permissões.
+## Fase 4 — Offline, notificações e fechamento
+- ⬜ Cache offline + outbox com idempotência (UUIDv7) e resolução explícita de conflitos.
+- ⬜ Central de notificações com filtros, leitura ≠ dispensa ≠ resolução.
+- ⬜ Fechamento (previsto × realizado), exportação conforme permissões e resumo pós-viagem.
 
-## Fase 5 — Refinamento e preparação
-- [ ] Testes de usabilidade e acessibilidade.
-- [ ] Verificação de privacidade, segurança e falhas.
-- [ ] Medição de desempenho e custos.
-- [ ] Documentação de implantação, backups e recuperação.
-- [ ] Rever pendências antes de declarar versão utilizável.
+## Fase 5 — Preparação para uso real
+- ⬜ HTTPS, hospedagem do banco/API, backup e restauração testados.
+- ⬜ Política de privacidade/retenção (LGPD), exclusão de conta e limites de custo de IA.
+- ⬜ Acessibilidade, desempenho, testes de segurança e de falha.
+- ⬜ Build/assinatura Android (Windows) e iOS (macOS), decisão sobre publicação nas lojas.
+- ⬜ Revisar pendências antes de declarar versão utilizável.
 
 ## Fora do caminho crítico da V1
 - Integração direta de Pix.

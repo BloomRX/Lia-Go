@@ -1,6 +1,11 @@
 # Decisões e questões em aberto — Lia Go
 
+Atualizado em 2026-10-12. Este arquivo registra apenas **decisões confirmadas** e **questões ainda abertas**.
+Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHITECTURE.md`.
+
 ## Decisões confirmadas
+
+### Produto e regras
 - Nome de trabalho: Lia Go; mercado inicial Brasil; português brasileiro, BRL e Pix relevante.
 - Aplicativo gratuito para usuários; arquitetura deve controlar custos operacionais e de IA.
 - Identidade profissional, moderna e confiável; Lia com personalidade levemente tsundere, sem humilhação.
@@ -23,28 +28,56 @@
 - Prioridade V1: autenticação/permissões, viagens/roteiro, reservas/documentos, orçamento/despesas/rateios/acertos, notificações essenciais e offline básico.
 - Só gerar especificações finais quando houver pedido explícito; este pedido autoriza criar documentos para o agente, mantendo questões em aberto.
 
+### Stack e arquitetura (2026-10-12)
+- **Cliente: React + TypeScript + Capacitor**, com uma única base de código para mobile e web.
+  **Celular é a plataforma principal**; web é complementar. Substituição da stack exige autorização.
+- **Regras de negócio independentes da interface**: pacote de domínio puro (sem I/O, sem UI), usado pelo
+  servidor como autoridade e pelo app apenas para prévia/offline.
+- **SQLite local nunca é o banco central compartilhado.** O banco central é PostgreSQL no servidor;
+  no dispositivo há somente cache offline não oficial.
+- **Autenticação: e-mail + senha próprios, sessão em cookie HttpOnly** (sem provedor externo, sem custo,
+  sem depender de e-mail nesta etapa).
+- **Ambiente da primeira etapa: apenas a máquina local (localhost)**, sem exposição pública e sem custo.
+- **Escopo da primeira etapa: base executável + contas + viagens + papéis/convites + autorização no servidor
+  + transições de estado + início de finanças (despesa pendente/confirmada e rateio determinístico com soma exata).**
+- Ferramentas/versões verificadas no ambiente: Node 22, Vite 8, React 19, Capacitor 8.5.3 (ver `ARCHITECTURE.md` §2).
+- **Consolidação de documentos:** `PLANEJAMENTO_MESTRE.md` é a única fonte do planejamento mestre;
+  `Lia_Go_Planejamento_Completo_e_Continuidade.md` deixou de ser cópia idêntica e virou apontador.
+- **Consolidação de instruções:** `docs/AGENTS.md` é a fonte das instruções permanentes; o `AGENTS.md`
+  da raiz apenas aponta para ela.
+
 ## Questões que podem ser resolvidas durante a implementação
 - Pequenos detalhes de layout, microcopy e organização visual, desde que não alterem regras.
-- Bibliotecas auxiliares e padrões reversíveis adequados ao stack existente.
+- Bibliotecas auxiliares e padrões reversíveis adequados à stack decidida.
 - Motivos e apresentação detalhada de sugestões de “Pendente”, respeitando a regra de confirmação.
 - Ordem interna de tarefas pequenas, mantendo prioridades e dependências.
+- Nomos de arquivos, nomes de tabelas/colunas e organização interna dos pacotes.
+- Estratégia de teste unitário de componentes de interface (Vitest + Testing Library ou similar).
 
 ## Questões que exigem análise e, quando necessário, confirmação
-- Stack e hospedagem definitivos, se o repositório não tiver uma escolha clara.
-- Provedor de autenticação e recuperação de conta.
-- Banco de dados, backups, migrações e política de retenção.
-- Fonte/frequência de câmbio, taxa manual, spread, arredondamento e offline.
-- Limites de custo e fornecedor de IA; limites de uso e fallback.
+**Bloqueiam a próxima fatia (respondidas em `ARCHITECTURE.md` §11):**
+- Banco/ambiente de desenvolvimento: PostgreSQL local via Docker, binário portátil ou nuvem (custo/dados).
+- Transporte de sessão no app nativo: mesmo cookie via `CapacitorCookies` ou token + armazenamento seguro.
+- Armazenamento offline no dispositivo: SQLite nativo, IndexedDB ou online-first nesta fase.
+- Confirmação da primeira fatia proposta em `ARCHITECTURE.md` §12.
+
+**Não bloqueiam a primeira fatia:**
+- Hospedagem definitiva da API e do banco; política de backup e restauração.
+- Provedor de e-mail transacional (verificação de conta e recuperação de senha).
 - Retenção de documentos e localização; prazo exato do histórico de localização.
-- Política legal de privacidade, exclusão de conta e registros financeiros compartilhados.
+- Política legal de privacidade, exclusão de conta e registros financeiros compartilhados (LGPD).
+- Fonte/frequência de câmbio, taxa manual, spread, arredondamento e modo offline.
+- Limites de custo e fornecedor de IA; limites de uso e fallback.
 - Requisitos exatos de exportação PDF/planilha e acessibilidade.
-- Integrações externas e respectivos custos/credenciais.
+- Integrações externas, credenciais e respectivos custos.
 - Política detalhada de conflito financeiro e poderes de resolução quando não houver acordo.
 - Quais categorias de notificação podem furar o modo silêncio.
+- Publicação nas lojas: Android (US$ 25 único) e iOS (US$ 99/ano + macOS obrigatório).
+- Observabilidade, monitoramento de erros e métricas de custo.
 
 ## Regra de resolução
 Quando uma questão bloquear uma fatia de trabalho:
-1. Explicar a questão e opções relevantes de forma curta.
+1. Explicar a questão e as opções relevantes de forma curta.
 2. Indicar recomendação e impacto.
 3. Pedir decisão se for material ou de alto risco.
 4. Registrar a decisão neste arquivo e nos documentos afetados.

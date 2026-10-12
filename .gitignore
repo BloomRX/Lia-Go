@@ -1,0 +1,53 @@
+# Dependências e artefatos de build (nunca versionar)
+node_modules/
+dist/
+dist-ssr/
+build/
+coverage/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Ambiente e segredos (o DevKit também bloqueia .env no stage)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Relatórios locais de execução do LiaGo.bat (os relatórios enviados são publicados em reports/)
+reports/*.local.md
+reports/*.log
+
+# Banco de dados local de desenvolvimento
+*.sqlite
+*.sqlite3
+*.db
+.pgdata/
+
+# Projetos nativos do Capacitor (gerados/sincronizados)
+apps/mobile/android/app/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties
+apps/mobile/android/app/src/main/assets/public/
+apps/mobile/ios/App/Pods/
+apps/mobile/ios/App/build/
+apps/mobile/ios/App/App/public/
+apps/mobile/ios/App/DerivedData/
+
+# Python (DevKit e scripts auxiliares)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*

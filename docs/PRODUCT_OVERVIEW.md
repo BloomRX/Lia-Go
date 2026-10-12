@@ -5,6 +5,8 @@ Aplicativo gratuito para organizar viagens em grupo: planejamento de roteiro, re
 
 ## Público e mercado inicial
 - Brasil; português brasileiro.
+- **Celular é a plataforma principal** (app Android/iOS via Capacitor); a versão web é complementar e
+  compartilha a mesma base de código.
 - BRL como moeda comum inicial e suporte a despesas em outras moedas.
 - Pix é relevante para acertos, mas integração direta não faz parte da V1.
 
