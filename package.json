@@ -12,7 +12,7 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "npm run test:domain && npm run test:sync && npm run test:app && npm run test:api",
+    "test": "npm run test:tools && npm run test:domain && npm run test:sync && npm run test:app && npm run test:api",
     "test:domain": "npm run test --workspace @lia-go/domain",
     "test:api": "npm run test --workspace @lia-go/api",
     "db:up": "node tools/db.mjs up",
@@ -23,6 +23,7 @@
     "build:web": "npm run build --workspace @lia-go/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:sync": "npm run test --workspace @lia-go/sync",
-    "test:app": "npm run test --workspace @lia-go/mobile"
+    "test:app": "npm run test --workspace @lia-go/mobile",
+    "test:tools": "node --test \"tools/test_dev.mjs\""
   }
 }

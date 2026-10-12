@@ -14,9 +14,20 @@
  * imprime segredo: a DATABASE_URL é sempre exibida com a senha oculta.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  caminhoDoLogDoNpm,
+  diagnosticarComLog,
+  diagnosticarFalhaNpm,
+  erroDeSpawn,
+  lerEnvDoTexto,
+  montarComando,
+  ocultarUrl,
+  resumoSaida,
+  valeTentarDeNovo,
+} from "./dev-util.mjs";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR_RELATORIOS = path.join(RAIZ, "reports");
@@ -28,36 +39,26 @@ function titulo(texto) {
 }
 
 function rodar(comando, args, opcoes = {}) {
-  const resultado = spawnSync(comando, args, {
+  const chamada = montarComando(comando, args);
+  const resultado = spawnSync(chamada.comando, chamada.args, {
     cwd: opcoes.cwd ?? RAIZ,
     encoding: "utf8",
-    shell: false,
+    shell: chamada.shell,
     env: { ...process.env, ...(opcoes.env ?? {}) },
     stdio: opcoes.capturar ? "pipe" : "inherit",
   });
   return {
     status: resultado.status ?? 1,
     saida: `${resultado.stdout ?? ""}${resultado.stderr ?? ""}`,
+    // Quando o processo nem chega a rodar, o motivo vem aqui — e não pode ser descartado.
+    error: resultado.error ?? null,
   };
 }
 
 /** Lê o .env do projeto (mesmo arquivo que a API usa). Nunca imprime os valores. */
 function lerEnv() {
   const caminho = path.join(RAIZ, ".env");
-  if (!existsSync(caminho)) return {};
-  const valores = {};
-  for (const linha of readFileSync(caminho, "utf8").split("\n")) {
-    const limpa = linha.trim();
-    if (!limpa || limpa.startsWith("#")) continue;
-    const igual = limpa.indexOf("=");
-    if (igual <= 0) continue;
-    valores[limpa.slice(0, igual).trim()] = limpa.slice(igual + 1).trim().replace(/^["']|["']$/g, "");
-  }
-  return valores;
-}
-
-function ocultarUrl(url) {
-  return url ? url.replace(/:\/\/([^:/@]+):[^@/]+@/, "://$1:****@") : "(não definida)";
+  return existsSync(caminho) ? lerEnvDoTexto(readFileSync(caminho, "utf8")) : {};
 }
 
 function versaoNode() {
@@ -83,24 +84,179 @@ function dependenciasInstaladas() {
   return PACOTES_OBRIGATORIOS.every((nome) => existsSync(path.join(RAIZ, "node_modules", ...nome.split("/"))));
 }
 
-function instalarDependencias() {
-  if (dependenciasInstaladas()) {
+/** Versão do npm (também serve de teste de vida: se o npm não roda, isso aparece no banner). */
+function versaoNpm() {
+  const resultado = rodar(NPM, ["--version"], { capturar: true });
+  if (resultado.error || resultado.status !== 0) return "indisponível";
+  return resultado.saida.trim();
+}
+
+function banner() {
+  console.log(`Lia Go · Node ${versaoNode()} · npm ${versaoNpm()} · ${process.platform}`);
+}
+
+function instalarDependencias(forcar = false) {
+  if (!forcar && dependenciasInstaladas()) {
     console.log("Dependências já instaladas (npm install será pulado).");
     return;
   }
-  titulo("Instalando dependências (npm install)");
-  const resultado = rodar(NPM, ["install"]);
-  if (resultado.status !== 0) throw new Error("Falha no npm install. Verifique a conexão e tente novamente.");
+  titulo(forcar ? "Reinstalando dependências (npm install)" : "Instalando dependências (npm install)");
+  const registro = rodar(NPM, ["config", "get", "registry"], { capturar: true });
+  const urlRegistro = registro.status === 0 ? registro.saida.trim() : "(não foi possível perguntar ao npm)";
+  console.log(`Baixando pacotes de: ${urlRegistro}`);
+
+  const primeira = rodar(NPM, ["install"], { capturar: true });
+  if (primeira.status === 0) {
+    console.log(primeira.saida.trim());
+    return;
+  }
+
+  // Falhou: a pessoa precisa ver o motivo real, não um aviso genérico.
+  const dicas = relatarFalhaNpm("npm install", primeira, urlRegistro);
+  if (erroDeSpawn(primeira) || !valeTentarDeNovo(dicas)) {
+    throw new Error("npm install não foi concluído. O motivo e o que fazer estão nas linhas acima.");
+  }
+
+  // Árvore de dependências pela metade não se conserta tentando de novo: precisa limpar antes.
+  if (dicas.some((dica) => dica.id === "arvore_pela_metade")) {
+    console.log("\nA pasta de dependências ficou pela metade. Apagando node_modules (pasta gerada) e instalando limpo…");
+    limparNodeModules();
+    const limpa = rodar(NPM, ["install", "--no-audit", "--no-fund"], { capturar: true });
+    if (limpa.status === 0) {
+      console.log(limpa.saida.trim());
+      console.log("Instalação limpa concluída.");
+      return;
+    }
+    relatarFalhaNpm("npm install (após limpar node_modules)", limpa, urlRegistro);
+    throw new Error("Mesmo com a pasta limpa o npm install falhou. O motivo está nas linhas acima.");
+  }
+
+  console.log("\nTentando de novo com tempo de espera limitado (rede instável pode funcionar na segunda vez)…");
+  const segunda = rodar(
+    NPM,
+    [
+      "install",
+      "--no-audit",
+      "--no-fund",
+      "--fetch-retries=2",
+      "--fetch-retry-maxtimeout=30000",
+      "--fetch-timeout=60000",
+    ],
+    { capturar: true },
+  );
+  if (segunda.status === 0) {
+    console.log(segunda.saida.trim());
+    console.log("Deu certo na segunda tentativa.");
+    return;
+  }
+  relatarFalhaNpm("npm install (2ª tentativa)", segunda, urlRegistro);
+  throw new Error("npm install falhou duas vezes seguidas. As causas prováveis estão nas linhas acima.");
+}
+
+/** Mostra o erro real do npm, grava o log completo e diz o que fazer. Devolve as dicas. */
+function relatarFalhaNpm(rotulo, resultado, urlRegistro) {
+  const motivoDoSpawn = erroDeSpawn(resultado);
+  const logDoNpm = caminhoDoLogDoNpm(resultado.saida);
+  const textoDoLog = lerLogDoNpm(logDoNpm);
+  const { dicas, linhasDoLog, fonte } = diagnosticarComLog(resultado.saida, textoDoLog);
+
+  console.error(`\n--- ${rotulo} falhou ---`);
+  if (motivoDoSpawn) console.error(motivoDoSpawn);
+  console.error("Últimas linhas do que o npm disse:");
+  console.error(resumoSaida(resultado.saida, 30));
+  if (fonte === "log" && linhasDoLog.length > 0) {
+    console.error("\nO log interno do npm mostra o motivo real:");
+    for (const linha of linhasDoLog) console.error(`  ${linha}`);
+  }
+  const caminhoLog = gravarLogNpm(rotulo, resultado.saida, urlRegistro, logDoNpm);
+  console.error(`\nLog completo: ${path.relative(RAIZ, caminhoLog)}`);
+  if (logDoNpm) console.error(`(o log interno do npm também foi copiado para dentro desse arquivo)`);
+
+  console.error("\nCausa provável e o que fazer:");
+  for (const dica of dicas) console.error(` - ${dica.causa}\n   → ${dica.dica}`);
+  console.error("\nGuia com todos os casos: docs/DEV_SETUP.md §6 (Problemas comuns).");
+  return dicas;
+}
+
+/**
+ * Apaga as pastas node_modules do projeto (raiz e de cada pacote/app).
+ * É pasta gerada pelo npm: apagar não perde nada do projeto e é o que qualquer dev faria
+ * quando a árvore de dependências fica corrompida. Nunca toca em código, .env nem no banco.
+ */
+function limparNodeModules() {
+  const pastas = [RAIZ, ...readdirSync(path.join(RAIZ, "apps"), { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => path.join(RAIZ, "apps", item.name)),
+  ...readdirSync(path.join(RAIZ, "packages"), { withFileTypes: true })
+    .filter((item) => item.isDirectory())
+    .map((item) => path.join(RAIZ, "packages", item.name))];
+
+  for (const base of pastas) {
+    const caminho = path.join(base, "node_modules");
+    if (!existsSync(caminho)) continue;
+    try {
+      rmSync(caminho, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+      console.log(`  removido: ${path.relative(RAIZ, caminho)}`);
+    } catch (causa) {
+      console.warn(`  não foi possível remover ${path.relative(RAIZ, caminho)} (${causa instanceof Error ? causa.code ?? causa.message : "erro"}).`);
+      console.warn("  Feche as janelas do Lia Go/app e o antivírus e rode de novo.");
+    }
+  }
+}
+
+/** Lê o log interno do npm, quando existe e é legível. */
+function lerLogDoNpm(logDoNpm) {
+  if (!logDoNpm || !existsSync(logDoNpm)) return null;
+  try {
+    return readFileSync(logDoNpm, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function gravarLogNpm(rotulo, saida, urlRegistro, logDoNpm = null) {
+  mkdirSync(DIR_RELATORIOS, { recursive: true });
+  const carimbo = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const caminho = path.join(DIR_RELATORIOS, `npm-install-${carimbo}.log`);
+
+  const partes = [
+    `# Falha do npm — Lia Go`,
+    `Quando: ${new Date().toISOString()}`,
+    `Passo: ${rotulo}`,
+    `Node: ${versaoNode()} · npm: ${versaoNpm()} · sistema: ${process.platform}`,
+    `Registro configurado: ${urlRegistro}`,
+    ``,
+    `## Saída completa`,
+    ``,
+    String(saida ?? "").trim() || "(o comando não escreveu nada)",
+    ``,
+  ];
+
+  // O log interno do npm é onde o motivo real aparece. Copiamos para cá: um arquivo só para enviar.
+  if (logDoNpm && existsSync(logDoNpm)) {
+    try {
+      partes.push(`## Log interno do npm (${logDoNpm})`, ``, readFileSync(logDoNpm, "utf8").trim(), ``);
+    } catch {
+      partes.push(`## Log interno do npm`, ``, `Não foi possível ler ${logDoNpm}.`, ``);
+    }
+  }
+
+  writeFileSync(caminho, partes.join("\n"), "utf8");
+  return caminho;
 }
 
 function subirBanco() {
   titulo("Banco de dados");
-  const resultado = rodar(NODE, [path.join(RAIZ, "tools", "db.mjs"), "up"]);
+  const resultado = rodar(NODE, [path.join(RAIZ, "tools", "db.mjs"), "up"], { capturar: true });
   if (resultado.status !== 0) {
+    console.warn(resumoSaida(resultado.saida, 12));
+    if (erroDeSpawn(resultado)) console.warn(erroDeSpawn(resultado));
     console.warn("Não foi possível subir o banco automaticamente.");
-    console.warn("Se você tem Docker Desktop, abra-o e rode de novo. Sem banco, os testes de integração são pulados.");
+    console.warn("Se você tem Docker Desktop, abra-o e rode de novo (opção 4 do LiaGo.bat).");
+    console.warn("Sem banco, os testes de integração são PULADOS com aviso — não é sucesso.");
     return false;
   }
+  console.log(resumoSaida(resultado.saida, 6));
   const migrar = rodar(NPM, ["run", "migrate"]);
   if (migrar.status !== 0) console.warn("A migração falhou; os testes de API podem ser pulados.");
   return true;
@@ -161,7 +317,7 @@ function gravarRelatorio(resultadoTestes) {
     `- **Quando:** ${agora.toISOString()} (local ${agora.toLocaleString("pt-BR")})`,
     `- **Branch:** ${git.branch || "(destacada)"}`,
     `- **Último commit:** ${git.ultimo || "(nenhum)"}`,
-    `- **Node:** ${versaoNode()} · **npm:** ${rodar(NPM, ["--version"], { capturar: true }).saida.trim()}`,
+    `- **Node:** ${versaoNode()} · **npm:** ${versaoNpm()}`,
     `- **Docker:** ${dockerOk ? "disponível" : "indisponível"} · **PostgreSQL:** ${ocultarUrl(banco)}`,
     ``,
     `## Testes`,
@@ -246,8 +402,15 @@ function sincronizar(mensagem) {
   }
 }
 
+/** Monta a chamada de `npm run <script>` já no formato certo para o sistema (Windows precisa de shell). */
+function comandoComoArgumentos(script) {
+  const chamada = montarComando(NPM, ["run", script]);
+  return [chamada.comando, chamada.args, { cwd: RAIZ, stdio: "inherit", shell: chamada.shell }];
+}
+
 function comandoTestes() {
   verificarNode();
+  banner();
   instalarDependencias();
   subirBanco();
   const resultado = rodarTestes();
@@ -274,22 +437,26 @@ function comandoAuto() {
 
 function comandoDev() {
   verificarNode();
+  banner();
   instalarDependencias();
   subirBanco();
   titulo("Subindo API e app web (Ctrl+C encerra os dois)");
   console.log("API: http://localhost:3000 · App: http://localhost:5273");
-  const api = spawnSync(NPM, ["run", "dev:api"], { cwd: RAIZ, stdio: "inherit" });
+  const chamada = montarComando(NPM, ["run", "dev:api"]);
+  const api = spawnSync(chamada.comando, chamada.args, { cwd: RAIZ, stdio: "inherit", shell: chamada.shell });
+  if (api.error) console.error(erroDeSpawn({ error: api.error }));
   return api.status ?? 1;
 }
 
 async function comandoDevParalelo() {
   verificarNode();
+  banner();
   instalarDependencias();
   subirBanco();
   titulo("Subindo API e app web juntos");
   const { spawn } = await import("node:child_process");
-  const api = spawn(NPM, ["run", "dev:api"], { cwd: RAIZ, stdio: "inherit", shell: false });
-  const web = spawn(NPM, ["run", "dev:web"], { cwd: RAIZ, stdio: "inherit", shell: false });
+  const api = spawn(...comandoComoArgumentos("dev:api"));
+  const web = spawn(...comandoComoArgumentos("dev:web"));
   console.log("\nAPI: http://localhost:3000 · App web: http://localhost:5273");
   console.log("Para o celular na mesma rede: use o endereço 'Network' mostrado pelo app web e defina VITE_API_URL.");
   const encerrar = () => {
@@ -349,6 +516,12 @@ async function principal() {
       instalarDependencias();
       sincronizar(process.argv[3] ?? null);
       return 0;
+    case "instalar": {
+      verificarNode();
+      banner();
+      instalarDependencias(true);
+      return 0;
+    }
     case "relatorios": {
       const recentes = relatoriosRecentes();
       console.log(recentes.length === 0 ? "Nenhum relatório ainda. Rode: node tools/dev.mjs testes" : "Relatórios recentes:");
@@ -356,7 +529,7 @@ async function principal() {
       return 0;
     }
     default:
-      console.log("Comandos: auto · testes · banco · dev · android · sincronizar · relatorios");
+      console.log("Comandos: auto · testes · banco · dev · android · sincronizar · instalar · relatorios");
       return 1;
   }
 }

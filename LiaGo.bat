@@ -30,6 +30,7 @@ echo  5  Preparar build Android (exige Android Studio + JDK 21)
 echo  6  Sincronizar com o GitHub (commit, rebase e push da branch)
 echo  7  Ver relatorios gerados
 echo  8  Diagnostico do ambiente (DevKit)
+echo  9  Reinstalar dependencias (usar quando algo estiver estranho)
 echo  0  Sair
 echo.
 set /p OPCAO="Escolha: "
@@ -41,6 +42,7 @@ if "%OPCAO%"=="5" goto :android
 if "%OPCAO%"=="6" goto :sincronizar
 if "%OPCAO%"=="7" goto :relatorios
 if "%OPCAO%"=="8" goto :diagnostico
+if "%OPCAO%"=="9" goto :instalar
 if "%OPCAO%"=="0" goto :sair
 echo Opcao invalida.
 goto :menu
@@ -54,7 +56,8 @@ if /i "%~1"=="android" goto :android
 if /i "%~1"=="sincronizar" goto :sincronizar
 if /i "%~1"=="relatorios" goto :relatorios
 if /i "%~1"=="diagnostico" goto :diagnostico
-echo Comandos: auto ^| testes ^| dev ^| banco ^| android ^| sincronizar ^| relatorios ^| diagnostico
+if /i "%~1"=="instalar" goto :instalar
+echo Comandos: auto ^| testes ^| dev ^| banco ^| android ^| sincronizar ^| instalar ^| relatorios ^| diagnostico
 set "RC=1"
 goto :fim
 
@@ -90,6 +93,11 @@ goto :fim
 
 :relatorios
 node "%~dp0tools\dev.mjs" relatorios
+set "RC=%ERRORLEVEL%"
+goto :fim
+
+:instalar
+node "%~dp0tools\dev.mjs" instalar
 set "RC=%ERRORLEVEL%"
 goto :fim
 

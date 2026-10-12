@@ -28,6 +28,7 @@ Sem Docker o projeto continua funcionando: ele usa binários locais do PostgreSQ
 | 4 | Sobe o banco e aplica migrações |
 | 5 | Prepara a build Android (exige Android Studio + JDK 21) |
 | 6 | Sincroniza com o GitHub (valida, commit, rebase, push da branch de trabalho) |
+| 9 | Reinstala as dependências (`node_modules`) — usar quando algo estiver estranho |
 | 7 | Lista os relatórios gerados |
 | 8 | Diagnóstico do ambiente (DevKit) |
 
@@ -90,6 +91,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 38 testes.
 - App (armazenamento local e sincronizador, com IndexedDB simulado): `npm run test:app` — 13 testes.
 - API (integração com PostgreSQL real): `npm run test:api` — 39 testes.
+- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 21 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
@@ -107,6 +109,8 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 | Preview responde **HTTP 403** | host não autorizado no Vite | já tratado em `apps/mobile/vite.config.ts` (`allowedHosts`); se usar outro host, adicione ali |
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
+| `npm install` falhou | rede, proxy, antivírus, pasta pela metade… | as últimas linhas da tela mostram a **causa real** e o que fazer; se a pasta `node_modules` ficou pela metade, a automação apaga e reinstala sozinha. Para forçar: `LiaGo.bat` **opção 9** (ou `node tools/dev.mjs instalar`) |
+| Quero mandar o erro para alguém analisar | — | a falha do npm grava `reports/npm-install-<data>.log` **com o log interno do npm dentro** (é lá que o motivo real aparece) |
 | `EACCES`/permissão no Docker | Docker não iniciado | abra o Docker Desktop |
 
 ## 7. O que **não** é feito pelo app (por regra do projeto)
