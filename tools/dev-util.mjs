@@ -423,3 +423,84 @@ export function montarDiagnostico(dados) {
   }
   return `${linhas.join("\n")}\n`;
 }
+
+// ---------------------------------------------------------------------------
+// Feedback de progresso: ninguém deve ficar olhando uma tela parada
+// ---------------------------------------------------------------------------
+
+/** Tamanho legível em português (12,3 MB · 480 KB · 512 B). */
+export function formatarTamanho(bytes) {
+  const valor = Number(bytes) || 0;
+  if (valor >= 1024 * 1024) return `${(valor / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  if (valor >= 1024) return `${Math.round(valor / 1024)} KB`;
+  return `${valor} B`;
+}
+
+/**
+ * Uma linha de progresso do download.
+ * `animado` é para o terminal de verdade (com barra); sem ele, sai só o percentual,
+ * para o texto continuar legível quando a saída está sendo gravada em arquivo.
+ */
+export function linhaDeProgresso(recebidos, total, segundos, animado = true) {
+  const velocidade = segundos > 0.5 ? `${formatarTamanho(recebidos / segundos)}/s` : "";
+  if (!total || total <= 0) {
+    return `  recebido ${formatarTamanho(recebidos)}${velocidade ? ` · ${velocidade}` : ""}`.trimEnd();
+  }
+  const pct = Math.min(100, Math.floor((recebidos / total) * 100));
+  if (!animado) {
+    return `  ${pct}% (${formatarTamanho(recebidos)} de ${formatarTamanho(total)})${velocidade ? ` · ${velocidade}` : ""}`;
+  }
+  const largura = 24;
+  const cheios = Math.max(0, Math.min(largura, Math.round((pct / 100) * largura)));
+  const barra = "#".repeat(cheios) + "-".repeat(largura - cheios);
+  return `  [${barra}] ${String(pct).padStart(3)}% · ${formatarTamanho(recebidos)}/${formatarTamanho(total)} · ${velocidade}`.trimEnd();
+}
+
+/** "12s" / "1 min 5s" — para fechar cada etapa com algo concreto. */
+export function tempoDecorrido(inicioMs, agoraMs = Date.now()) {
+  const segundos = Math.max(0, Math.round((Number(agoraMs) - Number(inicioMs)) / 1000));
+  if (segundos < 60) return `${segundos}s`;
+  const minutos = Math.floor(segundos / 60);
+  return `${minutos} min ${segundos % 60}s`;
+}
+
+/**
+ * Roda um comando mostrando a saída conforme ela acontece e, quando o processo passa 15 segundos
+ * sem escrever nada, avisa que continua trabalhando — ninguém precisa adivinhar se travou.
+ * Devolve o mesmo formato do `rodar()` do orquestrador: { status, saida, error }.
+ */
+export async function rodarComSaidaAoVivo(programa, argumentos, opcoes = {}) {
+  const { spawn } = await import("node:child_process");
+  const inicio = Date.now();
+  return await new Promise((resolve) => {
+    const processo = spawn(programa, argumentos, {
+      cwd: opcoes.cwd,
+      env: opcoes.env ?? process.env,
+      shell: opcoes.shell ?? false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let saida = "";
+    let ultimaSaida = Date.now();
+    const ecoar = opcoes.ecoar !== false;
+    const consumir = (pedaco) => {
+      const texto = pedaco.toString();
+      saida += texto;
+      ultimaSaida = Date.now();
+      if (ecoar) process.stdout.write(texto);
+    };
+    processo.stdout.on("data", consumir);
+    processo.stderr.on("data", consumir);
+    const relogio = setInterval(() => {
+      if (Date.now() - ultimaSaida >= 15000) {
+        console.log(`   ⏳ ${opcoes.legenda ?? "ainda trabalhando"} — sem novidades há ${tempoDecorrido(ultimaSaida)} (total ${tempoDecorrido(inicio)}). Aguarde, não travou.`);
+      }
+    }, 5000);
+    const finalizar = (status, erro) => {
+      clearInterval(relogio);
+      resolve({ status: status ?? 1, saida, error: erro ?? null });
+    };
+    processo.on("error", (erro) => finalizar(1, erro));
+    process.on("exit", () => clearInterval(relogio));
+    processo.on("exit", (codigo) => finalizar(codigo));
+  });
+}

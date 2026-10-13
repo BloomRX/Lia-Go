@@ -17,12 +17,15 @@
  * Sempre escreve `.env` na raiz quando o banco é iniciado (o .env é ignorado pelo Git).
  * Nunca apaga dados: `down` apenas para o serviço.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   candidatosDePython,
+  formatarTamanho,
+  linhaDeProgresso,
+  tempoDecorrido,
   comandosDeExtracao,
   escolherArquivoDeBinarios,
   explicarLogDoServidor,
@@ -187,6 +190,68 @@ function extrairArquivo(arquivo) {
 }
 
 /**
+ * Baixa um arquivo mostrando o andamento (barra no terminal, percentuais em log).
+ * Se a conexão parar de avançar por 30 segundos, cancela com uma explicação — em vez de fingir
+ * que está trabalhando para sempre.
+ */
+async function baixarArquivo(url, destino, tamanhoEsperado = 0) {
+  const animado = Boolean(process.stdout.isTTY);
+  const controlador = new AbortController();
+  const TEMPO_SEM_AVANCAR = 30000;
+  let relogio = setTimeout(() => controlador.abort(), TEMPO_SEM_AVANCAR);
+  const inicio = Date.now();
+  let recebidos = 0;
+  let ultimoDesenho = 0;
+  let ultimoMarco = -1;
+  const desenhar = (forcar = false) => {
+    const agora = Date.now();
+    const segundos = (agora - inicio) / 1000;
+    if (animado) {
+      if (!forcar && agora - ultimoDesenho < 200) return;
+      ultimoDesenho = agora;
+      process.stdout.write(`\r${linhaDeProgresso(recebidos, total, segundos).padEnd(84)}`);
+      return;
+    }
+    const pct = total > 0 ? Math.floor((recebidos / total) * 100) : -1;
+    const marco = pct < 0 ? -1 : Math.floor(pct / 25);
+    if (forcar || marco > ultimoMarco) {
+      ultimoMarco = marco;
+      console.log(linhaDeProgresso(recebidos, total, segundos, false));
+    }
+  };
+  let total = 0;
+  try {
+    const resposta = await fetch(url, { signal: controlador.signal });
+    if (!resposta.ok) throw new Error(`o servidor respondeu ${resposta.status}`);
+    total = Number(resposta.headers.get("content-length")) || tamanhoEsperado || 0;
+    const partes = [];
+    for await (const pedaco of resposta.body) {
+      clearTimeout(relogio);
+      relogio = setTimeout(() => controlador.abort(), TEMPO_SEM_AVANCAR);
+      partes.push(pedaco);
+      recebidos += pedaco.length;
+      desenhar();
+    }
+    desenhar(true);
+    writeFileSync(destino, Buffer.concat(partes));
+    if (animado) process.stdout.write(`\r${" ".repeat(84)}\r`);
+    log(`Download concluído: ${formatarTamanho(recebidos)} em ${tempoDecorrido(inicio)}.`);
+  } catch (erro) {
+    if (animado) process.stdout.write(`\r${" ".repeat(84)}\r`);
+    if (controlador.signal.aborted) {
+      throw new Error(
+        recebidos === 0
+          ? "Não consegui conectar para baixar o banco (a internet, o proxy ou o antivírus podem estar bloqueando)."
+          : `O download do banco parou em ${formatarTamanho(recebidos)} e ficou 30 segundos sem avançar. Confira a internet e rode de novo.`,
+      );
+    }
+    throw erro;
+  } finally {
+    clearTimeout(relogio);
+  }
+}
+
+/**
  * Baixa os binários portáteis do PostgreSQL (uma vez, ~12 MB) para `.pgbin`.
  * É o caminho que funciona sem Docker, sem administrador e **sem depender do Python** da máquina —
  * inclusive quando o Python instalado é mais novo do que os pacotes publicados.
@@ -197,12 +262,15 @@ async function baixarBinariosPortateis() {
   if (typeof fetch !== "function") {
     throw new Error("Este Node não sabe baixar arquivos (é preciso o Node 22 ou mais novo).");
   }
-  log("Baixando os binários do PostgreSQL (arquivo único de ~12 MB, só na primeira vez)…");
+  log("Baixando os binários do PostgreSQL (~12 MB, só na primeira vez). A barra abaixo mostra o andamento:");
   let catalogo;
+  const inicioCatalogo = Date.now();
   try {
-    const resposta = await fetch(URL_PYPI);
+    console.log("  Consultando o catálogo em pypi.org…");
+    const resposta = await fetch(URL_PYPI, { signal: AbortSignal.timeout(30000) });
     if (!resposta.ok) throw new Error(`o servidor respondeu ${resposta.status}`);
     catalogo = await resposta.json();
+    console.log(`  Catálogo consultado em ${tempoDecorrido(inicioCatalogo)}.`);
   } catch (erro) {
     throw new Error(
       `Não consegui consultar o catálogo do banco (${erro.message}). Confira a internet, o proxy ou o antivírus — ou abra o Docker Desktop.`,
@@ -219,15 +287,15 @@ async function baixarBinariosPortateis() {
   mkdirSync(DIR_PORTATIL, { recursive: true });
   const destino = path.join(DIR_PORTATIL, arquivo.nome);
   try {
-    const baixado = await fetch(arquivo.url);
-    if (!baixado.ok) throw new Error(`o servidor respondeu ${baixado.status}`);
-    writeFileSync(destino, Buffer.from(await baixado.arrayBuffer()));
+    await baixarArquivo(arquivo.url, destino, arquivo.tamanho);
   } catch (erro) {
     throw new Error(
-      `A conexão falhou durante o download do banco (${erro.message}). Rode de novo para tentar outra vez — o arquivo só é usado quando estiver completo.`,
+      `Falhou o download do banco: ${erro instanceof Error ? erro.message : String(erro)} ` +
+        "Rode de novo para tentar outra vez (nada fica pela metade: o arquivo só é usado quando está completo).",
     );
   }
-  log("Extraindo os binários…");
+  const inicioExtracao = Date.now();
+  console.log("Extraindo os binários (uns segundos; no Windows o antivírus pode deixar mais lento)…");
   if (!extrairArquivo(destino)) {
     rmSync(destino, { force: true });
     throw new Error(
@@ -235,6 +303,7 @@ async function baixarBinariosPortateis() {
         "Instale o 7-Zip (ou o unzip) e rode de novo, ou use o Docker Desktop.",
     );
   }
+  console.log(`Binários extraídos em ${tempoDecorrido(inicioExtracao)}.`);
   rmSync(destino, { force: true });
   limparSobras();
   const bin = binariosPortateis();
@@ -271,33 +340,39 @@ function motivoDoLogDoServidor(caminho) {
   }
 }
 
-function iniciarComBinarios(bin) {
+async function iniciarComBinarios(bin) {
   const ambiente = ambienteDoBin(bin);
   if (!existsSync(path.join(DIR_DADOS, "PG_VERSION"))) {
-    log(`Inicializando cluster local em ${path.relative(RAIZ, DIR_DADOS)} (fora do Git)…`);
+    log(`Criando o banco local em ${path.relative(RAIZ, DIR_DADOS)} (fora do Git). É a primeira vez: costuma levar de 10 a 60 segundos…`);
+    const inicioInitdb = Date.now();
     mkdirSync(DIR_DADOS, { recursive: true });
-    const resultado = spawnSync(
+    const resultado = await rodarComAviso(
       exe(bin, "initdb"),
       ["-D", DIR_DADOS, "-U", USUARIO, "--auth=trust", "--encoding=UTF8"],
-      { stdio: "inherit", env: ambiente },
+      ambiente,
+      "criando o banco local",
     );
     if (resultado.status !== 0) {
       throw new Error(
-        "O initdb não conseguiu criar o banco local. Apague a pasta .pgdata (só dados sintéticos ficam nela) e rode de novo.",
+        "Não consegui criar o banco local. Apague a pasta .pgdata (só dados sintéticos ficam nela) e rode de novo.",
       );
     }
+    log(`Banco local criado em ${tempoDecorrido(inicioInitdb)}.`);
   }
   if (!emExecucao(bin, ambiente)) {
-    log(`Iniciando PostgreSQL local na porta ${PORTA}…`);
+    log(`Iniciando o PostgreSQL local na porta ${PORTA}…`);
+    const inicioPgctl = Date.now();
     const opcoes = [`-p ${PORTA}`, "-c listen_addresses=127.0.0.1"];
     // O socket de arquivo só existe no Linux/macOS; no Windows a conexão é sempre por TCP.
     if (process.platform !== "win32") opcoes.push(`-c unix_socket_directories=${DIR_DADOS}`);
     const logDoServidor = path.join(DIR_DADOS, "servidor.log");
-    const iniciar = spawnSync(
+    const iniciar = await rodarComAviso(
       exe(bin, "pg_ctl"),
       ["-D", DIR_DADOS, "-o", opcoes.join(" "), "-w", "-l", logDoServidor, "start"],
-      { stdio: "inherit", env: ambiente },
+      ambiente,
+      "iniciando o PostgreSQL",
     );
+    if (iniciar.status === 0) log(`PostgreSQL no ar em ${tempoDecorrido(inicioPgctl)}.`);
     if (iniciar.status !== 0) {
       throw new Error(
         `O PostgreSQL local não subiu.${motivoDoLogDoServidor(logDoServidor)} Log completo: ${path.relative(RAIZ, logDoServidor)}.`,
@@ -317,6 +392,41 @@ function iniciarComBinarios(bin) {
     });
     if (criar.status !== 0) throw new Error(`Não foi possível criar o banco '${BANCO}'.`);
   }
+}
+
+/**
+ * Roda um programa do banco mostrando a saída conforme ela sai e avisando de tempos em tempos que
+ * ele continua trabalhando (no Windows, o antivírus pode deixar a criação do banco bem lenta).
+ */
+function rodarComAviso(programa, argumentos, ambiente, legenda) {
+  return new Promise((resolve) => {
+    const inicio = Date.now();
+    const processo = spawn(programa, argumentos, { env: ambiente, stdio: ["ignore", "pipe", "pipe"] });
+    let saida = "";
+    let ultimaSaida = Date.now();
+    const consumir = (pedaco) => {
+      const texto = pedaco.toString();
+      saida += texto;
+      ultimaSaida = Date.now();
+      process.stdout.write(texto);
+    };
+    processo.stdout.on("data", consumir);
+    processo.stderr.on("data", consumir);
+    const relogio = setInterval(() => {
+      if (Date.now() - ultimaSaida >= 15000) {
+        console.log(`   ⏳ ${legenda} — sem novidades há ${tempoDecorrido(ultimaSaida)} (total ${tempoDecorrido(inicio)}). Aguarde, não travou.`);
+      }
+    }, 5000);
+    const finalizar = (status) => {
+      clearInterval(relogio);
+      resolve({ status: status ?? 1, saida });
+    };
+    processo.on("error", (erro) => {
+      clearInterval(relogio);
+      resolve({ status: 1, saida: `${saida}\n${erro.message}` });
+    });
+    processo.on("exit", finalizar);
+  });
 }
 
 /** O cluster local está respondendo? (usado antes de subir ou parar, para não dar erro bobo) */
@@ -417,7 +527,7 @@ async function principal() {
       bin = await baixarBinariosPortateis();
     }
     if (bin) {
-      iniciarComBinarios(bin);
+      await iniciarComBinarios(bin);
       log("Aviso: modo binário local (sem Docker). Use apenas para desenvolvimento/testes com dados sintéticos.");
       escreverEnv(urlBinarios());
       return;

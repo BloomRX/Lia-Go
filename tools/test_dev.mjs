@@ -12,6 +12,9 @@ import {
   comandosDeExtracao,
   escolherArquivoDeBinarios,
   explicarLogDoServidor,
+  formatarTamanho,
+  linhaDeProgresso,
+  tempoDecorrido,
   montarComando,
   montarDiagnostico,
   ocultarUrl,
@@ -308,4 +311,24 @@ test("diagnóstico do computador diz o essencial em português", () => {
   assert.match(texto, /Avisos desta rodada/);
   assert.match(texto, /sem rede/);
   assert.match(texto, /database system is ready/);
+});
+
+test("progresso do download é legível: barra, percentual, tamanho e velocidade", () => {
+  const linha = linhaDeProgresso(6_300_000, 12_600_000, 4);
+  assert.match(linha, /\[#{12}(?:#|-)*-*\]/, "a barra precisa avançar conforme o download");
+  assert.match(linha, /50%/, "o percentual é o que a pessoa entende de imediato");
+  assert.match(linha, /6,0 MB\/12,0 MB/);
+  assert.match(linha, /MB\/s/, "sem velocidade não dá para saber se está lento ou travado");
+  assert.equal(linhaDeProgresso(0, 0, 0).trim(), "recebido 0 B", "sem tamanho conhecido ainda mostra o que veio");
+  const semAnimacao = linhaDeProgresso(3_150_000, 12_600_000, 9, false);
+  assert.match(semAnimacao, /^  25% \(3,0 MB de 12,0 MB\) · 342 KB\/s$/, "em log (sem terminal) sai em linha simples");
+});
+
+test("tamanhos e tempos em português", () => {
+  assert.equal(formatarTamanho(512), "512 B");
+  assert.equal(formatarTamanho(2048), "2 KB");
+  assert.equal(formatarTamanho(12_600_000), "12,0 MB");
+  assert.equal(formatarTamanho(0), "0 B");
+  assert.equal(tempoDecorrido(Date.now() - 12_000), "12s");
+  assert.equal(tempoDecorrido(Date.now() - 65_000), "1 min 5s");
 });

@@ -22,6 +22,7 @@ import {
   abriuPromptDoWindows,
   candidatosDePython,
   explicarLogDoServidor,
+  tempoDecorrido,
   caminhoDoLogDoNpm,
   diagnosticarComLog,
   diagnosticarFalhaNpm,
@@ -30,6 +31,7 @@ import {
   montarComando,
   montarDiagnostico,
   ocultarUrl,
+  rodarComSaidaAoVivo,
   versaoCompativel,
   resumoSaida,
   valeTentarDeNovo,
@@ -46,8 +48,28 @@ function registrarAviso(texto) {
   OCORRENCIAS.push(texto);
 }
 
+/** Em qual etapa da rodada automática estamos (usado para numerar os títulos). */
+let ETAPA = { indice: 0, total: 0 };
+function definirEtapa(indice, total) {
+  ETAPA = { indice, total };
+}
+
+/**
+ * Como `rodar()`, mas mostrando a saída conforme ela sai e avisando quando o processo fica quieto.
+ * É o que evita a impressão de "travou" nas etapas demoradas (npm install, npm test).
+ */
+async function rodarAoVivo(comando, args, opcoes = {}) {
+  const chamada = montarComando(comando, args);
+  return await rodarComSaidaAoVivo(chamada.comando, chamada.args, {
+    cwd: opcoes.cwd ?? RAIZ,
+    shell: chamada.shell,
+    legenda: opcoes.legenda,
+  });
+}
+
 function titulo(texto) {
-  console.log(`\n=== ${texto} ===`);
+  const numero = ETAPA.total > 0 ? `[${ETAPA.indice}/${ETAPA.total}] ` : "";
+  console.log(`\n=== ${numero}${texto} ===`);
 }
 
 function rodar(comando, args, opcoes = {}) {
@@ -136,7 +158,7 @@ function conferirInstalacaoReal(rotulo, resultado) {
   }
 }
 
-function instalarDependencias(forcar = false) {
+async function instalarDependencias(forcar = false) {
   if (!forcar && dependenciasInstaladas()) {
     console.log("Dependências já instaladas (npm install será pulado).");
     return;
@@ -146,10 +168,13 @@ function instalarDependencias(forcar = false) {
   const urlRegistro = registro.status === 0 ? registro.saida.trim() : "(não foi possível perguntar ao npm)";
   console.log(`Baixando pacotes de: ${urlRegistro}`);
 
-  const primeira = rodar(NPM, ["install"], { capturar: true });
+  console.log(`⏳ Baixando pacotes do npm a partir de ${urlRegistro}. A saída aparece conforme chega (costuma levar de 10 a 60 segundos; na primeira vez, mais).`);
+  const inicioInstall = Date.now();
+  const primeira = await rodarAoVivo(NPM, ["install"], { legenda: "instalando dependências" });
   if (primeira.status === 0) {
     console.log(primeira.saida.trim());
     conferirInstalacaoReal("npm install", primeira);
+    console.log(`Dependências instaladas em ${tempoDecorrido(inicioInstall)}.`);
     return;
   }
 
@@ -163,7 +188,7 @@ function instalarDependencias(forcar = false) {
   if (dicas.some((dica) => dica.id === "arvore_pela_metade")) {
     console.log("\nA pasta de dependências ficou pela metade. Apagando node_modules (pasta gerada) e instalando limpo…");
     limparNodeModules();
-    const limpa = rodar(NPM, ["install", "--no-audit", "--no-fund"], { capturar: true });
+    const limpa = await rodarAoVivo(NPM, ["install", "--no-audit", "--no-fund"], { legenda: "instalando dependências" });
     if (limpa.status === 0) {
       console.log(limpa.saida.trim());
       conferirInstalacaoReal("npm install (após limpar)", limpa);
@@ -175,7 +200,7 @@ function instalarDependencias(forcar = false) {
   }
 
   console.log("\nTentando de novo com tempo de espera limitado (rede instável pode funcionar na segunda vez)…");
-  const segunda = rodar(
+  const segunda = await rodarAoVivo(
     NPM,
     [
       "install",
@@ -185,7 +210,7 @@ function instalarDependencias(forcar = false) {
       "--fetch-retry-maxtimeout=30000",
       "--fetch-timeout=60000",
     ],
-    { capturar: true },
+    { legenda: "instalando dependências (2ª tentativa)" },
   );
   if (segunda.status === 0) {
     console.log(segunda.saida.trim());
@@ -291,9 +316,10 @@ function gravarLogNpm(rotulo, saida, urlRegistro, logDoNpm = null) {
 
 function subirBanco() {
   titulo("Banco de dados");
-  const resultado = rodar(NODE, [path.join(RAIZ, "tools", "db.mjs"), "up"], { capturar: true });
+  const inicio = Date.now();
+  // Sem capturar a saída: o que o banco escreve (download com barra, criação, tempos) aparece NA HORA.
+  const resultado = rodar(NODE, [path.join(RAIZ, "tools", "db.mjs"), "up"]);
   if (resultado.status !== 0) {
-    console.warn(resumoSaida(resultado.saida, 12));
     if (erroDeSpawn(resultado)) console.warn(erroDeSpawn(resultado));
     console.warn("Não foi possível subir o banco automaticamente (o motivo está nas linhas acima).");
     console.warn("Sem Docker, o Lia Go instala um PostgreSQL embutido sozinho — para isso precisa do Python 3 (python.org).");
@@ -301,7 +327,7 @@ function subirBanco() {
     console.warn("Sem banco, os testes de integração são PULADOS com aviso — não é sucesso.");
     return false;
   }
-  console.log(resumoSaida(resultado.saida, 6));
+  console.log(`Banco pronto em ${tempoDecorrido(inicio)}.`);
   const migrar = rodar(NPM, ["run", "migrate"]);
   if (migrar.status !== 0) console.warn("A migração falhou; os testes de API podem ser pulados.");
   return true;
@@ -310,6 +336,7 @@ function subirBanco() {
 /** Checagem de tipos de todos os pacotes: nada entra no repositório sem passar por aqui. */
 function rodarTipos() {
   titulo("Checagem de tipos (domain, api e mobile)");
+  console.log("⏳ Conferindo os tipos dos quatro pacotes (uns 20 a 40 segundos)…");
   const resultado = rodar(NPM, ["run", "typecheck"], { capturar: true });
   if (abriuPromptDoWindows(resultado.saida)) {
     console.error("O Windows abriu um prompt no lugar de rodar o npm — os tipos NÃO foram conferidos.");
@@ -320,12 +347,13 @@ function rodarTipos() {
   return { status: resultado.status, saida: resultado.saida };
 }
 
-function rodarTestes() {
+async function rodarTestes() {
   const tipos = rodarTipos();
   titulo("Testes (domínio + API)");
-  const resultado = rodar(NPM, ["test"], { capturar: true });
+  console.log("⏳ Rodando a suíte completa (a saída aparece abaixo, teste por teste; costuma levar cerca de 30 segundos).");
+  const inicio = Date.now();
+  const resultado = await rodarAoVivo(NPM, ["test"], { legenda: "rodando os testes" });
   const saida = resultado.saida;
-  console.log(saida);
   const linhas = saida.split("\n");
   let passou = 0;
   let falhou = 0;
@@ -338,6 +366,7 @@ function rodarTestes() {
       if (m[1] === "skipped") pulados += Number(m[2]);
     }
   }
+  console.log(`Suíte concluída em ${tempoDecorrido(inicio)}.`);
   return { status: resultado.status, passou, falhou, pulados, saida, tipos };
 }
 
@@ -463,12 +492,12 @@ function comandoComoArgumentos(script) {
   return [chamada.comando, chamada.args, { cwd: RAIZ, stdio: "inherit", shell: chamada.shell }];
 }
 
-function comandoTestes() {
+async function comandoTestes() {
   verificarNode();
   banner();
-  instalarDependencias();
+  await instalarDependencias();
   subirBanco();
-  const resultado = rodarTestes();
+  const resultado = await rodarTestes();
   const caminho = gravarRelatorio(resultado);
   if (resultado.falhou > 0 || resultado.status !== 0) {
     console.error(`\nExistem ${resultado.falhou} teste(s) falhando. Corrija antes de sincronizar.`);
@@ -489,8 +518,8 @@ function comandoTestes() {
   return 0;
 }
 
-function comandoAuto() {
-  const codigo = comandoTestes();
+async function comandoAuto() {
+  const codigo = await comandoTestes();
   if (codigo !== 0) return codigo;
   sincronizar(null);
   return 0;
@@ -512,7 +541,7 @@ function comandoDev() {
 async function comandoDevParalelo() {
   verificarNode();
   banner();
-  instalarDependencias();
+  await instalarDependencias();
   subirBanco();
   titulo("Subindo API e app web juntos");
   await subirServidores();
@@ -545,9 +574,9 @@ async function subirServidores() {
   await new Promise(() => {});
 }
 
-function comandoAndroid() {
+async function comandoAndroid() {
   titulo("Build Android (exige Android Studio + JDK 21 + SDK 36)");
-  instalarDependencias();
+  await instalarDependencias();
   const temSdk = Boolean(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT) || process.platform === "win32";
   if (!temSdk) {
     console.warn("Android SDK não detectado neste ambiente. No Windows, instale o Android Studio e rode este comando de novo.");
@@ -579,16 +608,32 @@ function relatoriosRecentes() {
  */
 async function comandoTudo() {
   const inicio = Date.now();
+  const TOTAL_DE_ETAPAS = 7;
   console.log("=== Lia Go: rodada automática (não precisa escolher nada) ===");
+  console.log("São 7 etapas; cada uma se anuncia abaixo. Na primeira vez, a etapa 3 baixa o banco (~12 MB).");
+
+  definirEtapa(1, TOTAL_DE_ETAPAS);
   atualizarDoGitHub();
   verificarNode();
   banner();
-  instalarDependencias();
+
+  definirEtapa(2, TOTAL_DE_ETAPAS);
+  await instalarDependencias();
+
+  definirEtapa(3, TOTAL_DE_ETAPAS);
   const bancoOk = subirBanco();
-  const testes = rodarTestes();
+
+  definirEtapa(4, TOTAL_DE_ETAPAS);
+  const testes = await rodarTestes();
+
+  definirEtapa(5, TOTAL_DE_ETAPAS);
   const caminhoRelatorio = gravarRelatorio(testes);
   gravarDiagnostico(bancoOk, testes);
+
+  definirEtapa(6, TOTAL_DE_ETAPAS);
   const enviado = enviarParaOGitHub();
+
+  definirEtapa(7, TOTAL_DE_ETAPAS);
   resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio });
   await subirServidores();
 }
@@ -601,6 +646,8 @@ function atualizarDoGitHub() {
     garantirBranchDeTrabalho();
   }
   const nome = branchAtual();
+  console.log("⏳ Falando com o GitHub (uns segundos)…");
+  const inicio = Date.now();
   const busca = rodar("git", ["fetch", "origin"], { capturar: true });
   if (busca.status !== 0) {
     registrarAviso("Não consegui falar com o GitHub para baixar novidades nesta rodada.");
@@ -608,6 +655,7 @@ function atualizarDoGitHub() {
     console.warn(resumoSaida(busca.saida, 4));
     return false;
   }
+  console.log(`Resposta do GitHub em ${tempoDecorrido(inicio)}.`);
   const avancar = rodar("git", ["merge", "--ff-only", `origin/${nome}`], { capturar: true });
   if (avancar.status === 0) {
     console.log(resumoSaida(avancar.saida, 4) || "Projeto já estava atualizado.");
@@ -716,13 +764,13 @@ async function principal() {
       return comandoAndroid();
     case "sincronizar":
     case "sync":
-      instalarDependencias();
+      await instalarDependencias();
       sincronizar(process.argv[3] ?? null);
       return 0;
     case "instalar": {
       verificarNode();
       banner();
-      instalarDependencias(true);
+      await instalarDependencias(true);
       return 0;
     }
     case "relatorios": {
