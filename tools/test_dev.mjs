@@ -8,8 +8,10 @@ import {
   abriuPromptDoWindows,
   erroDeSpawn,
   lerEnvDoTexto,
+  candidatosDePython,
   montarComando,
   ocultarUrl,
+  versaoCompativel,
   resumoSaida,
   valeTentarDeNovo,
 } from "./dev-util.mjs";
@@ -215,4 +217,19 @@ test("leitura do .env ignora comentários e linhas vazias", () => {
   assert.equal(valores.DATABASE_URL, "postgres://a@b/c");
   assert.equal(valores.PORT, "3000");
   assert.equal(valores.HOST, "0.0.0.0");
+});
+
+test("Windows procura o Python como `py -3`/`python` — `python3` não existe lá", () => {
+  const win = candidatosDePython("win32").map(([programa]) => programa);
+  assert.deepEqual(win, ["py", "python", "python3"], "o launcher oficial vem primeiro; `python3` é só uma rede de segurança");
+  assert.deepEqual(candidatosDePython("linux").map(([programa]) => programa), ["python3", "python"]);
+});
+
+test("janela de Python para o banco embutido (3.9–3.12) — fora dela o pip não teria binário para baixar", () => {
+  for (const versao of ["3.9", "3.10", "3.11", "3.12"]) {
+    assert.equal(versaoCompativel(versao), true, `${versao} tem binário publicado`);
+  }
+  for (const versao of ["3.8", "3.13", "3.14", "2.7", "4.0", ""]) {
+    assert.equal(versaoCompativel(versao), false, `${versao} não tem binário publicado`);
+  }
 });

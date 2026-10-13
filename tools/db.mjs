@@ -20,6 +20,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { candidatosDePython, PYTHON_MAX, PYTHON_MIN, versaoCompativel } from "./dev-util.mjs";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR_DADOS = path.join(RAIZ, ".pgdata");
@@ -58,19 +59,28 @@ function dockerDisponivel() {
 }
 
 /**
- * Descobre um Python utilizável.
+ * Todos os Python utilizáveis da máquina, na ordem de preferência.
  * No Windows o nome é `py` (launcher oficial) ou `python` — `python3` normalmente não existe lá.
  */
-function pythonUtilizavel() {
-  const tentativas =
-    process.platform === "win32"
-      ? [["py", ["-3"]], ["python", []], ["python3", []]]
-      : [["python3", []], ["python", []]];
-  for (const [programa, prefixo] of tentativas) {
-    const teste = spawnSync(programa, [...prefixo, "-c", "print('ok')"], { encoding: "utf8" });
-    if (teste.status === 0 && (teste.stdout ?? "").includes("ok")) return { programa, prefixo };
+function pythonsDisponiveis() {
+  const achados = [];
+  for (const [programa, prefixo] of candidatosDePython()) {
+    const teste = spawnSync(programa, [...prefixo, "-c", "import sys;print('%d.%d' % sys.version_info[:2])"], {
+      encoding: "utf8",
+    });
+    const versao = (teste.stdout ?? "").trim();
+    if (teste.status === 0 && /^\d+\.\d+$/.test(versao)) {
+      achados.push({ programa, prefixo, versao, compativel: versaoCompativel(versao) });
+    }
   }
-  return null;
+  // `py -3` e `python` podem apontar para o mesmo interpretador: mostra uma vez só.
+  return achados.filter((python, indice) => achados.findIndex((outro) => outro.versao === python.versao) === indice);
+}
+
+/** Python preferido para o banco embutido (um com binários publicados, se existir). */
+function pythonParaBanco() {
+  const todos = pythonsDisponiveis();
+  return todos.find((python) => python.compativel) ?? todos[0] ?? null;
 }
 
 /** Pastas onde o PostgreSQL costuma estar instalado no Windows (inclui versões instaladas pelo EDB). */
@@ -99,8 +109,7 @@ function binariosPgserver() {
   if (process.env.PG_BIN && existsSync(path.join(process.env.PG_BIN, "initdb" + EXE))) {
     return process.env.PG_BIN;
   }
-  const python = pythonUtilizavel();
-  if (python) {
+  for (const python of pythonsDisponiveis()) {
     try {
       const codigo =
         "import pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),'pginstall','bin'))";
@@ -154,8 +163,13 @@ function instalarPgserver(python) {
     } else {
       console.error(texto.trim().split("\n").slice(-12).join("\n"));
     }
+    const dicaDeVersao = python.compativel
+      ? ""
+      : ` O Python ${python.versao} ainda não tem binários prontos deste pacote (a janela publicada é ${PYTHON_MIN.join(".")}–${PYTHON_MAX.join(".")}).`;
     throw new Error(
-      "Não foi possível instalar o PostgreSQL embutido. Alternativa recomendada: abra o Docker Desktop e rode de novo; ou instale o PostgreSQL (https://www.postgresql.org/download/windows/) e defina PG_BIN.",
+      `Não foi possível instalar o PostgreSQL embutido.${dicaDeVersao} Alternativas, em ordem: ` +
+        "instalar um Python dessa janela (https://www.python.org/downloads/), " +
+        "abrir o Docker Desktop, ou instalar o PostgreSQL (https://www.postgresql.org/download/windows/) e definir PG_BIN.",
     );
   }
 }
@@ -264,7 +278,7 @@ async function principal() {
   const comando = process.argv[2] ?? "up";
   const modo = process.env.LIA_DB_MODO;
   const temDocker = dockerDisponivel();
-  const python = pythonUtilizavel();
+  const python = pythonParaBanco();
   let bin = binariosPgserver();
   const usarDocker = temDocker && modo !== "binarios" && modo !== "pgserver" && modo !== "url";
 
@@ -276,7 +290,12 @@ async function principal() {
   if (comando === "status") {
     log(temDocker ? "Docker: disponível" : "Docker: indisponível neste ambiente");
     log(bin ? `Binários PostgreSQL: ${bin}` : "Binários PostgreSQL: não encontrados (dá para instalar o embutido: `node tools/db.mjs instalar`)");
-    log(python ? `Python: disponível (${python.programa})` : "Python: não encontrado (necessário para o PostgreSQL embutido)");
+    const pythons = pythonsDisponiveis();
+    log(
+      pythons.length > 0
+        ? `Python: ${pythons.map((p) => `${p.programa} ${p.versao}${p.compativel ? "" : " (sem binários prontos do banco embutido)"}`).join(" · ")}`
+        : "Python: não encontrado (necessário para o PostgreSQL embutido)",
+    );
     log(`Modo: ${modo ?? "(automático: Docker → binários do sistema → embutido)"}`);
     log(`DATABASE_URL atual: ${process.env.DATABASE_URL ?? "(não definida)"}`);
     if (existsSync(path.join(RAIZ, ".env"))) log("Arquivo .env: presente (ignorado pelo Git)");

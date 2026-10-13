@@ -266,3 +266,40 @@ export function lerEnvDoTexto(texto) {
   }
   return valores;
 }
+
+// ---------------------------------------------------------------------------
+// Descobrir o Python da máquina (usado pelo banco embutido em tools/db.mjs)
+// ---------------------------------------------------------------------------
+
+/** Versões de Python com binários publicados do PostgreSQL embutido (`pgserver`). */
+export const PYTHON_MIN = [3, 9];
+export const PYTHON_MAX = [3, 12];
+
+/**
+ * A versão do Python está dentro da janela com binários prontos?
+ * Fora dela, o `pip install` não teria o que baixar e a falha pareceria "sem internet".
+ */
+export function versaoCompativel(versao) {
+  const [maior, menor] = String(versao).split(".").map(Number);
+  if (!Number.isInteger(maior) || !Number.isInteger(menor)) return false;
+  if (maior !== PYTHON_MIN[0]) return false;
+  return menor >= PYTHON_MIN[1] && menor <= PYTHON_MAX[1];
+}
+
+/**
+ * Nomes de programa a tentar, na ordem, para achar um Python.
+ * No Windows o certo é o launcher `py -3` (ou `python`); **`python3` não existe lá** — foi o que
+ * fez o banco embutido falhar com "No module named pgserver" no PC do usuário.
+ */
+export function candidatosDePython(plataforma = process.platform) {
+  return plataforma === "win32"
+    ? [
+        ["py", ["-3"]],
+        ["python", []],
+        ["python3", []],
+      ]
+    : [
+        ["python3", []],
+        ["python", []],
+      ];
+}

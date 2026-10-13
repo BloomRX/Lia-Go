@@ -97,7 +97,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 38 testes.
 - App (armazenamento local e sincronizador, com IndexedDB simulado): `npm run test:app` — 13 testes.
 - API (integração com PostgreSQL real): `npm run test:api` — 39 testes.
-- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 21 testes.
+- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 25 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
@@ -112,7 +112,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 |---|---|---|
 | `DATABASE_URL não configurada` | banco não subiu | `npm run db:up` (com Docker, abra o Docker Desktop antes; sem Docker, instale o Python 3 e o Lia Go instala o banco embutido) |
 | Testes de API pulados | sem banco | `npm run db:up` e rode de novo |
-| Banco não sobe e não uso Docker | falta o Python 3 para o banco embutido | instale em <https://www.python.org/downloads/> e rode a opção 4 de novo (ou `node tools/db.mjs instalar`) |
+| Banco não sobe e não uso Docker | falta o Python 3 (versão 3.9–3.12) para o banco embutido | instale em <https://www.python.org/downloads/> e rode a opção 4 de novo (ou `node tools/db.mjs instalar`); se seu Python for 3.13+, use o Docker Desktop ou instale o PostgreSQL e defina `PG_BIN` |
 | Preview responde **HTTP 403** | host não autorizado no Vite | já tratado em `apps/mobile/vite.config.ts` (`allowedHosts`); se usar outro host, adicione ali |
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
