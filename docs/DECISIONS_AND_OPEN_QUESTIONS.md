@@ -73,6 +73,11 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   automático — é assim que o responsável acompanha sem precisar de print de tela.
 - **Falha nunca é escondida**: avisos da rodada entram no diagnóstico; se o envio não terminar, o trabalho
   local fica salvo e a próxima rodada tenta de novo.
+- **Nenhuma etapa pode parecer travada** (correção pedida pelo usuário): a rodada tem 7 etapas numeradas;
+  a saída de `npm install`, dos testes e do banco é mostrada **ao vivo** (antes era capturada e só aparecia
+  no fim — o passo do banco ficava minutos em silêncio); o download do banco tem **barra com percentual e
+  velocidade** e é cancelado com explicação se ficar 30s sem avançar; passos sem saída avisam
+  `⏳ ainda trabalhando` a cada 15s e terminam com o tempo gasto (`criado em 23s`).
 
 ### Ambiente de desenvolvimento no Windows (2026-10-12, terceira rodada) — hipóteses reversíveis
 - **PostgreSQL do dia a dia continua sendo o Docker Compose** (decisão confirmada). O que mudou foi a

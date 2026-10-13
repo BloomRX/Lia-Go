@@ -4,6 +4,9 @@
 > caminho: ele baixa a versão nova do GitHub, instala o que falta, sobe o banco, roda os testes, grava o
 > relatório (`reports/relatorio-*.md`) e o diagnóstico do computador (`reports/estado-do-computador.md`),
 > envia tudo para o GitHub e deixa o app no ar (`http://localhost:3000` e `http://localhost:5273`).
+> A rodada é dividida em **7 etapas numeradas** (`[3/7] Banco de dados`), o download do banco mostra
+> **barra de progresso com velocidade** e, quando um passo fica quieto por 15 segundos, aparece
+> `⏳ ainda trabalhando` — ou seja, nunca é preciso adivinhar se travou.
 > As opções manuais ficam em `LiaGo.bat menu`; o mesmo conjunto existe em qualquer sistema com
 > `node tools/dev.mjs <comando>`.
 
@@ -112,7 +115,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 38 testes.
 - App (armazenamento local e sincronizador, com IndexedDB simulado): `npm run test:app` — 13 testes.
 - API (integração com PostgreSQL real): `npm run test:api` — 39 testes.
-- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 26 testes.
+- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 32 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
@@ -133,6 +136,8 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
 | `npm install` falhou | rede, proxy, antivírus, pasta pela metade… | as últimas linhas da tela mostram a **causa real** e o que fazer; se a pasta `node_modules` ficou pela metade, a automação apaga e reinstala sozinha. Para forçar: `LiaGo.bat` **opção 9** (ou `node tools/dev.mjs instalar`) |
+| A rodada parece parada | alguma etapa demorada está em curso | cada etapa é numerada (`[3/7]`) e as longas mostram progresso; o `⏳ ainda trabalhando` aparece a cada 15 segundos de silêncio |
+| Download do banco muito lento ou interrompido | internet/proxy/antivírus | a barra mostra a velocidade; se ficar **30 segundos sem avançar**, o Lia Go cancela e explica — rode de novo (o download recomeça do zero, nada fica pela metade) |
 | No Windows aparece `Microsoft Windows [versão …]` e nada acontece | o Windows abriu um prompt de comando no lugar do programa (chamada antiga de `.cmd`, bug corrigido) | atualize o projeto (opção 6) e rode de novo; se repetir, envie o texto da tela |
 | Quero mandar o erro para alguém analisar | — | a falha do npm grava `reports/npm-install-<data>.log` **com o log interno do npm dentro** (é lá que o motivo real aparece) |
 | `EACCES`/permissão no Docker | Docker não iniciado | abra o Docker Desktop |
