@@ -589,8 +589,25 @@ async function comandoDevParalelo() {
   await subirServidores();
 }
 
+/** Alguma coisa já está respondendo neste endereço? (app de uma rodada anterior, por exemplo) */
+async function jaEstaNoAr(url) {
+  try {
+    const resposta = await fetch(url, { signal: AbortSignal.timeout(1500) });
+    return resposta.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Sobe a API e o app web e fica vigiando: se algum cair, a tela explica. */
 async function subirServidores() {
+  // Duplo clique com o app já aberto de uma rodada anterior: avisar é melhor do que dar erro de porta.
+  if (await jaEstaNoAr("http://127.0.0.1:5273/")) {
+    console.log("\nO app já está no ar de uma rodada anterior — não vou subir outro.");
+    console.log("Abra no navegador: http://localhost:5273  (API em http://localhost:3000)");
+    console.log("Para encerrar o que está rodando, feche aquela janela do Lia Go.");
+    return;
+  }
   const { spawn } = await import("node:child_process");
   const api = spawn(...comandoComoArgumentos("dev:api"));
   const web = spawn(...comandoComoArgumentos("dev:web"));
