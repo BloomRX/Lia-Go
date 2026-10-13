@@ -4,16 +4,20 @@
  *
  * Modos (nesta ordem de preferência):
  *  1. docker  — Docker Compose (padrão na máquina do desenvolvedor; decisão confirmada);
- *  2. local   — binários do PostgreSQL já instalados no sistema (PG_BIN ou PATH);
- *  3. pgserver— binários do PostgreSQL do pacote Python `pgserver` (usado no ambiente
- *               de testes automatizados, que não tem Docker);
- *  4. url     — não sobe nada: apenas valida a DATABASE_URL já definida.
+ *  2. local   — binários do PostgreSQL já instalados no sistema (PG_BIN, PATH ou pastas padrão);
+ *  3. binarios— idem, com os binários do pacote Python `pgserver` (PostgreSQL embutido);
+ *  4. pgserver— instala o pacote Python `pgserver` sozinho e usa o PostgreSQL embutido
+ *               (é o caminho sem Docker e sem administrador — importante no Windows);
+ *  5. url     — não sobe nada: apenas valida a DATABASE_URL já definida.
+ *
+ * Comandos: up · down · status · url · instalar
+ * `LIA_DB_MODO=binarios|pgserver|url` força um modo (usado nos testes automatizados).
  *
  * Sempre escreve `.env` na raiz quando o banco é iniciado (o .env é ignorado pelo Git).
  * Nunca apaga dados: `down` apenas para o serviço.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +28,20 @@ const PORTA = process.env.LIA_PG_PORTA ?? "55432";
 const USUARIO = "lia_go";
 const SENHA = "lia_go_local";
 const BANCO = "lia_go";
+const EXE = process.platform === "win32" ? ".exe" : "";
+
+/** Caminho de um programa do PostgreSQL (no Windows todo programa termina em `.exe`). */
+function exe(bin, nome) {
+  return path.join(bin, nome + EXE);
+}
+
+/** Variáveis que fazem os binários achar os próprios arquivos, mesmo fora do PATH. */
+function ambienteDoBin(bin) {
+  const ambiente = { ...process.env, PG_BIN: bin };
+  const share = path.join(path.dirname(bin), "share");
+  if (existsSync(share)) ambiente.PGSHAREDIR = share;
+  return ambiente;
+}
 
 function log(mensagem) {
   console.log(mensagem);
@@ -39,24 +57,107 @@ function dockerDisponivel() {
   return resultado.status === 0;
 }
 
-/** Descobre os binários do PostgreSQL do pacote Python pgserver, quando existirem. */
-function binariosPgserver() {
-  try {
-    const saida = execFileSync("python3", [
-      "-c",
-      "import pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),'pginstall','bin'))",
-    ])
-      .toString()
-      .trim();
-    if (saida && existsSync(path.join(saida, "initdb"))) return saida;
-  } catch {
-    // segue para a próxima tentativa
-  }
-  if (process.env.PG_BIN && existsSync(path.join(process.env.PG_BIN, "initdb"))) return process.env.PG_BIN;
-  for (const candidato of ["/usr/lib/postgresql/17/bin", "/usr/lib/postgresql/16/bin", "/usr/local/pgsql/bin"]) {
-    if (existsSync(path.join(candidato, "initdb"))) return candidato;
+/**
+ * Descobre um Python utilizável.
+ * No Windows o nome é `py` (launcher oficial) ou `python` — `python3` normalmente não existe lá.
+ */
+function pythonUtilizavel() {
+  const tentativas =
+    process.platform === "win32"
+      ? [["py", ["-3"]], ["python", []], ["python3", []]]
+      : [["python3", []], ["python", []]];
+  for (const [programa, prefixo] of tentativas) {
+    const teste = spawnSync(programa, [...prefixo, "-c", "print('ok')"], { encoding: "utf8" });
+    if (teste.status === 0 && (teste.stdout ?? "").includes("ok")) return { programa, prefixo };
   }
   return null;
+}
+
+/** Pastas onde o PostgreSQL costuma estar instalado no Windows (inclui versões instaladas pelo EDB). */
+function candidatosWindows() {
+  const raizes = [
+    "C:\\Program Files\\PostgreSQL",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "PostgreSQL") : null,
+  ].filter(Boolean);
+  const pastas = [];
+  for (const raiz of raizes) {
+    if (!existsSync(raiz)) continue;
+    try {
+      for (const versao of readdirSync(raiz)) pastas.push(path.join(raiz, versao, "bin"));
+    } catch {
+      // sem permissão para listar: ignora esta raiz
+    }
+  }
+  return pastas.sort().reverse(); // 17 antes de 16 antes de 15
+}
+
+/**
+ * Descobre os binários do PostgreSQL instalados na máquina:
+ * `PG_BIN` → pacote Python `pgserver` (embutido) → pastas padrão do sistema.
+ */
+function binariosPgserver() {
+  if (process.env.PG_BIN && existsSync(path.join(process.env.PG_BIN, "initdb" + EXE))) {
+    return process.env.PG_BIN;
+  }
+  const python = pythonUtilizavel();
+  if (python) {
+    try {
+      const codigo =
+        "import pgserver,os;print(os.path.join(os.path.dirname(pgserver.__file__),'pginstall','bin'))";
+      // stderr fica escondido: é só uma sondagem (o pacote pode nem existir) e alguns Linux
+      // imprimem avisos inofensivos de ambiente que só poluiriam a tela.
+      const saida = execFileSync(python.programa, [...python.prefixo, "-c", codigo], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+      if (saida && existsSync(path.join(saida, "initdb" + EXE))) return saida;
+    } catch {
+      // pgserver não instalado: segue para as pastas do sistema
+    }
+  }
+  const pastas =
+    process.platform === "win32"
+      ? candidatosWindows()
+      : ["/usr/lib/postgresql/17/bin", "/usr/lib/postgresql/16/bin", "/usr/local/pgsql/bin"];
+  for (const candidato of pastas) {
+    if (existsSync(path.join(candidato, "initdb" + EXE))) return candidato;
+  }
+  return null;
+}
+
+/**
+ * Instala o PostgreSQL embutido (pacote Python `pgserver`) na conta do usuário.
+ * É o caminho que não exige Docker Desktop nem administrador — decisivo no Windows.
+ */
+function instalarPgserver(python) {
+  if (!python) {
+    throw new Error(
+      "Não encontrei o Python para instalar o PostgreSQL embutido. Instale o Python 3 (https://www.python.org/downloads/) e rode de novo, ou abra o Docker Desktop.",
+    );
+  }
+  const temPip = spawnSync(python.programa, [...python.prefixo, "-m", "pip", "--version"], { encoding: "utf8" });
+  if (temPip.status !== 0) {
+    throw new Error(
+      "O Python encontrado não tem o pip disponível. Reinstale o Python marcando a opção \"pip\" (ou use o Docker Desktop).",
+    );
+  }
+  log("Instalando o PostgreSQL embutido (pacote pgserver) na sua conta — sem Docker e sem administrador…");
+  const argumentos = [...python.prefixo, "-m", "pip", "install", "--user", "--disable-pip-version-check", "pgserver"];
+  const primeira = spawnSync(python.programa, argumentos, { encoding: "utf8" });
+  if (primeira.status !== 0) {
+    const texto = `${primeira.stdout ?? ""}${primeira.stderr ?? ""}`;
+    // No Ubuntu/Debian o Python do sistema é "externally managed" (PEP 668) e exige a flag abaixo.
+    if (/externally-managed-environment|PEP 668/i.test(texto)) {
+      log("O Python do sistema pede uma permissão extra; repetindo com --break-system-packages…");
+      const segunda = spawnSync(python.programa, [...argumentos, "--break-system-packages"], { stdio: "inherit" });
+      if (segunda.status === 0) return;
+    } else {
+      console.error(texto.trim().split("\n").slice(-12).join("\n"));
+    }
+    throw new Error(
+      "Não foi possível instalar o PostgreSQL embutido. Alternativa recomendada: abra o Docker Desktop e rode de novo; ou instale o PostgreSQL (https://www.postgresql.org/download/windows/) e defina PG_BIN.",
+    );
+  }
 }
 
 function iniciarComDocker() {
@@ -74,29 +175,54 @@ function iniciarComDocker() {
 }
 
 function iniciarComBinarios(bin) {
+  const ambiente = ambienteDoBin(bin);
   if (!existsSync(path.join(DIR_DADOS, "PG_VERSION"))) {
     log(`Inicializando cluster local em ${path.relative(RAIZ, DIR_DADOS)} (fora do Git)…`);
     mkdirSync(DIR_DADOS, { recursive: true });
-    execFileSync(path.join(bin, "initdb"), ["-D", DIR_DADOS, "-U", USUARIO, "--auth=trust", "--encoding=UTF8"], {
-      stdio: "ignore",
-    });
-  }
-  const emExecucao = spawnSync(path.join(bin, "pg_ctl"), ["-D", DIR_DADOS, "status"], { stdio: "ignore" });
-  if (emExecucao.status !== 0) {
-    log(`Iniciando PostgreSQL local na porta ${PORTA}…`);
-    execFileSync(
-      path.join(bin, "pg_ctl"),
-      ["-D", DIR_DADOS, "-o", `-p ${PORTA} -c listen_addresses=127.0.0.1 -c unix_socket_directories=${DIR_DADOS}`, "-w", "-l", path.join(DIR_DADOS, "servidor.log"), "start"],
-      { stdio: "inherit" },
+    const resultado = spawnSync(
+      exe(bin, "initdb"),
+      ["-D", DIR_DADOS, "-U", USUARIO, "--auth=trust", "--encoding=UTF8"],
+      { stdio: "inherit", env: ambiente },
     );
+    if (resultado.status !== 0) {
+      throw new Error(
+        "O initdb não conseguiu criar o banco local. Apague a pasta .pgdata (só dados sintéticos ficam nela) e rode de novo.",
+      );
+    }
   }
-  const psql = path.join(bin, "psql");
-  const existe = spawnSync(psql, ["-h", "127.0.0.1", "-p", PORTA, "-U", USUARIO, "-d", "postgres", "-tAc", `SELECT 1 FROM pg_database WHERE datname='${BANCO}'`], {
-    encoding: "utf8",
-  });
+  if (!emExecucao(bin, ambiente)) {
+    log(`Iniciando PostgreSQL local na porta ${PORTA}…`);
+    const opcoes = [`-p ${PORTA}`, "-c listen_addresses=127.0.0.1"];
+    // O socket de arquivo só existe no Linux/macOS; no Windows a conexão é sempre por TCP.
+    if (process.platform !== "win32") opcoes.push(`-c unix_socket_directories=${DIR_DADOS}`);
+    const logDoServidor = path.join(DIR_DADOS, "servidor.log");
+    const iniciar = spawnSync(
+      exe(bin, "pg_ctl"),
+      ["-D", DIR_DADOS, "-o", opcoes.join(" "), "-w", "-l", logDoServidor, "start"],
+      { stdio: "inherit", env: ambiente },
+    );
+    if (iniciar.status !== 0) {
+      throw new Error(`O PostgreSQL local não subiu. O motivo está em ${path.relative(RAIZ, logDoServidor)}.`);
+    }
+  }
+  const psql = exe(bin, "psql");
+  const existe = spawnSync(
+    psql,
+    ["-h", "127.0.0.1", "-p", PORTA, "-U", USUARIO, "-d", "postgres", "-tAc", `SELECT 1 FROM pg_database WHERE datname='${BANCO}'`],
+    { encoding: "utf8", env: ambiente },
+  );
   if ((existe.stdout ?? "").trim() !== "1") {
-    execFileSync(path.join(bin, "createdb"), ["-h", "127.0.0.1", "-p", PORTA, "-U", USUARIO, BANCO], { stdio: "inherit" });
+    const criar = spawnSync(exe(bin, "createdb"), ["-h", "127.0.0.1", "-p", PORTA, "-U", USUARIO, BANCO], {
+      stdio: "inherit",
+      env: ambiente,
+    });
+    if (criar.status !== 0) throw new Error(`Não foi possível criar o banco '${BANCO}'.`);
   }
+}
+
+/** O cluster local está respondendo? (usado antes de subir ou parar, para não dar erro bobo) */
+function emExecucao(bin, ambiente = ambienteDoBin(bin)) {
+  return spawnSync(exe(bin, "pg_ctl"), ["-D", DIR_DADOS, "status"], { stdio: "ignore", env: ambiente }).status === 0;
 }
 
 function pararComDocker() {
@@ -104,9 +230,9 @@ function pararComDocker() {
 }
 
 function pararComBinarios(bin) {
-  const emExecucao = spawnSync(path.join(bin, "pg_ctl"), ["-D", DIR_DADOS, "status"], { stdio: "ignore" });
-  if (emExecucao.status === 0) {
-    execFileSync(path.join(bin, "pg_ctl"), ["-D", DIR_DADOS, "-m", "fast", "stop"], { stdio: "inherit" });
+  const ambiente = ambienteDoBin(bin);
+  if (emExecucao(bin, ambiente)) {
+    spawnSync(exe(bin, "pg_ctl"), ["-D", DIR_DADOS, "-m", "fast", "stop"], { stdio: "inherit", env: ambiente });
   } else {
     log("O cluster local não estava em execução.");
   }
@@ -136,49 +262,80 @@ function urlBinarios() {
 
 async function principal() {
   const comando = process.argv[2] ?? "up";
-  const modoForcado = process.env.LIA_DB_MODO;
+  const modo = process.env.LIA_DB_MODO;
   const temDocker = dockerDisponivel();
-  const bin = binariosPgserver();
+  const python = pythonUtilizavel();
+  let bin = binariosPgserver();
+  const usarDocker = temDocker && modo !== "binarios" && modo !== "pgserver" && modo !== "url";
 
   if (comando === "url") {
-    log(process.env.DATABASE_URL ?? (temDocker ? urlLocal() : bin ? urlBinarios() : ""));
+    log(process.env.DATABASE_URL ?? (usarDocker ? urlLocal() : bin ? urlBinarios() : ""));
     return;
   }
+
   if (comando === "status") {
     log(temDocker ? "Docker: disponível" : "Docker: indisponível neste ambiente");
-    log(bin ? `Binários PostgreSQL: ${bin}` : "Binários PostgreSQL: não encontrados");
+    log(bin ? `Binários PostgreSQL: ${bin}` : "Binários PostgreSQL: não encontrados (dá para instalar o embutido: `node tools/db.mjs instalar`)");
+    log(python ? `Python: disponível (${python.programa})` : "Python: não encontrado (necessário para o PostgreSQL embutido)");
+    log(`Modo: ${modo ?? "(automático: Docker → binários do sistema → embutido)"}`);
     log(`DATABASE_URL atual: ${process.env.DATABASE_URL ?? "(não definida)"}`);
     if (existsSync(path.join(RAIZ, ".env"))) log("Arquivo .env: presente (ignorado pelo Git)");
     return;
   }
+
+  if (comando === "instalar") {
+    instalarPgserver(python);
+    bin = binariosPgserver();
+    if (!bin) {
+      throw new Error(
+        "O pacote foi instalado, mas os binários do PostgreSQL não apareceram. Rode de novo; se repetir, abra o Docker Desktop.",
+      );
+    }
+    log(`PostgreSQL embutido pronto: ${bin}`);
+    return;
+  }
+
   if (comando === "up") {
-    if (modoForcado === "url" || (!temDocker && !bin)) {
-      if (!process.env.DATABASE_URL) {
-        throw new Error(
-          "Nenhum PostgreSQL disponível: instale o Docker Desktop (recomendado) ou defina DATABASE_URL para um banco existente.",
-        );
-      }
+    if (modo === "url") {
+      if (!process.env.DATABASE_URL) throw new Error("O modo 'url' exige DATABASE_URL definida.");
       log("Usando a DATABASE_URL já definida.");
       escreverEnv(process.env.DATABASE_URL);
       return;
     }
-    if (temDocker && modoForcado !== "binarios") {
+    if (usarDocker) {
       iniciarComDocker();
       escreverEnv(urlLocal());
-    } else {
+      return;
+    }
+    if (!bin && !process.env.DATABASE_URL) {
+      log("Não encontrei Docker nem PostgreSQL instalado — vou preparar o PostgreSQL embutido (sem administrador)…");
+      instalarPgserver(python);
+      bin = binariosPgserver();
+    }
+    if (bin) {
       iniciarComBinarios(bin);
       log("Aviso: modo binário local (sem Docker). Use apenas para desenvolvimento/testes com dados sintéticos.");
       escreverEnv(urlBinarios());
+      return;
     }
-    return;
+    if (process.env.DATABASE_URL) {
+      log("Nenhum PostgreSQL local disponível: usando a DATABASE_URL já definida.");
+      escreverEnv(process.env.DATABASE_URL);
+      return;
+    }
+    throw new Error(
+      "Nenhum PostgreSQL disponível. Instale o Python 3 (https://www.python.org/downloads/) e rode de novo — o Lia Go instala o resto sozinho.",
+    );
   }
+
   if (comando === "down") {
-    if (temDocker && modoForcado !== "binarios") pararComDocker();
-    else if (bin) pararComBinarios(bin);
+    if (usarDocker) pararComDocker();
+    else if (bin && emExecucao(bin)) pararComBinarios(bin);
     else log("Nada para parar neste ambiente.");
     return;
   }
-  throw new Error(`Comando desconhecido: ${comando}. Use up, down, status ou url.`);
+
+  throw new Error(`Comando desconhecido: ${comando}. Use up, down, status, url ou instalar.`);
 }
 
 principal().catch((erro) => {

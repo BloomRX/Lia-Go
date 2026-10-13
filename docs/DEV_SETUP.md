@@ -9,13 +9,16 @@
 | Item | Versão mínima | Para quê | Obrigatório? |
 |---|---|---|---|
 | Node.js | **22.12+** (LTS) | rodar API, app e testes | sim |
-| Docker Desktop | atual | PostgreSQL local (`npm run db:up`) | sim para os testes de API |
-| Python 3.10+ | — | já necessário para o DevKit (git seguro) | sim (você já usa) |
+| Python 3.10+ | — | DevKit (git seguro) e **PostgreSQL embutido** quando não houver Docker | recomendado |
+| Docker Desktop | atual | PostgreSQL local em contêiner (`npm run db:up`) | recomendado (padrão para quem já usa) |
 | Android Studio + JDK 21 | Otter 2025.2.1+ | gerar o app Android | só quando for gerar o app |
 | Android SDK 36 (minSdk 24) | — | build Android | só quando for gerar o app |
 
-Sem Docker o projeto continua funcionando: ele usa binários locais do PostgreSQL quando existirem
-(`LIA_DB_MODO=binarios` ou `PG_BIN=...`). Nesse caso, use **apenas dados sintéticos**.
+**Sem Docker o projeto continua funcionando.** O Lia Go sobe o banco nesta ordem: Docker → binários do
+PostgreSQL já instalados na máquina (`PG_BIN=...`) → **PostgreSQL embutido**, que ele mesmo instala na sua conta
+(pacote Python `pgserver`, sem administrador e sem contêiner). Se já existe um banco, basta definir `DATABASE_URL`
+ou `TEST_DATABASE_URL`. Todos esses modos servem **apenas para desenvolvimento/testes com dados sintéticos** —
+a decisão de usar Docker Compose no dia a dia continua valendo.
 
 ## 2. Comandos do dia a dia
 
@@ -28,9 +31,12 @@ Sem Docker o projeto continua funcionando: ele usa binários locais do PostgreSQ
 | 4 | Sobe o banco e aplica migrações |
 | 5 | Prepara a build Android (exige Android Studio + JDK 21) |
 | 6 | Sincroniza com o GitHub (valida, commit, rebase, push da branch de trabalho) |
-| 9 | Reinstala as dependências (`node_modules`) — usar quando algo estiver estranho |
 | 7 | Lista os relatórios gerados |
 | 8 | Diagnóstico do ambiente (DevKit) |
+| 9 | Reinstala as dependências (`node_modules`) — usar quando algo estiver estranho |
+
+> As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §1) — inclusive
+> instalando o PostgreSQL embutido na primeira vez, o que pode demorar um pouco.
 
 ### Via terminal (qualquer sistema)
 ```bash
@@ -104,12 +110,14 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `DATABASE_URL não configurada` | banco não subiu | `npm run db:up` (abra o Docker Desktop antes) |
+| `DATABASE_URL não configurada` | banco não subiu | `npm run db:up` (com Docker, abra o Docker Desktop antes; sem Docker, instale o Python 3 e o Lia Go instala o banco embutido) |
 | Testes de API pulados | sem banco | `npm run db:up` e rode de novo |
+| Banco não sobe e não uso Docker | falta o Python 3 para o banco embutido | instale em <https://www.python.org/downloads/> e rode a opção 4 de novo (ou `node tools/db.mjs instalar`) |
 | Preview responde **HTTP 403** | host não autorizado no Vite | já tratado em `apps/mobile/vite.config.ts` (`allowedHosts`); se usar outro host, adicione ali |
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
 | `npm install` falhou | rede, proxy, antivírus, pasta pela metade… | as últimas linhas da tela mostram a **causa real** e o que fazer; se a pasta `node_modules` ficou pela metade, a automação apaga e reinstala sozinha. Para forçar: `LiaGo.bat` **opção 9** (ou `node tools/dev.mjs instalar`) |
+| No Windows aparece `Microsoft Windows [versão …]` e nada acontece | o Windows abriu um prompt de comando no lugar do programa (chamada antiga de `.cmd`, bug corrigido) | atualize o projeto (opção 6) e rode de novo; se repetir, envie o texto da tela |
 | Quero mandar o erro para alguém analisar | — | a falha do npm grava `reports/npm-install-<data>.log` **com o log interno do npm dentro** (é lá que o motivo real aparece) |
 | `EACCES`/permissão no Docker | Docker não iniciado | abra o Docker Desktop |
 

@@ -5,6 +5,7 @@ import {
   diagnosticarComLog,
   diagnosticarFalhaNpm,
   linhasRelevantes,
+  abriuPromptDoWindows,
   erroDeSpawn,
   lerEnvDoTexto,
   montarComando,
@@ -13,11 +14,32 @@ import {
   valeTentarDeNovo,
 } from "./dev-util.mjs";
 
-test("Windows: npm (`.cmd`) é chamado por um shell — senão o Node nem executa", () => {
-  const comando = montarComando("npm.cmd", ["install"], "win32", { ComSpec: "C:\\Windows\\System32\\cmd.exe" });
-  assert.equal(comando.shell, true, "sem shell, o Node recusa executar .cmd (erro EINVAL) e nada aparece");
-  assert.equal(comando.comando, "C:\\Windows\\System32\\cmd.exe");
-  assert.deepEqual(comando.args, ["install"]);
+test("Windows: npm (`.cmd`) vira UMA linha executada pelo cmd.exe — sem `cmd.exe` sobrando na linha", () => {
+  const comando = montarComando("npm.cmd", ["install"], "win32");
+  assert.equal(comando.comando, "npm.cmd install", "o Node executa `cmd.exe /d /s /c \"npm.cmd install\"`");
+  assert.deepEqual(comando.args, [], "sem args o Node não concatena nada (e não emite o aviso DEP0190)");
+  assert.equal(comando.shell, true);
+  assert.doesNotMatch(
+    comando.comando,
+    /cmd\.exe/i,
+    "um `cmd.exe` dentro da linha abre um prompt interativo no lugar do npm: nada roda e o código é 0",
+  );
+});
+
+test("Windows: caminho com espaço vira aspas (Program Files)", () => {
+  const comando = montarComando("C:\\Program Files\\nodejs\\npm.cmd", ["run", "dev:web"], "win32");
+  assert.equal(comando.comando, '"C:\\Program Files\\nodejs\\npm.cmd" run dev:web');
+  assert.deepEqual(comando.args, []);
+});
+
+test("prompt no lugar do programa é reconhecido como 'não rodou nada'", () => {
+  const banner =
+    "Microsoft Windows [versão 10.0.26200.9457]" + String.fromCharCode(13, 10) +
+    "(c) Microsoft Corporation. Todos os direitos reservados.";
+  assert.equal(abriuPromptDoWindows(banner), true, "foi este o sintoma no PC do usuário");
+  assert.equal(abriuPromptDoWindows("Microsoft Windows [Version 10.0.22631.3880]"), true);
+  assert.equal(abriuPromptDoWindows("added 244 packages in 12s"), false);
+  assert.equal(abriuPromptDoWindows(""), false);
 });
 
 test("Windows: programas .exe continuam sem shell (git, node, docker)", () => {

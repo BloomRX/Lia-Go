@@ -41,7 +41,7 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 7. Ao terminar, informe arquivos alterados, comportamento entregue, testes executados, limitações e próximo passo.
 
 ## Comandos de verificação
-- `npm test` roda a suíte completa: ferramentas (21) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
+- `npm test` roda a suíte completa: ferramentas (23) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
 - `npm run typecheck` confere os tipos dos quatro pacotes e é pré-requisito da automação antes de sincronizar.
 - `npm run test:sync` cobre fila de envio, conflito e cursor; `npm run test:app` cobre o armazenamento do aparelho e o sincronizador.
 - `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.

@@ -1,6 +1,6 @@
 # Decisões e questões em aberto — Lia Go
 
-Atualizado em 2026-10-12. Este arquivo registra apenas **decisões confirmadas** e **questões ainda abertas**.
+Atualizado em 2026-10-13. Este arquivo registra apenas **decisões confirmadas** e **questões ainda abertas**.
 Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHITECTURE.md`.
 
 ## Decisões confirmadas
@@ -64,6 +64,20 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **Acesso a dados com SQL explícito + migrações versionadas (`pg`)**, sem ORM, pela auditabilidade.
 - **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
 - **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
+
+### Ambiente de desenvolvimento no Windows (2026-10-12, terceira rodada) — hipóteses reversíveis
+- **PostgreSQL do dia a dia continua sendo o Docker Compose** (decisão confirmada). O que mudou foi a
+  **ordem de tentativa** quando não há Docker rodando: binários já instalados (`PG_BIN`) → **PostgreSQL
+  embutido** (pacote Python `pgserver`, instalado na conta do usuário, sem administrador) → `DATABASE_URL`
+  existente. Motivo: no Windows o Docker Desktop costuma estar fechado, e sem banco os testes de integração
+  eram pulados em silêncio. Nada disso substitui a decisão do Docker; é só o caminho de entrada.
+- **Nunca fingir sucesso:** comando que termina com código 0 mas não fez o trabalho (o Windows abrindo um
+  prompt de comando no lugar do `npm`, ou `npm test` sem nenhum teste) passa a **falhar com explicação**.
+  Relatórios marcam explicitamente "nenhum teste rodou".
+- **Detalhe técnico que causou a falha no PC do usuário:** no Windows, `.cmd`/`.bat` não roda direto pelo
+  Node (correção de segurança de abr/2024), mas **também não pode** ser chamado com um `cmd.exe` extra na
+  linha — o `npm.cmd` usa `%~dp0` para achar o próprio caminho e o `cmd.exe` sobra abre um prompt interativo.
+  A chamada correta é uma **linha única** executada por `cmd.exe /d /s /c "npm.cmd <argumentos>"`.
 
 ### Dependências: 3 avisos moderados do `npm audit` (aceitos, reavaliar a cada versão)
 `@capacitor/cli` → `xcode` → `uuid` (GHSA-w5hq-g745-h8pq). É **ferramenta de desenvolvimento**

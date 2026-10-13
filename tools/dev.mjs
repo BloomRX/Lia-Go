@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unl
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  abriuPromptDoWindows,
   caminhoDoLogDoNpm,
   diagnosticarComLog,
   diagnosticarFalhaNpm,
@@ -88,11 +89,37 @@ function dependenciasInstaladas() {
 function versaoNpm() {
   const resultado = rodar(NPM, ["--version"], { capturar: true });
   if (resultado.error || resultado.status !== 0) return "indisponível";
+  // Em vez da versão, veio o banner do Windows? É o sintoma do prompt no lugar do npm.
+  if (abriuPromptDoWindows(resultado.saida)) return "(não foi possível perguntar ao npm)";
   return resultado.saida.trim();
 }
 
 function banner() {
   console.log(`Lia Go · Node ${versaoNode()} · npm ${versaoNpm()} · ${process.platform}`);
+}
+
+/** A instalação realmente aconteceu? (o marcador é escrito pelo próprio npm) */
+function instalacaoAconteceu() {
+  return existsSync(path.join(RAIZ, "node_modules", ".package-lock.json"));
+}
+
+/**
+ * Um `npm` que "termina bem" mas não instalou nada é o pior tipo de falha: parece sucesso.
+ * Aconteceu no Windows quando o shell abria um prompt em vez de rodar o npm — por isso conferimos.
+ */
+function conferirInstalacaoReal(rotulo, resultado) {
+  if (abriuPromptDoWindows(resultado.saida)) {
+    throw new Error(
+      `${rotulo}: o Windows abriu um prompt de comando no lugar de rodar o npm — NADA foi instalado. ` +
+        "Atualize o projeto (opção 6 do LiaGo.bat) e rode de novo.",
+    );
+  }
+  if (!instalacaoAconteceu()) {
+    throw new Error(
+      `${rotulo}: o comando terminou sem erro, mas a pasta node_modules não ficou pronta — NADA foi instalado. ` +
+        "Rode de novo (opção 9 do LiaGo.bat) e, se repetir, envie o texto desta tela.",
+    );
+  }
 }
 
 function instalarDependencias(forcar = false) {
@@ -108,6 +135,7 @@ function instalarDependencias(forcar = false) {
   const primeira = rodar(NPM, ["install"], { capturar: true });
   if (primeira.status === 0) {
     console.log(primeira.saida.trim());
+    conferirInstalacaoReal("npm install", primeira);
     return;
   }
 
@@ -124,6 +152,7 @@ function instalarDependencias(forcar = false) {
     const limpa = rodar(NPM, ["install", "--no-audit", "--no-fund"], { capturar: true });
     if (limpa.status === 0) {
       console.log(limpa.saida.trim());
+      conferirInstalacaoReal("npm install (após limpar)", limpa);
       console.log("Instalação limpa concluída.");
       return;
     }
@@ -146,6 +175,7 @@ function instalarDependencias(forcar = false) {
   );
   if (segunda.status === 0) {
     console.log(segunda.saida.trim());
+    conferirInstalacaoReal("npm install (2ª tentativa)", segunda);
     console.log("Deu certo na segunda tentativa.");
     return;
   }
@@ -251,8 +281,9 @@ function subirBanco() {
   if (resultado.status !== 0) {
     console.warn(resumoSaida(resultado.saida, 12));
     if (erroDeSpawn(resultado)) console.warn(erroDeSpawn(resultado));
-    console.warn("Não foi possível subir o banco automaticamente.");
-    console.warn("Se você tem Docker Desktop, abra-o e rode de novo (opção 4 do LiaGo.bat).");
+    console.warn("Não foi possível subir o banco automaticamente (o motivo está nas linhas acima).");
+    console.warn("Sem Docker, o Lia Go instala um PostgreSQL embutido sozinho — para isso precisa do Python 3 (python.org).");
+    console.warn("Rode a opção 4 do LiaGo.bat para tentar de novo.");
     console.warn("Sem banco, os testes de integração são PULADOS com aviso — não é sucesso.");
     return false;
   }
@@ -266,6 +297,10 @@ function subirBanco() {
 function rodarTipos() {
   titulo("Checagem de tipos (domain, api e mobile)");
   const resultado = rodar(NPM, ["run", "typecheck"], { capturar: true });
+  if (abriuPromptDoWindows(resultado.saida)) {
+    console.error("O Windows abriu um prompt no lugar de rodar o npm — os tipos NÃO foram conferidos.");
+    return { status: 1, saida: resultado.saida };
+  }
   if (resultado.status !== 0) console.error(resultado.saida.trim() || "(tsc não explicou o motivo)");
   else console.log("Tipos conferidos sem erro.");
   return { status: resultado.status, saida: resultado.saida };
@@ -330,6 +365,12 @@ function gravarRelatorio(resultadoTestes) {
     `| Código de saída | ${resultadoTestes.status} |`,
     `| Checagem de tipos (\`npm run typecheck\`) | ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"} |`,
     ``,
+    ...(resultadoTestes.passou === 0
+      ? [
+          `> ⚠️ **Nenhum teste rodou nesta execução — isso NÃO é sucesso.** Confira as dependências (opção 9 do LiaGo.bat) e rode de novo.`,
+          ``,
+        ]
+      : []),
     `> Os testes de integração são pulados (com aviso, nunca em silêncio) quando o banco não responde.`,
     `> Banco local: \`LiaGo.bat\` opção 4, ou \`npm run db:up\` com o Docker aberto.`,
     ``,
@@ -419,6 +460,12 @@ function comandoTestes() {
     console.error(`\nExistem ${resultado.falhou} teste(s) falhando. Corrija antes de sincronizar.`);
     return 1;
   }
+  if (resultado.passou === 0) {
+    console.error(
+      "\nNenhum teste rodou — isso NÃO é sucesso. Confira a instalação das dependências (opção 9 do LiaGo.bat).",
+    );
+    return 1;
+  }
   if (resultado.tipos?.status !== 0) {
     console.error("\nA checagem de tipos falhou. Corrija antes de sincronizar.");
     return 1;
@@ -457,6 +504,17 @@ async function comandoDevParalelo() {
   const { spawn } = await import("node:child_process");
   const api = spawn(...comandoComoArgumentos("dev:api"));
   const web = spawn(...comandoComoArgumentos("dev:web"));
+  // Se um dos dois morrer, a pessoa precisa saber — antes a tela ficava parada sem explicação.
+  const vigiar = (nome, processo) => {
+    processo.on("error", (erro) => console.error(`\nNão foi possível iniciar ${nome}: ${erro.message}`));
+    processo.on("exit", (codigo) => {
+      if (typeof codigo === "number" && codigo !== 0) {
+        console.error(`\n${nome} terminou com código ${codigo} — a causa está nas linhas acima.`);
+      }
+    });
+  };
+  vigiar("a API", api);
+  vigiar("o app web", web);
   console.log("\nAPI: http://localhost:3000 · App web: http://localhost:5273");
   console.log("Para o celular na mesma rede: use o endereço 'Network' mostrado pelo app web e defina VITE_API_URL.");
   const encerrar = () => {

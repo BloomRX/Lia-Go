@@ -12,17 +12,43 @@
 /**
  * Como chamar o comando em cada sistema.
  *
- * No Windows, o Node (a partir da correção de segurança de abril/2024) **não deixa** executar
- * `.cmd`/`.bat` diretamente: o processo nem começa e o erro aparece como `EINVAL`. Como o `npm`
- * do Windows é o `npm.cmd`, é obrigatório passar por um shell. Sem isso, todo `npm install`,
- * `npm test` ou `npm run dev` falha sem explicação — foi exatamente o que aconteceu.
+ * No Windows, o Node (correção de segurança de abril/2024) **não deixa** executar `.cmd`/`.bat`
+ * diretamente: o processo nem começa (erro `EINVAL`). Como o `npm` do Windows é o `npm.cmd`,
+ * é obrigatório passar por um shell — mas do jeito certo.
+ *
+ * ⚠️ Mandar shell **e** programa `.cmd` juntos quebra tudo: o Node monta
+ * `cmd.exe /d /s /c "cmd.exe install"`, o `cmd.exe` interno abre em modo interativo, imprime o
+ * banner "Microsoft Windows [versão …]", **não instala nada** e ainda devolve código 0 — um
+ * "sucesso" falso que já nos custou uma rodada de depuração no PC do usuário.
+ *
+ * A forma certa é entregar a **linha inteira** em `comando`, com `args` vazio e `shell: true`:
+ * o Node executa `%ComSpec% /d /s /c "<linha>"`, que roda o `.cmd` direto — sem `cmd.exe` sobrando,
+ * sem o aviso DEP0190 (que só aparece quando se passam argumentos junto com shell) e sem o
+ * problema de `%~dp0` que fazia o `npm.cmd` se perder.
  */
-export function montarComando(comando, args, plataforma = process.platform, ambiente = process.env) {
-  const ehScriptDeShell = /\.(cmd|bat)$/i.test(comando);
-  if (plataforma === "win32" && ehScriptDeShell) {
-    return { comando: (ambiente.ComSpec ?? ambiente.COMSPEC ?? "cmd.exe"), args, shell: true };
+export function montarComando(comando, args, plataforma = process.platform) {
+  if (plataforma === "win32" && /\.(cmd|bat)$/i.test(comando)) {
+    return { comando: citarParaCmd(comando, args), args: [], shell: true };
   }
   return { comando, args, shell: false };
+}
+
+/**
+ * Monta a linha de comando (com aspas) que o `cmd.exe /d /s /c` vai executar.
+ * Aspas no programa são obrigatórias quando o caminho tem espaço (ex.: `C:\Program Files\nodejs`).
+ */
+export function citarParaCmd(comando, args) {
+  const programa = /[\s"]/.test(comando) ? `"${comando}"` : comando;
+  return [programa, ...args].join(" ");
+}
+
+/**
+ * O Windows abriu um prompt de comando no lugar de executar o programa?
+ * É o sintoma da chamada errada de `.cmd`/`.bat`: parece que funcionou (código 0), mas nada rodou.
+ */
+export function abriuPromptDoWindows(saida) {
+  const texto = saida ?? "";
+  return /^Microsoft Windows \[/mi.test(texto) || /\(c\) Microsoft Corporation/i.test(texto);
 }
 
 /** Traduz o erro de um spawn que nem chegou a rodar (npm ausente, caminho errado, bloqueio). */
