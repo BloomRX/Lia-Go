@@ -443,3 +443,38 @@ test("a rodada NÃO fica presa quando sobra um processo vivo (o caso do PostgreS
     "o processo tem que sair sozinho depois de terminar: a saída não pode ficar num cano que o processo do banco herda",
   );
 });
+
+test("as funções principais do orquestrador continuam existindo (nenhuma remoção acidental)", async () => {
+  // Uma limpeza de código apagou `enviarParaOGitHub` sem avisar; o erro só apareceu no fim de uma rodada real.
+  const { readFileSync } = await import("node:fs");
+  const fonte = readFileSync(new URL("./dev.mjs", import.meta.url), "utf8");
+  const esperadas = [
+    "atualizarDoGitHub",
+    "caminhosAlterados",
+    "conferirInstalacaoReal",
+    "enviarParaOGitHub",
+    "gravarDiagnostico",
+    "gravarRelatorio",
+    "instalarDependencias",
+    "rodarAoVivo",
+    "rodarTestes",
+    "subirBanco",
+    "subirServidores",
+    "temConflitoPendente",
+    "tratarConflitoDeSincronizacao",
+  ];
+  for (const nome of esperadas) {
+    assert.match(fonte, new RegExp(`function ${nome}\\b`), `a função ${nome} precisa existir em tools/dev.mjs`);
+  }
+  // E toda chamada a uma função "nossa" precisa ter uma definição correspondente.
+  const chamadas = [...fonte.matchAll(/(?<![.\w])([a-z][A-Za-z0-9]*)\(/g)].map((m) => m[1]);
+  const definidas = new Set([...fonte.matchAll(/function ([A-Za-z0-9_]+)/g)].map((m) => m[1]));
+  // O que vem de dev-util.mjs também conta como definido.
+  for (const nome of [...fonte.matchAll(/import \{([\s\S]*?)\} from "\.\/dev-util\.mjs"/g)].flatMap((m) => m[1].split(","))) {
+    const limpo = nome.trim();
+    if (limpo) definidas.add(limpo);
+  }
+  const daCasa = [...new Set(chamadas)].filter((nome) => /^(atualizar|caminhos|conferir|enviar|gravar|instalar|rodar|subir|tem|tratar)/.test(nome));
+  const faltando = daCasa.filter((nome) => !definidas.has(nome));
+  assert.deepEqual(faltando, [], "chamadas sem definição quebram a rodada no meio do caminho");
+});

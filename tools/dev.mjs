@@ -893,6 +893,26 @@ function atualizarDoGitHub() {
 }
 
 
+/** Envia o que a rodada produziu (relatórios e diagnóstico) para o GitHub. */
+function enviarParaOGitHub() {
+  titulo("Enviando o resultado para o GitHub");
+  const ramo = `origin/${branchAtual() || "sua-branch"}`;
+  if (temConflitoPendente()) {
+    console.warn("Já existia um conflito pela metade nesta cópia (de uma operação anterior).");
+    console.warn("Não vou mexer nele: resolva com `git status` e `git rebase --abort` (ou me peça ajuda) e rode de novo.");
+  }
+  try {
+    sincronizar(`chore: rodada automatica do LiaGo.bat (${new Date().toISOString().slice(0, 16).replace("T", " ")})`);
+    console.log("Enviado. Os relatórios desta rodada já estão no GitHub.");
+    return true;
+  } catch (erro) {
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+    console.error(explicarEnvioQueFalhou(mensagem, ramo));
+    registrarAviso(`O envio para o GitHub não terminou: ${mensagem}`);
+    return false;
+  }
+}
+
 /**
  * A sincronização parou no meio de um conflito (o seu trabalho e o do GitHub no mesmo arquivo).
  * Num fluxo de um clique isso não pode ficar assim: a próxima rodada nem abriria. Desfazemos só
