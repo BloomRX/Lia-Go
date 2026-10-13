@@ -456,6 +456,13 @@ export function linhaDeProgresso(recebidos, total, segundos, animado = true) {
   return `  [${barra}] ${String(pct).padStart(3)}% · ${formatarTamanho(recebidos)}/${formatarTamanho(total)} · ${velocidade}`.trimEnd();
 }
 
+/** "45 segundos" / "15 minutos" — para explicar limites de tempo em linguagem simples. */
+export function descreverDuracao(milissegundos) {
+  const ms = Number(milissegundos) || 0;
+  if (ms < 60000) return `${Math.max(1, Math.round(ms / 1000))} segundo(s)`;
+  return `${Math.round(ms / 60000)} minuto(s)`;
+}
+
 /** "12s" / "1 min 5s" — para fechar cada etapa com algo concreto. */
 export function tempoDecorrido(inicioMs, agoraMs = Date.now()) {
   const segundos = Math.max(0, Math.round((Number(agoraMs) - Number(inicioMs)) / 1000));
@@ -472,6 +479,7 @@ export function tempoDecorrido(inicioMs, agoraMs = Date.now()) {
 export async function rodarComSaidaAoVivo(programa, argumentos, opcoes = {}) {
   const { spawn } = await import("node:child_process");
   const inicio = Date.now();
+  const limite = Number(opcoes.limiteMs ?? 0);
   return await new Promise((resolve) => {
     const processo = spawn(programa, argumentos, {
       cwd: opcoes.cwd,
@@ -490,6 +498,16 @@ export async function rodarComSaidaAoVivo(programa, argumentos, opcoes = {}) {
     };
     processo.stdout.on("data", consumir);
     processo.stderr.on("data", consumir);
+    // Teto de tempo: nenhuma etapa pode prender a rodada para sempre.
+    let expirou = false;
+    const freio =
+      limite > 0
+        ? setTimeout(() => {
+            expirou = true;
+            console.log(`   ⏱️ ${opcoes.legenda ?? "a etapa"} passou de ${descreverDuracao(limite)} — interrompi para você não ficar esperando.`);
+            processo.kill();
+          }, limite)
+        : null;
     const relogio = setInterval(() => {
       if (Date.now() - ultimaSaida >= 15000) {
         console.log(`   ⏳ ${opcoes.legenda ?? "ainda trabalhando"} — sem novidades há ${tempoDecorrido(ultimaSaida)} (total ${tempoDecorrido(inicio)}). Aguarde, não travou.`);
@@ -497,7 +515,8 @@ export async function rodarComSaidaAoVivo(programa, argumentos, opcoes = {}) {
     }, 5000);
     const finalizar = (status, erro) => {
       clearInterval(relogio);
-      resolve({ status: status ?? 1, saida, error: erro ?? null });
+      if (freio) clearTimeout(freio);
+      resolve({ status: status ?? 1, saida, error: erro ?? null, expirou });
     };
     processo.on("error", (erro) => finalizar(1, erro));
     process.on("exit", () => clearInterval(relogio));
@@ -522,15 +541,51 @@ export function escolherAlvoDeAtualizacao(dados) {
 }
 
 /**
- * Um `merge --ff-only` só funciona quando o seu trabalho local é um pedaço direto do histórico
- * do GitHub. Quando existe qualquer commit seu aqui (relatórios, por exemplo) **ou** algum arquivo
- * alterado no caminho, ele recusa — e foi assim que a atualização automática deixou de acontecer.
- * Esta função decide o que fazer em cada caso, sem adivinhar.
+ * Quais alterações locais colidem com o que está chegando do GitHub?
+ *
+ * Regra nascida de um erro real: antes, a atualização guardava tudo num `stash` e, se a devolução
+ * conflitasse, fazia `reset --hard` — isso **descartou trabalho em andamento** de dentro do editor
+ * (o conteúdo só sobrava no stash). Agora nada é guardado nem descartado: olhamos exatamente quais
+ * arquivos colidem e decidimos sem tocar no que é da pessoa.
  */
-export function decidirAtualizacao({ alvo, commitsNovos, temAlteracoesLocais, commitsLocais }) {
+export function classificarAlteracoesLocais({ caminhosLocais, caminhosQueChegam, prefixosGerados = ["reports/"] }) {
+  const chegam = new Set(caminhosQueChegam ?? []);
+  const sobrepostos = (caminhosLocais ?? []).filter((caminho) => chegam.has(caminho));
+  const apenasGerados =
+    sobrepostos.length > 0 &&
+    sobrepostos.every((caminho) => prefixosGerados.some((prefixo) => caminho.startsWith(prefixo)));
+  return { sobrepostos, apenasGerados };
+}
+
+/**
+ * Decide como trazer a versão nova **sem nunca descartar trabalho local**.
+ *
+ * Um `merge --ff-only` recusa quando há qualquer commit seu (relatórios, por exemplo) ou arquivo
+ * alterado no caminho — era assim que a atualização deixava de acontecer, e o usuário precisava
+ * rodar `git pull` na mão.
+ *
+ * - `avancar` / `reaplicar-por-cima`: cópia limpa — avança direto ou reaplica os seus commits por cima.
+ * - `atualizar-com-alteracoes`: você mexeu em arquivos que o GitHub **não** mudou: atualiza direto,
+ *   sem tocar no seu trabalho.
+ * - `restaurar-gerados-e-atualizar`: as únicas colisões são relatórios gerados automaticamente em
+ *   `reports/` (regerados a cada rodada) — restaura a versão do GitHub e atualiza.
+ * - `pular-por-seguranca`: você tem alterações não commitadas em arquivos que o GitHub também mudou
+ *   (ou alterações + commits próprios, que impedem o rebase). **Não atualiza** e explica o que fazer.
+ */
+export function decidirAtualizacao({ alvo, commitsNovos, commitsLocais, alteracoes }) {
   if (!alvo) return { acao: "sem-referencia" };
   if (commitsNovos === 0) return { acao: "atualizado" };
-  if (temAlteracoesLocais) return { acao: "guardar-e-atualizar" };
+  if (alteracoes?.tem) {
+    if ((alteracoes.sobrepostos ?? []).length > 0) {
+      if (alteracoes.apenasGerados) return { acao: "restaurar-gerados-e-atualizar" };
+      // Colisão em arquivo de verdade: **commitar** o que existe aqui (nunca descartar) e só então atualizar.
+      // O rebase cuida do resto; se não der, o commit fica e nada se perde.
+      return { acao: "guardar-trabalho-e-atualizar" };
+    }
+    // Sem colisão: se existem commits locais, o rebase exige a cópia limpa — commita antes.
+    if (commitsLocais > 0) return { acao: "guardar-trabalho-e-atualizar" };
+    return { acao: "atualizar-com-alteracoes" };
+  }
   if (commitsLocais > 0) return { acao: "reaplicar-por-cima" };
   return { acao: "avancar" };
 }
@@ -552,4 +607,37 @@ export function explicarEnvioQueFalhou(mensagem, ramo) {
     "O seu trabalho continua salvo aqui; a próxima rodada tenta enviar de novo.",
     `Se quiser resolver na mão: git pull --rebase ${ramo ?? "origin/<sua-branch>"} e depois git push.`,
   ].join("\n");
+}
+
+/**
+ * Roda um programa **entregando a saída direto para a tela** (sem "cano") e avisa de tempos em tempos
+ * que ele continua trabalhando.
+ *
+ * ⚠️ Por que não capturar a saída aqui: programas como o `pg_ctl` terminam deixando **outro processo
+ * vivo** (o servidor do PostgreSQL). Se a saída passar por um cano (pipe), esse processo herda o cano,
+ * o Node continua segurando a leitura e **nunca sai** — a rodada fica presa para sempre, mesmo com todo
+ * o trabalho concluído. Foi exatamente isso que travou o Lia Go por quase uma hora no Windows, logo
+ * depois de o banco subir. Com `inherit` não existe cano para herdar.
+ */
+export async function rodarHerdandoSaida(programa, argumentos, opcoes = {}) {
+  const { spawn } = await import("node:child_process");
+  return await new Promise((resolve) => {
+    const inicio = Date.now();
+    const processo = spawn(programa, argumentos, {
+      cwd: opcoes.cwd,
+      env: opcoes.env ?? process.env,
+      shell: opcoes.shell ?? false,
+      stdio: "inherit",
+    });
+    const intervalo = opcoes.intervaloMs ?? 15000;
+    const relogio = setInterval(() => {
+      console.log(`   ⏳ ${opcoes.legenda ?? "ainda trabalhando"} — ${tempoDecorrido(inicio)} até agora. Aguarde, não travou.`);
+    }, intervalo);
+    const finalizar = (status, erro) => {
+      clearInterval(relogio);
+      resolve({ status: status ?? 1, error: erro ?? null });
+    };
+    processo.on("error", (erro) => finalizar(1, erro));
+    processo.on("exit", (codigo) => finalizar(codigo));
+  });
 }

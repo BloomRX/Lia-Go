@@ -23,6 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   candidatosDePython,
+  rodarHerdandoSaida,
   formatarTamanho,
   linhaDeProgresso,
   tempoDecorrido,
@@ -346,15 +347,25 @@ async function iniciarComBinarios(bin) {
     log(`Criando o banco local em ${path.relative(RAIZ, DIR_DADOS)} (fora do Git). É a primeira vez: costuma levar de 10 a 60 segundos…`);
     const inicioInitdb = Date.now();
     mkdirSync(DIR_DADOS, { recursive: true });
-    const resultado = await rodarComAviso(
-      exe(bin, "initdb"),
-      ["-D", DIR_DADOS, "-U", USUARIO, "--auth=trust", "--encoding=UTF8"],
-      ambiente,
-      "criando o banco local",
-    );
+    const argumentosInitdb = ["-D", DIR_DADOS, "-U", USUARIO, "--auth=trust", "--encoding=UTF8"];
+    let resultado = await rodarHerdandoSaida(exe(bin, "initdb"), argumentosInitdb, {
+      env: ambiente,
+      legenda: "criando o banco local",
+    });
+    // Uma tentativa anterior interrompida (internet, antivírus, Ctrl+C) deixa a pasta pela metade;
+    // nesse caso o initdb recusa e a saída certa é limpar a pasta gerada e criar de novo.
+    if (resultado.status !== 0 && !existsSync(path.join(DIR_DADOS, "PG_VERSION"))) {
+      log("A pasta do banco ficou pela metade numa tentativa anterior. Limpando e criando de novo…");
+      rmSync(DIR_DADOS, { recursive: true, force: true });
+      mkdirSync(DIR_DADOS, { recursive: true });
+      resultado = await rodarHerdandoSaida(exe(bin, "initdb"), argumentosInitdb, {
+        env: ambiente,
+        legenda: "criando o banco local (2ª tentativa)",
+      });
+    }
     if (resultado.status !== 0) {
       throw new Error(
-        "Não consegui criar o banco local. Apague a pasta .pgdata (só dados sintéticos ficam nela) e rode de novo.",
+        "Não consegui criar o banco local. Rode de novo: se a pasta .pgdata tiver ficado pela metade, a próxima rodada limpa e recria (só dados sintéticos ficam nela).",
       );
     }
     log(`Banco local criado em ${tempoDecorrido(inicioInitdb)}.`);
@@ -366,11 +377,10 @@ async function iniciarComBinarios(bin) {
     // O socket de arquivo só existe no Linux/macOS; no Windows a conexão é sempre por TCP.
     if (process.platform !== "win32") opcoes.push(`-c unix_socket_directories=${DIR_DADOS}`);
     const logDoServidor = path.join(DIR_DADOS, "servidor.log");
-    const iniciar = await rodarComAviso(
+    const iniciar = await rodarHerdandoSaida(
       exe(bin, "pg_ctl"),
       ["-D", DIR_DADOS, "-o", opcoes.join(" "), "-w", "-l", logDoServidor, "start"],
-      ambiente,
-      "iniciando o PostgreSQL",
+      { env: ambiente, legenda: "iniciando o PostgreSQL" },
     );
     if (iniciar.status === 0) log(`PostgreSQL no ar em ${tempoDecorrido(inicioPgctl)}.`);
     if (iniciar.status !== 0) {
@@ -392,41 +402,6 @@ async function iniciarComBinarios(bin) {
     });
     if (criar.status !== 0) throw new Error(`Não foi possível criar o banco '${BANCO}'.`);
   }
-}
-
-/**
- * Roda um programa do banco mostrando a saída conforme ela sai e avisando de tempos em tempos que
- * ele continua trabalhando (no Windows, o antivírus pode deixar a criação do banco bem lenta).
- */
-function rodarComAviso(programa, argumentos, ambiente, legenda) {
-  return new Promise((resolve) => {
-    const inicio = Date.now();
-    const processo = spawn(programa, argumentos, { env: ambiente, stdio: ["ignore", "pipe", "pipe"] });
-    let saida = "";
-    let ultimaSaida = Date.now();
-    const consumir = (pedaco) => {
-      const texto = pedaco.toString();
-      saida += texto;
-      ultimaSaida = Date.now();
-      process.stdout.write(texto);
-    };
-    processo.stdout.on("data", consumir);
-    processo.stderr.on("data", consumir);
-    const relogio = setInterval(() => {
-      if (Date.now() - ultimaSaida >= 15000) {
-        console.log(`   ⏳ ${legenda} — sem novidades há ${tempoDecorrido(ultimaSaida)} (total ${tempoDecorrido(inicio)}). Aguarde, não travou.`);
-      }
-    }, 5000);
-    const finalizar = (status) => {
-      clearInterval(relogio);
-      resolve({ status: status ?? 1, saida });
-    };
-    processo.on("error", (erro) => {
-      clearInterval(relogio);
-      resolve({ status: 1, saida: `${saida}\n${erro.message}` });
-    });
-    processo.on("exit", finalizar);
-  });
 }
 
 /** O cluster local está respondendo? (usado antes de subir ou parar, para não dar erro bobo) */
@@ -552,9 +527,33 @@ async function principal() {
   throw new Error(`Comando desconhecido: ${comando}. Use up, down, status, url ou instalar.`);
 }
 
-principal().catch((erro) => {
-  console.error(`db.mjs: ${erro instanceof Error ? erro.message : String(erro)}`);
-  process.exit(1);
-});
+/**
+ * Encerra o script de propósito, depois de garantir que tudo foi escrito na tela.
+ *
+ * ⚠️ Não é firula: o `pg_ctl` sobe o PostgreSQL e termina, mas o servidor **continua rodando**.
+ * Em algumas situações (Windows, principalmente) o Node entende que ainda há trabalho por causa
+ * desse processo e **não sai**, deixando a rodada parada mesmo com o banco pronto. Sair aqui é seguro:
+ * o servidor não é filho deste processo e continua no ar.
+ */
+function encerrar(codigo) {
+  const saida = () => process.exit(codigo);
+  const rede = setTimeout(saida, 500);
+  if (process.stdout.writableLength === 0) {
+    clearTimeout(rede);
+    saida();
+    return;
+  }
+  process.stdout.write("", () => {
+    clearTimeout(rede);
+    saida();
+  });
+}
+
+principal()
+  .then((codigo) => encerrar(codigo ?? 0))
+  .catch((erro) => {
+    console.error(`db.mjs: ${erro instanceof Error ? erro.message : String(erro)}`);
+    encerrar(1);
+  });
 
 void readFileSync;

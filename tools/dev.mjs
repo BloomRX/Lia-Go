@@ -14,6 +14,10 @@
  *
  * Nunca publica nada em nome de ninguém, nunca faz push em branch protegida e nunca
  * imprime segredo: a DATABASE_URL é sempre exibida com a senha oculta.
+ *
+ * ⚠️ Etapas que deixam processos vivos (o servidor do banco, por exemplo) devem usar saída herdada,
+ * nunca "cano" (`stdio: "pipe"`): o processo que continua rodando herda o cano, o Node fica preso e a
+ * rodada nunca termina — mesmo com todo o trabalho pronto. Ver `rodarHerdandoSaida` em `dev-util.mjs`.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -22,9 +26,11 @@ import { fileURLToPath } from "node:url";
 import {
   abriuPromptDoWindows,
   candidatosDePython,
+  classificarAlteracoesLocais,
   decidirAtualizacao,
   escolherAlvoDeAtualizacao,
   explicarEnvioQueFalhou,
+  descreverDuracao,
   explicarLogDoServidor,
   tempoDecorrido,
   temConflitoNoStatus,
@@ -69,6 +75,7 @@ async function rodarAoVivo(comando, args, opcoes = {}) {
     cwd: opcoes.cwd ?? RAIZ,
     shell: chamada.shell,
     legenda: opcoes.legenda,
+    limiteMs: opcoes.limiteMs,
   });
 }
 
@@ -85,6 +92,8 @@ function rodar(comando, args, opcoes = {}) {
     shell: chamada.shell,
     env: { ...process.env, ...(opcoes.env ?? {}) },
     stdio: opcoes.capturar ? "pipe" : "inherit",
+    // Limite de tempo: nenhuma etapa pode prender a rodada para sempre (a tela avisa se estourar).
+    timeout: opcoes.timeout,
   });
   return {
     status: resultado.status ?? 1,
@@ -117,6 +126,12 @@ function verificarNode() {
  * (interrompida, ou um `npm install` de outro pacote) já deixou a API sem o driver do banco.
  * Por isso conferimos os pacotes de que cada parte depende, um por um.
  */
+/** Teto de tempo para a etapa do banco (primeira criação no Windows pode ser lenta). */
+const LIMITE_BANCO_MS = Number(process.env.LIA_LIMITE_BANCO_MS ?? 0) || 15 * 60 * 1000;
+/** Tetos das outras etapas longas: instalar dependências e rodar a suíte. */
+const LIMITE_INSTALL_MS = Number(process.env.LIA_LIMITE_INSTALL_MS ?? 0) || 10 * 60 * 1000;
+const LIMITE_TESTES_MS = Number(process.env.LIA_LIMITE_TESTES_MS ?? 0) || 15 * 60 * 1000;
+
 const PACOTES_OBRIGATORIOS = ["fastify", "@fastify/cookie", "pg", "zod", "vite", "react", "@capacitor/core"];
 
 function dependenciasInstaladas() {
@@ -175,7 +190,7 @@ async function instalarDependencias(forcar = false) {
 
   console.log(`⏳ Baixando pacotes do npm a partir de ${urlRegistro}. A saída aparece conforme chega (costuma levar de 10 a 60 segundos; na primeira vez, mais).`);
   const inicioInstall = Date.now();
-  const primeira = await rodarAoVivo(NPM, ["install"], { legenda: "instalando dependências" });
+  const primeira = await rodarAoVivo(NPM, ["install"], { legenda: "instalando dependências", limiteMs: LIMITE_INSTALL_MS });
   if (primeira.status === 0) {
     console.log(primeira.saida.trim());
     conferirInstalacaoReal("npm install", primeira);
@@ -193,7 +208,10 @@ async function instalarDependencias(forcar = false) {
   if (dicas.some((dica) => dica.id === "arvore_pela_metade")) {
     console.log("\nA pasta de dependências ficou pela metade. Apagando node_modules (pasta gerada) e instalando limpo…");
     limparNodeModules();
-    const limpa = await rodarAoVivo(NPM, ["install", "--no-audit", "--no-fund"], { legenda: "instalando dependências" });
+    const limpa = await rodarAoVivo(NPM, ["install", "--no-audit", "--no-fund"], {
+      legenda: "instalando dependências",
+      limiteMs: LIMITE_INSTALL_MS,
+    });
     if (limpa.status === 0) {
       console.log(limpa.saida.trim());
       conferirInstalacaoReal("npm install (após limpar)", limpa);
@@ -215,7 +233,7 @@ async function instalarDependencias(forcar = false) {
       "--fetch-retry-maxtimeout=30000",
       "--fetch-timeout=60000",
     ],
-    { legenda: "instalando dependências (2ª tentativa)" },
+    { legenda: "instalando dependências (2ª tentativa)", limiteMs: LIMITE_INSTALL_MS },
   );
   if (segunda.status === 0) {
     console.log(segunda.saida.trim());
@@ -323,7 +341,14 @@ function subirBanco() {
   titulo("Banco de dados");
   const inicio = Date.now();
   // Sem capturar a saída: o que o banco escreve (download com barra, criação, tempos) aparece NA HORA.
-  const resultado = rodar(NODE, [path.join(RAIZ, "tools", "db.mjs"), "up"]);
+  const resultado = rodar(NODE, [path.join(RAIZ, "tools", "db.mjs"), "up"], { timeout: LIMITE_BANCO_MS });
+  if (resultado.error?.code === "ETIMEDOUT") {
+    console.warn(`\nO banco demorou mais de ${descreverDuracao(LIMITE_BANCO_MS)} e eu interrompi,`);
+    console.warn("para você não ficar esperando sem saber. O que já foi baixado está guardado.");
+    console.warn("Rode de novo (pode ser só falta de memória ou o antivírus atrapalhando na primeira vez).");
+    registrarAviso(`A etapa do banco passou de ${descreverDuracao(LIMITE_BANCO_MS)} e foi interrompida.`);
+    return false;
+  }
   if (resultado.status !== 0) {
     if (erroDeSpawn(resultado)) console.warn(erroDeSpawn(resultado));
     console.warn("Não foi possível subir o banco automaticamente (o motivo está nas linhas acima).");
@@ -357,7 +382,7 @@ async function rodarTestes() {
   titulo("Testes (domínio + API)");
   console.log("⏳ Rodando a suíte completa (a saída aparece abaixo, teste por teste; costuma levar cerca de 30 segundos).");
   const inicio = Date.now();
-  const resultado = await rodarAoVivo(NPM, ["test"], { legenda: "rodando os testes" });
+  const resultado = await rodarAoVivo(NPM, ["test"], { legenda: "rodando os testes", limiteMs: LIMITE_TESTES_MS });
   const saida = resultado.saida;
   const linhas = saida.split("\n");
   let passou = 0;
@@ -454,6 +479,19 @@ function gravarRelatorio(resultadoTestes) {
 
   console.log(`Relatório gravado em ${path.relative(RAIZ, caminho)}`);
   return caminho;
+}
+
+/** Arquivos com alterações locais (inclui novos), no formato de caminho puro. */
+function caminhosAlterados() {
+  return rodar("git", ["status", "--porcelain"], { capturar: true })
+    .saida.trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((linha) => {
+      const corpo = linha.slice(3).trim();
+      const caminho = corpo.includes(" -> ") ? corpo.split(" -> ").pop() : corpo;
+      return caminho.replace(/^"|"$/g, "");
+    });
 }
 
 function branchAtual() {
@@ -749,8 +787,18 @@ function atualizarDoGitHub() {
   const commitsLocais = alvo
     ? Number(rodar("git", ["rev-list", "--count", `${alvo}..HEAD`], { capturar: true }).saida.trim() || "0")
     : 0;
-  const temAlteracoesLocais = rodar("git", ["status", "--porcelain"], { capturar: true }).saida.trim().length > 0;
-  const decisao = decidirAtualizacao({ alvo, commitsNovos, temAlteracoesLocais, commitsLocais });
+  const caminhosLocais = caminhosAlterados();
+  const caminhosVindos = alvo
+    ? rodar("git", ["diff", "--name-only", `HEAD..${alvo}`], { capturar: true })
+        .saida.trim()
+        .split("\n")
+        .filter(Boolean)
+    : [];
+  const alteracoes = {
+    tem: caminhosLocais.length > 0,
+    ...classificarAlteracoesLocais({ caminhosLocais, caminhosQueChegam: caminhosVindos }),
+  };
+  const decisao = decidirAtualizacao({ alvo, commitsNovos, commitsLocais, alteracoes });
 
   if (decisao.acao === "sem-referencia") {
     console.log("Esta branch ainda não existe no GitHub, então não há versão nova para baixar.");
@@ -760,33 +808,75 @@ function atualizarDoGitHub() {
     console.log(`Já está na versão mais nova do GitHub (${alvo}).`);
     return { atualizou: false };
   }
+  if (decisao.acao === "guardar-trabalho-e-atualizar") {
+    // A rodada já commita o trabalho no fim; fazer isso ANTES de atualizar evita travar o atualizador
+    // e, principalmente, não descarta nada (era o que o antigo stash + reset fazia de errado).
+    console.log("Existem alterações aqui; vou guardá-las num commit antes de atualizar (nada é descartado)…");
+    rodar("git", ["add", "-A"], { capturar: true });
+    const guardou = rodar("git", ["commit", "-m", "chore: guarda o trabalho local antes de atualizar (LiaGo.bat)"], {
+      capturar: true,
+    });
+    if (guardou.status === 0) {
+      console.log("Trabalho guardado no histórico; sigo com a atualização.");
+    } else {
+      console.warn("Não consegui guardar automaticamente (o git pediu configuração de nome/e-mail?). Nada foi alterado.");
+      console.warn(resumoSaida(guardou.saida, 4));
+      console.warn("Resolva de um destes jeitos e rode de novo:");
+      console.warn('  1) git config user.name "Seu Nome" && git config user.email "voce@exemplo.com"');
+      console.warn("  2) ou commite na mão: git add -A && git commit -m \"meu trabalho\"");
+      registrarAviso("A atualização foi adiada: não consegui guardar as alterações locais em um commit (nada foi descartado).");
+      return { atualizou: false, adiada: true };
+    }
+  }
+  if (decisao.acao === "pular-por-seguranca") {
+    const lista = alteracoes.sobrepostos.slice(0, 6).join(", ");
+    console.warn(
+      `\nExistem ${commitsNovos} commit(s) novo(s) no GitHub, mas eu NÃO atualizei para não misturar o seu trabalho.`,
+    );
+    console.warn(alteracoes.sobrepostos.length > 0
+      ? `Você tem alterações não commitadas em arquivo(s) que o GitHub também mudou: ${lista}.`
+      : "Você tem alterações não commitadas e também commits seus; o git não deixa reaplicar assim.");
+    console.warn("Nada foi alterado. Escolha uma destas e rode de novo:");
+    console.warn("  1) guardar o que você fez: git add -A && git commit -m \"meu trabalho\"");
+    console.warn(`  2) desfazer as suas mudanças nesses arquivos: git checkout -- ${lista || "<arquivo>"}`);
+    registrarAviso(
+      "A atualização foi adiada: existem alterações locais que colidem com o que chegou do GitHub (nada foi descartado).",
+    );
+    return { atualizou: false, adiada: true };
+  }
+  if (decisao.acao === "restaurar-gerados-e-atualizar") {
+    console.log("Os relatórios antigos destas rodadas serão substituídos pelos do GitHub (são gerados de novo a cada vez)…");
+    for (const caminho of alteracoes.sobrepostos) {
+      const rastreado = rodar("git", ["ls-files", "--error-unmatch", caminho], { capturar: true }).status === 0;
+      if (rastreado) rodar("git", ["checkout", "--", caminho], { capturar: true });
+      else rmSync(path.join(RAIZ, caminho), { force: true });
+    }
+  }
   console.log(
     `Existem ${commitsNovos} commit(s) novo(s) no GitHub${commitsLocais > 0 ? ` e ${commitsLocais} seu(s) aqui — vou preservar o seu trabalho` : ""}.`,
   );
 
-  const guardar = decisao.acao === "guardar-e-atualizar";
-  if (guardar && !guardarAlteracoesLocais()) {
-    return { atualizou: false };
-  }
-
+  const alteracoesAgora = caminhosAlterados().length > 0;
   let aplicou = rodar("git", ["merge", "--ff-only", alvo], { capturar: true });
-  if (aplicou.status !== 0 && commitsLocais > 0) {
+  if (aplicou.status !== 0 && !alteracoesAgora) {
     console.log("Reaplicando os seus commits por cima da versão nova (rebase)…");
     aplicou = rodar("git", ["rebase", alvo], { capturar: true });
     if (aplicou.status !== 0) {
       rodar("git", ["rebase", "--abort"], { capturar: true });
-      console.warn("Não consegui reaplicar automaticamente; nada foi perdido e sigo com a versão local.");
-      console.warn(`Se quiser, rode você mesmo: git pull --rebase ${alvo}`);
-      registrarAviso("A atualização automática não conseguiu reaplicar os commits locais; o usuário foi avisado.");
-      if (guardar) devolverAlteracoesLocais();
-      return { atualizou: false };
+      console.warn("\nO seu trabalho e o do GitHub mexem no mesmo trecho de um arquivo (conflito de verdade).");
+      console.warn("O seu trabalho está guardado num commit, a cópia está limpa e NADA foi perdido.");
+      console.warn(`Para juntar as duas partes quando quiser: git pull --rebase ${alvo}`);
+      console.warn("(o git vai marcar os trechos; escolha o que fica e rode git rebase --continue).");
+      registrarAviso(
+        "A atualização foi adiada por conflito real no mesmo trecho de um arquivo. O trabalho local foi guardado em commit e a cópia ficou limpa.",
+      );
+      return { atualizou: false, adiada: true };
     }
   }
   if (aplicou.status !== 0) {
     console.warn(resumoSaida(aplicou.saida, 6));
     console.warn(`Não consegui atualizar automaticamente. Nada foi alterado. Para resolver na mão: git pull --rebase ${alvo}`);
     registrarAviso("A atualização automática não foi aplicada; sigo com a versão local e o usuário foi avisado.");
-    if (guardar) devolverAlteracoesLocais();
     return { atualizou: false };
   }
 
@@ -799,74 +889,9 @@ function atualizarDoGitHub() {
   } else {
     console.log("Nada mudou nesta atualização.");
   }
-  if (guardar) devolverAlteracoesLocais();
   return { atualizou: mudou };
 }
 
-/**
- * Guarda as alterações locais antes de atualizar (nada é descartado).
- * É o que impede o caso "não consegui atualizar porque um arquivo gerado mudou".
- */
-function guardarAlteracoesLocais() {
-  console.log("Existem arquivos alterados aqui; guardando para devolver depois da atualização…");
-  const guardado = rodar("git", ["stash", "push", "--include-untracked", "-m", "lia-go: antes de atualizar"], { capturar: true });
-  if (guardado.status !== 0) {
-    console.warn("Não consegui guardar as alterações locais; sigo com a versão local para não arriscar o seu trabalho.");
-    console.warn(resumoSaida(guardado.saida, 4));
-    registrarAviso("Alterações locais impediram a atualização automática.");
-    return false;
-  }
-  return true;
-}
-
-/**
- * Devolve as alterações guardadas.
- * Se elas mexerem no mesmo trecho do que veio do GitHub, **não** se deixa marca de conflito no
- * arquivo: o projeto volta a ficar limpo na versão nova e o trabalho da pessoa continua guardado,
- * com o passo a passo de como trazer a sua parte.
- */
-function devolverAlteracoesLocais() {
-  const devolver = rodar("git", ["stash", "pop"], { capturar: true });
-  if (devolver.status === 0) {
-    console.log("Suas alterações foram devolvidas.");
-    return;
-  }
-  const guardado = rodar("git", ["stash", "list"], { capturar: true }).saida.trim();
-  // Tudo o que era seu está no stash: deixar o projeto limpo é seguro e evita arquivo quebrado.
-  rodar("git", ["reset", "--hard", "HEAD"], { capturar: true });
-  if (!guardado) {
-    console.warn("Não consegui devolver as alterações guardadas e não encontrei o que ficou guardado.");
-    registrarAviso("Uma atualização automática não devolveu as alterações locais; verifique com git status.");
-    return;
-  }
-  console.warn("Uma alteração sua mexe no mesmo ponto de um arquivo que mudou no GitHub.");
-  console.warn("Deixei o projeto limpo, na versão nova, e a sua alteração guardada (nada foi perdido):");
-  console.warn("  1) git stash pop           → traz a sua alteração de volta");
-  console.warn("  2) abra o arquivo com marcas (<<<<<<<) e escolha o que fica");
-  console.warn("  3) git add -A && git commit -m \"minha alteracao\"");
-  registrarAviso("Uma alteração local conflitou com a versão nova e ficou guardada no stash (veja git stash list).");
-}
-
-
-/** Envia o que a rodada produziu (relatórios e diagnóstico) para o GitHub. */
-function enviarParaOGitHub() {
-  titulo("Enviando o resultado para o GitHub");
-  const ramo = `origin/${branchAtual() || "sua-branch"}`;
-  if (temConflitoPendente()) {
-    console.warn("Já existia um conflito pela metade nesta cópia (de uma operação anterior).");
-    console.warn("Não vou mexer nele: resolva com `git status` e `git rebase --abort` (ou me peça ajuda) e rode de novo.");
-  }
-  try {
-    sincronizar(`chore: rodada automatica do LiaGo.bat (${new Date().toISOString().slice(0, 16).replace("T", " ")})`);
-    console.log("Enviado. Os relatórios desta rodada já estão no GitHub.");
-    return true;
-  } catch (erro) {
-    const mensagem = erro instanceof Error ? erro.message : String(erro);
-    console.error(explicarEnvioQueFalhou(mensagem, ramo));
-    registrarAviso(`O envio para o GitHub não terminou: ${mensagem}`);
-    return false;
-  }
-}
 
 /**
  * A sincronização parou no meio de um conflito (o seu trabalho e o do GitHub no mesmo arquivo).
@@ -968,7 +993,12 @@ function comandoAtualizar() {
     console.log("\nAtualizado. Rode o LiaGo.bat (duplo clique) para a rodada completa com a versão nova.");
     return 0;
   }
-  console.log("\nNada a atualizar agora. Se o problema continua, rode o LiaGo.bat (duplo clique).");
+  if (resultado.adiada) {
+    console.log("\nA atualização ficou adiada para não mexer no seu trabalho.");
+    console.log("Resolva as alterações listadas acima (guardar com git commit ou desfazer com git checkout --) e rode de novo.");
+    return 0;
+  }
+  console.log("\nProjeto já está na versão mais nova do GitHub.");
   return 0;
 }
 

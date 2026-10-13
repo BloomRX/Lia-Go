@@ -10,7 +10,9 @@ import {
   lerEnvDoTexto,
   candidatosDePython,
   comandosDeExtracao,
+  classificarAlteracoesLocais,
   decidirAtualizacao,
+  descreverDuracao,
   escolherAlvoDeAtualizacao,
   escolherArquivoDeBinarios,
   explicarLogDoServidor,
@@ -336,7 +338,7 @@ test("tamanhos e tempos em português", () => {
   assert.equal(tempoDecorrido(Date.now() - 65_000), "1 min 5s");
 });
 
-test("atualização escolhe a referência certa e decide o que fazer sem adivinhar", () => {
+test("atualização: escolhe a referência e nunca decide mexer no que é da pessoa", () => {
   // De onde puxar
   assert.equal(
     escolherAlvoDeAtualizacao({ upstream: "origin/arena", upstreamExiste: true, branchExisteNoRemoto: true, branch: "arena" }),
@@ -348,29 +350,50 @@ test("atualização escolhe a referência certa e decide o que fazer sem adivinh
     "origin/arena",
     "upstream quebrado cai para origin/<branch>",
   );
-  assert.equal(
-    escolherAlvoDeAtualizacao({ upstream: null, branchExisteNoRemoto: false, branch: "trabalho/lia-go" }),
-    null,
-    "branch que não existe no GitHub não tem o que puxar",
-  );
+  assert.equal(escolherAlvoDeAtualizacao({ branch: "local-so", branchExisteNoRemoto: false }), null);
+
+  // Quais alterações colidem com o que chega
+  const classificado = classificarAlteracoesLocais({
+    caminhosLocais: ["reports/relatorio-1.md", "tools/dev.mjs", "docs/a.md"],
+    caminhosQueChegam: ["tools/dev.mjs", "docs/b.md"],
+  });
+  assert.deepEqual(classificado.sobrepostos, ["tools/dev.mjs"], "só conta o que os dois lados mexeram");
+  assert.equal(classificado.apenasGerados, false);
+  const soRelatorios = classificarAlteracoesLocais({
+    caminhosLocais: ["reports/relatorio-1.md"],
+    caminhosQueChegam: ["reports/relatorio-1.md"],
+  });
+  assert.equal(soRelatorios.apenasGerados, true, "relatórios são gerados a cada rodada: podem ser refeitos");
 
   // O que fazer — cada caso do mundo real
-  const casos = [
-    [{ alvo: "origin/x", commitsNovos: 3, temAlteracoesLocais: false, commitsLocais: 0 }, "avancar"],
-    [{ alvo: "origin/x", commitsNovos: 3, temAlteracoesLocais: false, commitsLocais: 2 }, "reaplicar-por-cima"],
-    [{ alvo: "origin/x", commitsNovos: 3, temAlteracoesLocais: true, commitsLocais: 0 }, "guardar-e-atualizar"],
-    [{ alvo: "origin/x", commitsNovos: 0, temAlteracoesLocais: true, commitsLocais: 1 }, "atualizado"],
-    [{ alvo: null, commitsNovos: 0, temAlteracoesLocais: false, commitsLocais: 0 }, "sem-referencia"],
-  ];
-  for (const [entrada, esperado] of casos) {
-    assert.equal(decidirAtualizacao(entrada).acao, esperado, JSON.stringify(entrada));
-  }
-  // O caso que aconteceu no PC do usuário: ele tinha um commit local e o GitHub tinha um novo.
+  const decidir = (entrada) => decidirAtualizacao(entrada).acao;
+  assert.equal(decidir({ alvo: "origin/x", commitsNovos: 3, commitsLocais: 0, alteracoes: { tem: false } }), "avancar");
   assert.equal(
-    decidirAtualizacao({ alvo: "origin/arena", commitsNovos: 1, temAlteracoesLocais: false, commitsLocais: 1 }).acao,
+    decidir({ alvo: "origin/x", commitsNovos: 1, commitsLocais: 1, alteracoes: { tem: false } }),
     "reaplicar-por-cima",
-    "commit local não pode impedir a atualização (era o bug: desistia e seguia com a versão velha)",
+    "commit local não pode impedir a atualização (era o bug original)",
   );
+  assert.equal(
+    decidir({ alvo: "origin/x", commitsNovos: 2, commitsLocais: 0, alteracoes: { tem: true, sobrepostos: [], apenasGerados: false } }),
+    "atualizar-com-alteracoes",
+    "alterações em arquivos que o GitHub não tocou não impedem nada",
+  );
+  assert.equal(
+    decidir({ alvo: "origin/x", commitsNovos: 2, commitsLocais: 0, alteracoes: { tem: true, sobrepostos: ["reports/a.md"], apenasGerados: true } }),
+    "restaurar-gerados-e-atualizar",
+  );
+  assert.equal(
+    decidir({ alvo: "origin/x", commitsNovos: 2, commitsLocais: 0, alteracoes: { tem: true, sobrepostos: ["tools/dev.mjs"], apenasGerados: false } }),
+    "guardar-trabalho-e-atualizar",
+    "colisão em arquivo de verdade: commitar o que existe (nunca descartar) e só então atualizar",
+  );
+  assert.equal(
+    decidir({ alvo: "origin/x", commitsNovos: 2, commitsLocais: 2, alteracoes: { tem: true, sobrepostos: [], apenasGerados: false } }),
+    "guardar-trabalho-e-atualizar",
+    "com commits locais, o rebase exige a cópia limpa: guarda primeiro",
+  );
+  assert.equal(decidir({ alvo: "origin/x", commitsNovos: 0, commitsLocais: 5, alteracoes: { tem: true, sobrepostos: ["a"], apenasGerados: false } }), "atualizado");
+  assert.equal(decidir({ alvo: null, commitsNovos: 0, commitsLocais: 0, alteracoes: { tem: false } }), "sem-referencia");
 });
 
 test("conflito pela metade é reconhecido (foi o que quebrou a rodada seguinte)", () => {
@@ -379,4 +402,44 @@ test("conflito pela metade é reconhecido (foi o que quebrou a rodada seguinte)"
   assert.equal(temConflitoNoStatus("UU tools/dev.mjs"), true, "rebase parado no meio deixa o arquivo como UU");
   assert.equal(temConflitoNoStatus(" M docs/a.md\nAA docs/b.md"), true);
   assert.equal(temConflitoNoStatus("DU tools/db.mjs"), true);
+});
+
+test("limites de tempo são explicados em linguagem simples", () => {
+  assert.equal(descreverDuracao(4000), "4 segundo(s)");
+  assert.equal(descreverDuracao(900000), "15 minuto(s)");
+  assert.equal(descreverDuracao(100), "1 segundo(s)", "nunca dizer '0 segundos'");
+});
+
+test("a rodada NÃO fica presa quando sobra um processo vivo (o caso do PostgreSQL)", async () => {
+  // Reproduz o travamento de ~1h no Windows: o programa que sobe o banco termina, mas o servidor
+  // continua rodando e herda os canos de saída. Se esses canos ficarem abertos, o Node espera para
+  // sempre e a rodada nunca termina — mesmo com todo o trabalho pronto (foi o que aconteceu).
+  const { spawn } = await import("node:child_process");
+  const caminhoDaUtil = new URL("./dev-util.mjs", import.meta.url).href;
+  const comandos =
+    process.platform === "win32"
+      ? ["cmd", ["/c", "start", "/b", "ping", "-n", "20", "127.0.0.1"]]
+      : ["bash", ["-c", "sleep 20 & echo pronto"]];
+  const roteiro = [
+    `const { rodarHerdandoSaida } = await import(${JSON.stringify(caminhoDaUtil)});`,
+    `await rodarHerdandoSaida(${JSON.stringify(comandos[0])}, ${JSON.stringify(comandos[1])}, { intervaloMs: 60000 });`,
+    `console.log("terminou");`,
+  ].join("\n");
+  const filho = spawn(process.execPath, ["--input-type=module", "-e", roteiro], { stdio: "ignore" });
+  const saiuSozinho = await new Promise((resolve) => {
+    const relogio = setTimeout(() => resolve(false), 8000);
+    filho.on("exit", () => {
+      clearTimeout(relogio);
+      resolve(true);
+    });
+  });
+  if (!saiuSozinho) {
+    filho.kill("SIGKILL");
+    spawn(process.platform === "win32" ? "taskkill" : "pkill", process.platform === "win32" ? ["/f", "/im", "ping.exe"] : ["-f", "sleep"], { stdio: "ignore" });
+  }
+  assert.equal(
+    saiuSozinho,
+    true,
+    "o processo tem que sair sozinho depois de terminar: a saída não pode ficar num cano que o processo do banco herda",
+  );
 });

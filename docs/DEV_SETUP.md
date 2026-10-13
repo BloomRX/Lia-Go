@@ -56,6 +56,10 @@ API e app web. Para as opções abaixo: `LiaGo.bat menu`.
 
 > As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §1). A **primeira**
 > execução é a mais demorada: instala as dependências e baixa os binários do banco (uma vez só).
+>
+> Nenhuma etapa pode travar sem avisar: cada passo longo tem **teto de tempo** (banco 15 min, dependências
+> 10 min, testes 15 min — ajustáveis por `LIA_LIMITE_BANCO_MS`, `LIA_LIMITE_INSTALL_MS`, `LIA_LIMITE_TESTES_MS`)
+> e avisa "⏳ ainda trabalhando" a cada 15 segundos.
 
 ### Via terminal (qualquer sistema)
 ```bash
@@ -138,6 +142,8 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
 | `npm install` falhou | rede, proxy, antivírus, pasta pela metade… | as últimas linhas da tela mostram a **causa real** e o que fazer; se a pasta `node_modules` ficou pela metade, a automação apaga e reinstala sozinha. Para forçar: `LiaGo.bat` **opção 9** (ou `node tools/dev.mjs instalar`) |
 | Teve que rodar `git pull` na mão | a versão antiga só sabia avançar quando a cópia estava exatamente igual ao GitHub; com qualquer commit seu (relatórios, por exemplo) ela desistia e seguia com a versão velha | já corrigido: agora ela reaplica os seus commits por cima da versão nova (rebase), guarda/devolve arquivos alterados e **reinicia a rodada** para usar o que baixou. Para só atualizar: `LiaGo.bat atualizar` (ou menu, opção 10) |
+| **A rodada ficou parada muito tempo (quase 1h) logo depois de subir o banco** | era um defeito nosso: a saída do passo do banco passava por um "cano" que o processo do PostgreSQL herdava, e o Node ficava esperando para sempre — mesmo com o banco pronto | corrigido: o passo do banco herda a tela (sem cano) e o script encerra por conta própria depois de terminar. Se acontecer de novo, feche a janela e rode de novo; o banco que já subiu continua no ar |
+| **A atualização foi adiada** ("alterações não commitadas em arquivo que o GitHub também mudou") | proteção: o Lia Go **não** mexe no seu trabalho | resolva de um dos dois jeitos e rode de novo: `git add -A && git commit -m "meu trabalho"` **ou** `git checkout -- <arquivo>` (descartar só aquele arquivo) |
 | A rodada parece parada | alguma etapa demorada está em curso | cada etapa é numerada (`[3/7]`) e as longas mostram progresso; o `⏳ ainda trabalhando` aparece a cada 15 segundos de silêncio |
 | Download do banco muito lento ou interrompido | internet/proxy/antivírus | a barra mostra a velocidade; se ficar **30 segundos sem avançar**, o Lia Go cancela e explica — rode de novo (o download recomeça do zero, nada fica pela metade) |
 | No Windows aparece `Microsoft Windows [versão …]` e nada acontece | o Windows abriu um prompt de comando no lugar do programa (chamada antiga de `.cmd`, bug corrigido) | atualize o projeto (opção 6) e rode de novo; se repetir, envie o texto da tela |

@@ -65,6 +65,25 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
 - **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
 
+### Nunca descartar trabalho local e nunca deixar a rodada presa (2026-10-13, quinta rodada)
+- **Dois defeitos encontrados em uso real, ambos corrigidos:**
+  1. **A rodada ficava presa com o banco pronto.** O passo do banco rodava com a saída em "cano" (`pipe`)
+     para poder mostrar o progresso. O `pg_ctl` sobe o PostgreSQL e termina, mas **o servidor continua
+     rodando e herda o cano**; o Node então espera para sempre por um cano que nunca fecha. Resultado:
+     ~1 hora parada logo depois de escrever o `.env`, com todo o trabalho concluído. Duas correções:
+     a saída do banco é **herdada** (sem cano) e o `db.mjs` **encerra explicitamente** ao terminar.
+  2. **A atualização podia descartar trabalho em andamento.** Ao devolver alterações guardadas (`stash`),
+     um conflito levava a `git reset --hard` — que apaga a cópia de trabalho (o conteúdo ficava só no
+     stash). Isso apagou código em edição durante o desenvolvimento. **O mecanismo foi removido**:
+     agora a atualização **não guarda nem descarta nada**; ela compara os arquivos alterados localmente
+     com os que chegam do GitHub e decide: avança, reaplica os commits por cima, atualiza convivendo com
+     as alterações (sem colisão), refaz relatórios gerados, ou **adia com explicação** (colisão em
+     arquivo de verdade). Trabalho não commitado nunca é tocado.
+- **Tetos de tempo em todas as etapas longas** (banco 15 min, dependências 10 min, testes 15 min):
+  nenhuma rodada pode ficar presa indefinidamente. Ao estourar, a etapa é interrompida com explicação.
+- **Regra para quem for mexer no código**: programa que deixa **outro processo vivo** (servidor do banco)
+  deve rodar com saída **herdada**, nunca `stdio: "pipe"`. Há teste automatizado cobrindo esse travamento.
+
 ### Atualização automática: nada de desistir em silêncio (2026-10-13, quarta rodada)
 - **O que aconteceu**: a atualização usava só `git merge --ff-only`. Com qualquer commit local (os relatórios
   automáticos, por exemplo) ela recusava, avisava de leve e **continuava com a versão velha** — o usuário

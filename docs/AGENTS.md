@@ -42,9 +42,12 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 
 ## Comandos de verificação
 - Windows: **duplo clique em `LiaGo.bat`** faz a rodada completa (`node tools/dev.mjs tudo`, 7 etapas numeradas: atualizar → dependências → banco → testes → relatório/diagnóstico → envio → app no ar). Opções manuais: `LiaGo.bat menu`.
+- **Nada de descartar trabalho local**: a atualização compara arquivos alterados aqui × os que chegam do GitHub e decide; nunca usa `stash` + `reset --hard`. Colisão real ⇒ adiar com explicação.
+- **Etapas que deixam processo vivo** (banco): saída **herdada** e encerramento explícito — `stdio: "pipe"` + processo neto = rodada presa para sempre (há teste).
+- **Teto de tempo em etapas longas** (banco/dependências/testes) com aviso "⏳ ainda trabalhando" a cada 15s.
 - **Atualização automática não pode desistir**: com commits locais, reaplicar por cima (rebase); com arquivos alterados, guardar/devolver (stash); **reiniciar a rodada** quando baixa código novo (processo em execução usa o código que já carregou). Nunca deixar a cópia no meio de um rebase.
 - **Feedback obrigatório em etapas longas**: saída ao vivo (npm install/teste), barra de progresso no download do banco e aviso `⏳ ainda trabalhando` após 15s de silêncio. Etapa longa nunca deve parecer travada.
-- `npm test` roda a suíte completa: ferramentas (34) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
+- `npm test` roda a suíte completa: ferramentas (36) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
 - `npm run typecheck` confere os tipos dos quatro pacotes e é pré-requisito da automação antes de sincronizar.
 - `npm run test:sync` cobre fila de envio, conflito e cursor; `npm run test:app` cobre o armazenamento do aparelho e o sincronizador.
 - `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.
