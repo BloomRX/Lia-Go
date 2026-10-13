@@ -97,7 +97,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 38 testes.
 - App (armazenamento local e sincronizador, com IndexedDB simulado): `npm run test:app` — 13 testes.
 - API (integração com PostgreSQL real): `npm run test:api` — 39 testes.
-- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 25 testes.
+- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 26 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo

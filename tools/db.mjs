@@ -20,7 +20,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { candidatosDePython, PYTHON_MAX, PYTHON_MIN, versaoCompativel } from "./dev-util.mjs";
+import { candidatosDePython, explicarLogDoServidor, PYTHON_MAX, PYTHON_MIN, versaoCompativel } from "./dev-util.mjs";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR_DADOS = path.join(RAIZ, ".pgdata");
@@ -188,6 +188,20 @@ function iniciarComDocker() {
   throw new Error("O contêiner subiu, mas o PostgreSQL não respondeu a tempo.");
 }
 
+/**
+ * Lê o fim do log do servidor para transformar "não subiu" em algo acionável.
+ * Caso conhecido do Windows: o PostgreSQL se recusa a rodar com privilégios de administrador.
+ */
+function motivoDoLogDoServidor(caminho) {
+  try {
+    const linhas = readFileSync(caminho, "utf8").trim().split("\n").slice(-6).join("\n");
+    if (!linhas) return "";
+    return ` Últimas linhas do log:\n${linhas}${explicarLogDoServidor(linhas, PORTA)}`;
+  } catch {
+    return "";
+  }
+}
+
 function iniciarComBinarios(bin) {
   const ambiente = ambienteDoBin(bin);
   if (!existsSync(path.join(DIR_DADOS, "PG_VERSION"))) {
@@ -216,7 +230,9 @@ function iniciarComBinarios(bin) {
       { stdio: "inherit", env: ambiente },
     );
     if (iniciar.status !== 0) {
-      throw new Error(`O PostgreSQL local não subiu. O motivo está em ${path.relative(RAIZ, logDoServidor)}.`);
+      throw new Error(
+        `O PostgreSQL local não subiu.${motivoDoLogDoServidor(logDoServidor)} Log completo: ${path.relative(RAIZ, logDoServidor)}.`,
+      );
     }
   }
   const psql = exe(bin, "psql");

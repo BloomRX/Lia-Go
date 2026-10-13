@@ -303,3 +303,27 @@ export function candidatosDePython(plataforma = process.platform) {
         ["python", []],
       ];
 }
+
+// ---------------------------------------------------------------------------
+// Banco local: transformar o log do PostgreSQL em algo acionável (tools/db.mjs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dicas em português para os erros conhecidos do log do servidor PostgreSQL local.
+ * Devolve "" quando o log não traz nenhum caso reconhecido.
+ */
+export function explicarLogDoServidor(linhas, porta = "55432") {
+  const texto = String(linhas ?? "");
+  const dicas = [];
+  if (/administrative|administrador/i.test(texto)) {
+    dicas.push(
+      "O Lia Go está sendo executado como administrador e o PostgreSQL não roda assim. Feche esta janela e abra o LiaGo.bat com um duplo clique normal.",
+    );
+  }
+  if (/Address already in use|endereço já está em uso/i.test(texto)) {
+    dicas.push(
+      `Já existe algo usando a porta ${porta} (outra instância do Lia Go ou um PostgreSQL antigo). Feche o que estiver rodando e tente de novo — ou rode com LIA_PG_PORTA=55433.`,
+    );
+  }
+  return dicas.map((dica) => `\n→ ${dica}`).join("");
+}

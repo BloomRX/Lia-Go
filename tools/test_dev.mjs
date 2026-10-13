@@ -9,6 +9,7 @@ import {
   erroDeSpawn,
   lerEnvDoTexto,
   candidatosDePython,
+  explicarLogDoServidor,
   montarComando,
   ocultarUrl,
   versaoCompativel,
@@ -232,4 +233,12 @@ test("janela de Python para o banco embutido (3.9–3.12) — fora dela o pip n�
   for (const versao of ["3.8", "3.13", "3.14", "2.7", "4.0", ""]) {
     assert.equal(versaoCompativel(versao), false, `${versao} não tem binário publicado`);
   }
+});
+
+test("log do PostgreSQL vira dica acionável (administrador, porta ocupada)", () => {
+  const admin = explicarLogDoServidor("FATAL: execution of PostgreSQL by a user with administrative permissions is not permitted");
+  assert.match(admin, /administrador/, "no Windows, rodar como administrador impede o banco de subir");
+  const porta = explicarLogDoServidor('could not bind IPv4 address "127.0.0.1": Address already in use', "55432");
+  assert.match(porta, /55432/, "a dica precisa dizer qual porta está ocupada");
+  assert.equal(explicarLogDoServidor("database system is ready to accept connections"), "", "log normal não gera dica");
 });
