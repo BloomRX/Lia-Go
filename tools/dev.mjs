@@ -82,6 +82,9 @@ function verificarNode() {
 const PACOTES_OBRIGATORIOS = ["fastify", "@fastify/cookie", "pg", "zod", "vite", "react", "@capacitor/core"];
 
 function dependenciasInstaladas() {
+  // O npm escreve `node_modules/.package-lock.json` ao terminar uma instalação. Sem esse marcador,
+  // a pasta pode estar pela metade — foi o que aconteceu quando o npm nem chegava a rodar no Windows.
+  if (!existsSync(path.join(RAIZ, "node_modules", ".package-lock.json"))) return false;
   return PACOTES_OBRIGATORIOS.every((nome) => existsSync(path.join(RAIZ, "node_modules", ...nome.split("/"))));
 }
 
