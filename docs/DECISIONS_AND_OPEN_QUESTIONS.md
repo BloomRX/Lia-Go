@@ -65,6 +65,22 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
 - **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
 
+### Atualização automática: nada de desistir em silêncio (2026-10-13, quarta rodada)
+- **O que aconteceu**: a atualização usava só `git merge --ff-only`. Com qualquer commit local (os relatórios
+  automáticos, por exemplo) ela recusava, avisava de leve e **continuava com a versão velha** — o usuário
+  precisou rodar `git pull` na mão. Além disso, mesmo quando a atualização dava certo, o processo em execução
+  **não troca o próprio código**: o resto da rodada seguia com o comportamento antigo (foi por isso que a
+  rodada "voltou direto para o banco de dados", sem as etapas numeradas).
+- **Correções**: `fetch → decide → avançar` quando é simples; **rebase** quando existem commits locais (o
+  trabalho da pessoa é reaplicado por cima, nada é descartado); **stash + devolução** quando há arquivos
+  alterados; se a devolução conflitar, o projeto fica limpo na versão nova e a alteração fica guardada com
+  instruções (nunca marca de conflito no arquivo); **a rodada reinicia sozinha** quando baixa código novo.
+- **Conflito durante o envio**: o DevKit deixava a cópia no meio de um rebase (com marcas de conflito), o que
+  quebrava a rodada seguinte. Agora a sincronização desfaz só essa parte e preserva o commit local.
+- **Cópia sem branch ("HEAD solto")**: em vez de criar uma branch nova e perdida, a automação reencontra a
+  branch de trabalho que corresponde ao GitHub e volta para ela.
+- **Atalho para o usuário**: `LiaGo.bat atualizar` (menu, opção 10) faz só a atualização, com explicação.
+
 ### Automação de um clique (2026-10-13) — comportamento do `LiaGo.bat`
 - **Duplo clique não pergunta nada**: `LiaGo.bat` (sem argumento) roda `node tools/dev.mjs tudo` e ao final
   deixa a API e o app web no ar. As opções manuais continuam existindo em `LiaGo.bat menu`.

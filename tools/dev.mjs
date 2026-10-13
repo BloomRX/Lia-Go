@@ -4,6 +4,7 @@
  *
  * É o cérebro por trás do LiaGo.bat (Windows) e pode ser usado direto em qualquer sistema:
  *   node tools/dev.mjs tudo         → UMA tecla: atualiza, prepara, testa, relata, envia e deixa o app no ar
+ *   node tools/dev.mjs atualizar    → traz a versão mais nova do GitHub (sem perder trabalho local)
  *   node tools/dev.mjs auto         → banco + migrações + testes + relatório + sincronização
  *   node tools/dev.mjs testes       → roda a suíte completa e grava relatório
  *   node tools/dev.mjs banco        → sobe o PostgreSQL local e aplica migrações
@@ -21,8 +22,12 @@ import { fileURLToPath } from "node:url";
 import {
   abriuPromptDoWindows,
   candidatosDePython,
+  decidirAtualizacao,
+  escolherAlvoDeAtualizacao,
+  explicarEnvioQueFalhou,
   explicarLogDoServidor,
   tempoDecorrido,
+  temConflitoNoStatus,
   caminhoDoLogDoNpm,
   diagnosticarComLog,
   diagnosticarFalhaNpm,
@@ -159,11 +164,11 @@ function conferirInstalacaoReal(rotulo, resultado) {
 }
 
 async function instalarDependencias(forcar = false) {
+  titulo(forcar ? "Reinstalando dependências (npm install)" : "Dependências (npm install)");
   if (!forcar && dependenciasInstaladas()) {
-    console.log("Dependências já instaladas (npm install será pulado).");
+    console.log("Já estão instaladas — nada a baixar agora.");
     return;
   }
-  titulo(forcar ? "Reinstalando dependências (npm install)" : "Instalando dependências (npm install)");
   const registro = rodar(NPM, ["config", "get", "registry"], { capturar: true });
   const urlRegistro = registro.status === 0 ? registro.saida.trim() : "(não foi possível perguntar ao npm)";
   console.log(`Baixando pacotes de: ${urlRegistro}`);
@@ -456,9 +461,44 @@ function branchAtual() {
 }
 
 /** Garante que o trabalho não vai para a branch protegida: cria/muda para uma branch de trabalho. */
+/**
+ * Qual é a branch "oficial" do projeto no GitHub (a que o repositório aponta como principal)?
+ * Serve para reconectar uma cópia que ficou sem branch, em vez de criar uma branch nova e perdida.
+ */
+function branchPrincipalDoRemoto() {
+  const simbolico = rodar("git", ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], { capturar: true }).saida.trim();
+  if (simbolico.startsWith("origin/")) return simbolico.slice("origin/".length);
+  // Sem origin/HEAD: usa a branch local que já segue algo do GitHub, se houver exatamente uma.
+  const linhas = rodar("git", ["for-each-ref", "--format=%(refname:short) %(upstream:short)", "refs/heads"], { capturar: true })
+    .saida.trim()
+    .split("\n")
+    .map((linha) => linha.trim())
+    .filter((linha) => / origin\/\S+$/.test(linha));
+  if (linhas.length === 1) return linhas[0].split(" ")[0];
+  return "";
+}
+
 function garantirBranchDeTrabalho() {
   const atual = branchAtual();
   if (atual && atual !== "main" && atual !== "master") return atual;
+
+  // Cópia sem branch ("HEAD solto"): reconecta na branch de verdade antes de qualquer outra coisa.
+  // Sem isso, uma rodada criava uma branch nova que não existe no GitHub e nunca baixava novidades.
+  if (!atual) {
+    const alvo = branchPrincipalDoRemoto();
+    if (alvo) {
+      const existeLocal =
+        rodar("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${alvo}`], { capturar: true }).status === 0;
+      if (existeLocal) {
+        titulo(`Sua cópia estava sem branch; voltando para a branch de trabalho "${alvo}"`);
+        if (rodar("git", ["checkout", alvo], { capturar: true }).status === 0) return alvo;
+      } else if (rodar("git", ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${alvo}`], { capturar: true }).status === 0) {
+        titulo(`Sua cópia estava sem branch; criando "${alvo}" a partir do GitHub`);
+        if (rodar("git", ["checkout", "-B", alvo, `origin/${alvo}`], { capturar: true }).status === 0) return alvo;
+      }
+    }
+  }
+
   const destino = "trabalho/lia-go";
   titulo(`Você está em "${atual || "HEAD destacado"}"; criando/abrindo a branch de trabalho "${destino}"`);
   const cli = path.join(RAIZ, "tools", "project_cli.py");
@@ -480,8 +520,10 @@ function sincronizar(mensagem) {
   const python = process.platform === "win32" ? "py" : "python3";
   const args = process.platform === "win32" ? ["-3", cli, "sync"] : [cli, "sync"];
   if (mensagem) args.push("-m", mensagem);
+  const jaEstavaEmConflito = temConflitoPendente();
   const resultado = rodar(python, args);
   if (resultado.status !== 0) {
+    tratarConflitoDeSincronizacao(jaEstavaEmConflito);
     throw new Error("A sincronização não terminou. Nada foi forçado; confira o que o DevKit informou acima.");
   }
 }
@@ -613,7 +655,21 @@ async function comandoTudo() {
   console.log("São 7 etapas; cada uma se anuncia abaixo. Na primeira vez, a etapa 3 baixa o banco (~12 MB).");
 
   definirEtapa(1, TOTAL_DE_ETAPAS);
-  atualizarDoGitHub();
+  const atualizacao = atualizarDoGitHub();
+  // Um programa em execução não troca o próprio código: se veio versão nova, a rodada recomeça
+  // com ela. Sem isso, a correção baixada só valeria na próxima vez — foi o que aconteceu.
+  if (atualizacao.atualizou && !process.env.LIA_REINICIADO) {
+    console.log("\nO projeto foi atualizado. Vou reiniciar a rodada agora para usar a versão nova (uns segundos).");
+    const reinicio = spawnSync(NODE, [path.join(RAIZ, "tools", "dev.mjs"), "tudo"], {
+      cwd: RAIZ,
+      stdio: "inherit",
+      env: { ...process.env, LIA_REINICIADO: "1" },
+    });
+    return reinicio.status ?? 0;
+  }
+  if (atualizacao.atualizou) {
+    console.log("Atenção: o projeto mudou de novo no meio da rodada; a próxima rodada já usa o que chegou agora.");
+  }
   verificarNode();
   banner();
 
@@ -627,6 +683,7 @@ async function comandoTudo() {
   const testes = await rodarTestes();
 
   definirEtapa(5, TOTAL_DE_ETAPAS);
+  titulo("Relatórios (rodada + diagnóstico do computador)");
   const caminhoRelatorio = gravarRelatorio(testes);
   gravarDiagnostico(bancoOk, testes);
 
@@ -634,6 +691,7 @@ async function comandoTudo() {
   const enviado = enviarParaOGitHub();
 
   definirEtapa(7, TOTAL_DE_ETAPAS);
+  titulo("Resumo da rodada e subida do app");
   resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio });
   await subirServidores();
 }
@@ -646,39 +704,179 @@ function atualizarDoGitHub() {
     garantirBranchDeTrabalho();
   }
   const nome = branchAtual();
+  const antes = rodar("git", ["rev-parse", "HEAD"], { capturar: true }).saida.trim();
+  console.log(`Branch: ${nome || "(destacada)"} · versão local: ${antes.slice(0, 7) || "(desconhecida)"}`);
+
   console.log("⏳ Falando com o GitHub (uns segundos)…");
   const inicio = Date.now();
   const busca = rodar("git", ["fetch", "origin"], { capturar: true });
   if (busca.status !== 0) {
     registrarAviso("Não consegui falar com o GitHub para baixar novidades nesta rodada.");
-    console.warn("Não consegui falar com o GitHub agora; sigo com o que já existe aqui.");
+    console.warn("Não consegui falar com o GitHub agora; sigo com a versão que já existe aqui.");
     console.warn(resumoSaida(busca.saida, 4));
-    return false;
+    console.warn("Se for internet ou login do GitHub, resolva e rode de novo para pegar as novidades.");
+    return { atualizou: false };
   }
   console.log(`Resposta do GitHub em ${tempoDecorrido(inicio)}.`);
-  const avancar = rodar("git", ["merge", "--ff-only", `origin/${nome}`], { capturar: true });
-  if (avancar.status === 0) {
-    console.log(resumoSaida(avancar.saida, 4) || "Projeto já estava atualizado.");
-    return true;
+
+  // Qual referência seguir (a da branch, ou origin/<branch>), e se ela existe.
+  const upstream = rodar("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { capturar: true }).saida.trim();
+  const upstreamExiste =
+    upstream.length > 0 && rodar("git", ["rev-parse", "--verify", "--quiet", upstream], { capturar: true }).status === 0;
+  const branchExisteNoRemoto =
+    nome.length > 0 && rodar("git", ["rev-parse", "--verify", "--quiet", `origin/${nome}`], { capturar: true }).status === 0;
+  const alvo = escolherAlvoDeAtualizacao({ upstream, upstreamExiste, branchExisteNoRemoto, branch: nome });
+  const commitsNovos = alvo
+    ? Number(rodar("git", ["rev-list", "--count", `HEAD..${alvo}`], { capturar: true }).saida.trim() || "0")
+    : 0;
+  const commitsLocais = alvo
+    ? Number(rodar("git", ["rev-list", "--count", `${alvo}..HEAD`], { capturar: true }).saida.trim() || "0")
+    : 0;
+  const temAlteracoesLocais = rodar("git", ["status", "--porcelain"], { capturar: true }).saida.trim().length > 0;
+  const decisao = decidirAtualizacao({ alvo, commitsNovos, temAlteracoesLocais, commitsLocais });
+
+  if (decisao.acao === "sem-referencia") {
+    console.log("Esta branch ainda não existe no GitHub, então não há versão nova para baixar.");
+    return { atualizou: false };
   }
-  console.log("Existem mudanças locais ou o histórico divergiu; a sincronização no fim da rodada resolve.");
-  registrarAviso("A atualização automática não avançou sozinha (havia mudanças locais); a sincronização do fim resolve.");
-  return false;
+  if (decisao.acao === "atualizado") {
+    console.log(`Já está na versão mais nova do GitHub (${alvo}).`);
+    return { atualizou: false };
+  }
+  console.log(
+    `Existem ${commitsNovos} commit(s) novo(s) no GitHub${commitsLocais > 0 ? ` e ${commitsLocais} seu(s) aqui — vou preservar o seu trabalho` : ""}.`,
+  );
+
+  const guardar = decisao.acao === "guardar-e-atualizar";
+  if (guardar && !guardarAlteracoesLocais()) {
+    return { atualizou: false };
+  }
+
+  let aplicou = rodar("git", ["merge", "--ff-only", alvo], { capturar: true });
+  if (aplicou.status !== 0 && commitsLocais > 0) {
+    console.log("Reaplicando os seus commits por cima da versão nova (rebase)…");
+    aplicou = rodar("git", ["rebase", alvo], { capturar: true });
+    if (aplicou.status !== 0) {
+      rodar("git", ["rebase", "--abort"], { capturar: true });
+      console.warn("Não consegui reaplicar automaticamente; nada foi perdido e sigo com a versão local.");
+      console.warn(`Se quiser, rode você mesmo: git pull --rebase ${alvo}`);
+      registrarAviso("A atualização automática não conseguiu reaplicar os commits locais; o usuário foi avisado.");
+      if (guardar) devolverAlteracoesLocais();
+      return { atualizou: false };
+    }
+  }
+  if (aplicou.status !== 0) {
+    console.warn(resumoSaida(aplicou.saida, 6));
+    console.warn(`Não consegui atualizar automaticamente. Nada foi alterado. Para resolver na mão: git pull --rebase ${alvo}`);
+    registrarAviso("A atualização automática não foi aplicada; sigo com a versão local e o usuário foi avisado.");
+    if (guardar) devolverAlteracoesLocais();
+    return { atualizou: false };
+  }
+
+  const depois = rodar("git", ["rev-parse", "HEAD"], { capturar: true }).saida.trim();
+  const mudou = depois !== antes;
+  if (mudou) {
+    const resumo = rodar("git", ["log", "--oneline", `${antes}..${depois}`], { capturar: true }).saida.trim();
+    console.log(`Atualizado: ${antes.slice(0, 7)} → ${depois.slice(0, 7)}`);
+    if (resumo) console.log(`Novidades:\n${resumo.split("\n").slice(0, 8).join("\n")}`);
+  } else {
+    console.log("Nada mudou nesta atualização.");
+  }
+  if (guardar) devolverAlteracoesLocais();
+  return { atualizou: mudou };
 }
+
+/**
+ * Guarda as alterações locais antes de atualizar (nada é descartado).
+ * É o que impede o caso "não consegui atualizar porque um arquivo gerado mudou".
+ */
+function guardarAlteracoesLocais() {
+  console.log("Existem arquivos alterados aqui; guardando para devolver depois da atualização…");
+  const guardado = rodar("git", ["stash", "push", "--include-untracked", "-m", "lia-go: antes de atualizar"], { capturar: true });
+  if (guardado.status !== 0) {
+    console.warn("Não consegui guardar as alterações locais; sigo com a versão local para não arriscar o seu trabalho.");
+    console.warn(resumoSaida(guardado.saida, 4));
+    registrarAviso("Alterações locais impediram a atualização automática.");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Devolve as alterações guardadas.
+ * Se elas mexerem no mesmo trecho do que veio do GitHub, **não** se deixa marca de conflito no
+ * arquivo: o projeto volta a ficar limpo na versão nova e o trabalho da pessoa continua guardado,
+ * com o passo a passo de como trazer a sua parte.
+ */
+function devolverAlteracoesLocais() {
+  const devolver = rodar("git", ["stash", "pop"], { capturar: true });
+  if (devolver.status === 0) {
+    console.log("Suas alterações foram devolvidas.");
+    return;
+  }
+  const guardado = rodar("git", ["stash", "list"], { capturar: true }).saida.trim();
+  // Tudo o que era seu está no stash: deixar o projeto limpo é seguro e evita arquivo quebrado.
+  rodar("git", ["reset", "--hard", "HEAD"], { capturar: true });
+  if (!guardado) {
+    console.warn("Não consegui devolver as alterações guardadas e não encontrei o que ficou guardado.");
+    registrarAviso("Uma atualização automática não devolveu as alterações locais; verifique com git status.");
+    return;
+  }
+  console.warn("Uma alteração sua mexe no mesmo ponto de um arquivo que mudou no GitHub.");
+  console.warn("Deixei o projeto limpo, na versão nova, e a sua alteração guardada (nada foi perdido):");
+  console.warn("  1) git stash pop           → traz a sua alteração de volta");
+  console.warn("  2) abra o arquivo com marcas (<<<<<<<) e escolha o que fica");
+  console.warn("  3) git add -A && git commit -m \"minha alteracao\"");
+  registrarAviso("Uma alteração local conflitou com a versão nova e ficou guardada no stash (veja git stash list).");
+}
+
 
 /** Envia o que a rodada produziu (relatórios e diagnóstico) para o GitHub. */
 function enviarParaOGitHub() {
   titulo("Enviando o resultado para o GitHub");
+  const ramo = `origin/${branchAtual() || "sua-branch"}`;
+  if (temConflitoPendente()) {
+    console.warn("Já existia um conflito pela metade nesta cópia (de uma operação anterior).");
+    console.warn("Não vou mexer nele: resolva com `git status` e `git rebase --abort` (ou me peça ajuda) e rode de novo.");
+  }
   try {
     sincronizar(`chore: rodada automatica do LiaGo.bat (${new Date().toISOString().slice(0, 16).replace("T", " ")})`);
     console.log("Enviado. Os relatórios desta rodada já estão no GitHub.");
     return true;
   } catch (erro) {
-    registrarAviso(`O envio para o GitHub não terminou: ${erro instanceof Error ? erro.message : String(erro)}`);
-    console.error(`Não consegui enviar agora: ${erro instanceof Error ? erro.message : String(erro)}`);
-    console.error("O trabalho local está salvo; a próxima rodada tenta enviar de novo.");
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+    console.error(explicarEnvioQueFalhou(mensagem, ramo));
+    registrarAviso(`O envio para o GitHub não terminou: ${mensagem}`);
     return false;
   }
+}
+
+/**
+ * A sincronização parou no meio de um conflito (o seu trabalho e o do GitHub no mesmo arquivo).
+ * Num fluxo de um clique isso não pode ficar assim: a próxima rodada nem abriria. Desfazemos só
+ * essa parte — o commit local continua intacto — e explicamos com todas as letras.
+ */
+function tratarConflitoDeSincronizacao(jaEstavaEmConflito) {
+  if (jaEstavaEmConflito) return false;
+  if (!temConflitoPendente()) return false;
+  console.warn("O envio parou porque o seu trabalho e o do GitHub mexem no mesmo trecho de um arquivo.");
+  console.warn("Desfazendo essa parte para deixar o projeto num estado seguro (nada seu é perdido)…");
+  const desfeito = rodar("git", ["rebase", "--abort"], { capturar: true });
+  if (desfeito.status !== 0) rodar("git", ["merge", "--abort"], { capturar: true });
+  if (temConflitoPendente()) {
+    console.warn("Não consegui desfazer sozinho. Rode: git rebase --abort — e depois o LiaGo.bat de novo.");
+    registrarAviso("A cópia ficou no meio de um conflito; é preciso resolver antes de continuar.");
+    return false;
+  }
+  console.warn("Pronto: o projeto voltou ao normal e o seu commit continua aqui.");
+  console.warn("Na próxima rodada eu tento enviar de novo; para resolver na mão: git pull --rebase (e depois git push).");
+  registrarAviso("O envio parou porque o seu trabalho e o do GitHub tocavam o mesmo arquivo; a cópia foi devolvida ao estado seguro.");
+  return true;
+}
+
+/** Existe conflito pendente na cópia (rebase/merge pela metade)? */
+function temConflitoPendente() {
+  return temConflitoNoStatus(rodar("git", ["status", "--porcelain"], { capturar: true }).saida);
 }
 
 /** Escreve o retrato do computador (mesmo nome sempre) para o responsável ler no GitHub. */
@@ -746,11 +944,25 @@ function resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio }) {
   console.log("==========================================================");
 }
 
+/** Só a atualização, com explicação do que aconteceu (usada quando algo deu errado antes). */
+function comandoAtualizar() {
+  const resultado = atualizarDoGitHub();
+  if (resultado.atualizou) {
+    console.log("\nAtualizado. Rode o LiaGo.bat (duplo clique) para a rodada completa com a versão nova.");
+    return 0;
+  }
+  console.log("\nNada a atualizar agora. Se o problema continua, rode o LiaGo.bat (duplo clique).");
+  return 0;
+}
+
 async function principal() {
   const comando = (process.argv[2] ?? "auto").toLowerCase();
   switch (comando) {
     case "tudo":
       return comandoTudo();
+    case "atualizar":
+    case "pull":
+      return comandoAtualizar();
     case "auto":
       return comandoAuto();
     case "testes":
@@ -780,7 +992,7 @@ async function principal() {
       return 0;
     }
     default:
-      console.log("Comandos: tudo · auto · testes · banco · dev · android · sincronizar · instalar · relatorios");
+      console.log("Comandos: tudo · atualizar · auto · testes · banco · dev · android · sincronizar · instalar · relatorios");
       return 1;
   }
 }

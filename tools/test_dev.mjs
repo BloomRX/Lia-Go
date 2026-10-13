@@ -10,11 +10,14 @@ import {
   lerEnvDoTexto,
   candidatosDePython,
   comandosDeExtracao,
+  decidirAtualizacao,
+  escolherAlvoDeAtualizacao,
   escolherArquivoDeBinarios,
   explicarLogDoServidor,
   formatarTamanho,
   linhaDeProgresso,
   tempoDecorrido,
+  temConflitoNoStatus,
   montarComando,
   montarDiagnostico,
   ocultarUrl,
@@ -331,4 +334,49 @@ test("tamanhos e tempos em português", () => {
   assert.equal(formatarTamanho(0), "0 B");
   assert.equal(tempoDecorrido(Date.now() - 12_000), "12s");
   assert.equal(tempoDecorrido(Date.now() - 65_000), "1 min 5s");
+});
+
+test("atualização escolhe a referência certa e decide o que fazer sem adivinhar", () => {
+  // De onde puxar
+  assert.equal(
+    escolherAlvoDeAtualizacao({ upstream: "origin/arena", upstreamExiste: true, branchExisteNoRemoto: true, branch: "arena" }),
+    "origin/arena",
+    "a referência da branch manda",
+  );
+  assert.equal(
+    escolherAlvoDeAtualizacao({ upstream: "origin/antiga", upstreamExiste: false, branchExisteNoRemoto: true, branch: "arena" }),
+    "origin/arena",
+    "upstream quebrado cai para origin/<branch>",
+  );
+  assert.equal(
+    escolherAlvoDeAtualizacao({ upstream: null, branchExisteNoRemoto: false, branch: "trabalho/lia-go" }),
+    null,
+    "branch que não existe no GitHub não tem o que puxar",
+  );
+
+  // O que fazer — cada caso do mundo real
+  const casos = [
+    [{ alvo: "origin/x", commitsNovos: 3, temAlteracoesLocais: false, commitsLocais: 0 }, "avancar"],
+    [{ alvo: "origin/x", commitsNovos: 3, temAlteracoesLocais: false, commitsLocais: 2 }, "reaplicar-por-cima"],
+    [{ alvo: "origin/x", commitsNovos: 3, temAlteracoesLocais: true, commitsLocais: 0 }, "guardar-e-atualizar"],
+    [{ alvo: "origin/x", commitsNovos: 0, temAlteracoesLocais: true, commitsLocais: 1 }, "atualizado"],
+    [{ alvo: null, commitsNovos: 0, temAlteracoesLocais: false, commitsLocais: 0 }, "sem-referencia"],
+  ];
+  for (const [entrada, esperado] of casos) {
+    assert.equal(decidirAtualizacao(entrada).acao, esperado, JSON.stringify(entrada));
+  }
+  // O caso que aconteceu no PC do usuário: ele tinha um commit local e o GitHub tinha um novo.
+  assert.equal(
+    decidirAtualizacao({ alvo: "origin/arena", commitsNovos: 1, temAlteracoesLocais: false, commitsLocais: 1 }).acao,
+    "reaplicar-por-cima",
+    "commit local não pode impedir a atualização (era o bug: desistia e seguia com a versão velha)",
+  );
+});
+
+test("conflito pela metade é reconhecido (foi o que quebrou a rodada seguinte)", () => {
+  assert.equal(temConflitoNoStatus(""), false, "cópia limpa não tem conflito");
+  assert.equal(temConflitoNoStatus(" M tools/dev.mjs\n?? reports/x.md"), false, "arquivo alterado comum não é conflito");
+  assert.equal(temConflitoNoStatus("UU tools/dev.mjs"), true, "rebase parado no meio deixa o arquivo como UU");
+  assert.equal(temConflitoNoStatus(" M docs/a.md\nAA docs/b.md"), true);
+  assert.equal(temConflitoNoStatus("DU tools/db.mjs"), true);
 });

@@ -52,6 +52,7 @@ API e app web. Para as opções abaixo: `LiaGo.bat menu`.
 | 7 | Lista os relatórios gerados |
 | 8 | Diagnóstico do ambiente (DevKit) |
 | 9 | Reinstala as dependências (`node_modules`) — usar quando algo estiver estranho |
+| 10 | Atualizar do GitHub, sem rodar testes |
 
 > As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §1). A **primeira**
 > execução é a mais demorada: instala as dependências e baixa os binários do banco (uma vez só).
@@ -136,6 +137,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
 | `npm install` falhou | rede, proxy, antivírus, pasta pela metade… | as últimas linhas da tela mostram a **causa real** e o que fazer; se a pasta `node_modules` ficou pela metade, a automação apaga e reinstala sozinha. Para forçar: `LiaGo.bat` **opção 9** (ou `node tools/dev.mjs instalar`) |
+| Teve que rodar `git pull` na mão | a versão antiga só sabia avançar quando a cópia estava exatamente igual ao GitHub; com qualquer commit seu (relatórios, por exemplo) ela desistia e seguia com a versão velha | já corrigido: agora ela reaplica os seus commits por cima da versão nova (rebase), guarda/devolve arquivos alterados e **reinicia a rodada** para usar o que baixou. Para só atualizar: `LiaGo.bat atualizar` (ou menu, opção 10) |
 | A rodada parece parada | alguma etapa demorada está em curso | cada etapa é numerada (`[3/7]`) e as longas mostram progresso; o `⏳ ainda trabalhando` aparece a cada 15 segundos de silêncio |
 | Download do banco muito lento ou interrompido | internet/proxy/antivírus | a barra mostra a velocidade; se ficar **30 segundos sem avançar**, o Lia Go cancela e explica — rode de novo (o download recomeça do zero, nada fica pela metade) |
 | No Windows aparece `Microsoft Windows [versão …]` e nada acontece | o Windows abriu um prompt de comando no lugar do programa (chamada antiga de `.cmd`, bug corrigido) | atualize o projeto (opção 6) e rode de novo; se repetir, envie o texto da tela |

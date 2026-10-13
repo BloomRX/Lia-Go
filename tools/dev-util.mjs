@@ -504,3 +504,52 @@ export async function rodarComSaidaAoVivo(programa, argumentos, opcoes = {}) {
     processo.on("exit", (codigo) => finalizar(codigo));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Atualizar o projeto sem perder o trabalho local (tools/dev.mjs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide de qual referência remota puxar a versão nova.
+ * Ordem: a referência "oficial" da branch (upstream) → `origin/<branch>` → nada.
+ * Devolve `null` quando a branch não existe no GitHub (aí não há o que puxar).
+ */
+export function escolherAlvoDeAtualizacao(dados) {
+  const { upstream, upstreamExiste, branchExisteNoRemoto, branch } = dados ?? {};
+  if (upstream && upstreamExiste) return upstream;
+  if (branchExisteNoRemoto && branch) return `origin/${branch}`;
+  return null;
+}
+
+/**
+ * Um `merge --ff-only` só funciona quando o seu trabalho local é um pedaço direto do histórico
+ * do GitHub. Quando existe qualquer commit seu aqui (relatórios, por exemplo) **ou** algum arquivo
+ * alterado no caminho, ele recusa — e foi assim que a atualização automática deixou de acontecer.
+ * Esta função decide o que fazer em cada caso, sem adivinhar.
+ */
+export function decidirAtualizacao({ alvo, commitsNovos, temAlteracoesLocais, commitsLocais }) {
+  if (!alvo) return { acao: "sem-referencia" };
+  if (commitsNovos === 0) return { acao: "atualizado" };
+  if (temAlteracoesLocais) return { acao: "guardar-e-atualizar" };
+  if (commitsLocais > 0) return { acao: "reaplicar-por-cima" };
+  return { acao: "avancar" };
+}
+
+/**
+ * O repositório ficou no meio de um conflito (rebase/merge pela metade)?
+ * É o que acontece quando o seu trabalho e o do GitHub mexem no mesmo trecho do mesmo arquivo.
+ * Um fluxo de um clique **não** pode deixar a cópia nesse estado: a próxima rodada nem abre.
+ */
+export function temConflitoNoStatus(statusPorcelain) {
+  const linhas = String(statusPorcelain ?? "").split("\n");
+  return linhas.some((linha) => /^(U|A A|D D|A U|U A|D U|U D|A D|D A)/.test(linha.trim()) || /^(UU|AA|DD|AU|UA|DU|UD) /.test(linha.trim()));
+}
+
+/** O que dizer quando o envio não termina — sempre com o passo a passo, nunca um "erro" solto. */
+export function explicarEnvioQueFalhou(mensagem, ramo) {
+  return [
+    `Não consegui enviar nesta rodada: ${mensagem}`,
+    "O seu trabalho continua salvo aqui; a próxima rodada tenta enviar de novo.",
+    `Se quiser resolver na mão: git pull --rebase ${ramo ?? "origin/<sua-branch>"} e depois git push.`,
+  ].join("\n");
+}

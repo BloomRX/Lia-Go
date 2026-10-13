@@ -28,6 +28,8 @@ if /i "%~1"=="menu" goto :menu
 
 :comargumento
 if /i "%~1"=="tudo" goto :tudo
+if /i "%~1"=="atualizar" goto :atualizar
+if /i "%~1"=="pull" goto :atualizar
 if /i "%~1"=="auto" goto :tudo
 if /i "%~1"=="testes" goto :testes
 if /i "%~1"=="dev" goto :dev
@@ -37,7 +39,7 @@ if /i "%~1"=="sincronizar" goto :sincronizar
 if /i "%~1"=="relatorios" goto :relatorios
 if /i "%~1"=="diagnostico" goto :diagnostico
 if /i "%~1"=="instalar" goto :instalar
-echo Comandos: tudo ^| menu ^| testes ^| dev ^| banco ^| android ^| sincronizar ^| instalar ^| relatorios ^| diagnostico
+echo Comandos: tudo ^| atualizar ^| menu ^| testes ^| dev ^| banco ^| android ^| sincronizar ^| instalar ^| relatorios ^| diagnostico
 set "RC=1"
 goto :fim
 
@@ -53,6 +55,7 @@ echo  6  Sincronizar com o GitHub (commit, rebase e push da branch)
 echo  7  Ver relatorios gerados
 echo  8  Diagnostico do ambiente (DevKit)
 echo  9  Reinstalar dependencias (usar quando algo estiver estranho)
+echo 10  Atualizar do GitHub (sem rodar testes)
 echo  0  Sair
 echo.
 set /p OPCAO="Escolha: "
@@ -65,6 +68,7 @@ if "%OPCAO%"=="6" goto :sincronizar
 if "%OPCAO%"=="7" goto :relatorios
 if "%OPCAO%"=="8" goto :diagnostico
 if "%OPCAO%"=="9" goto :instalar
+if "%OPCAO%"=="10" goto :atualizar
 if "%OPCAO%"=="0" goto :sair
 echo Opcao invalida.
 goto :menu
@@ -74,6 +78,11 @@ node "%~dp0tools\dev.mjs" tudo
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" goto :fim
 rem A rodada deixa o app no ar; se ela terminar sozinha, a janela espera a tecla.
+goto :fim
+
+:atualizar
+node "%~dp0tools\dev.mjs" atualizar
+set "RC=%ERRORLEVEL%"
 goto :fim
 
 :testes
