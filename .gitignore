@@ -26,6 +26,8 @@ reports/*.log
 *.sqlite3
 *.db
 .pgdata/
+# Binários portáteis do PostgreSQL (baixados do PyPI na primeira execução)
+.pgbin/
 
 # Projetos nativos do Capacitor (gerados/sincronizados)
 apps/mobile/android/app/build/

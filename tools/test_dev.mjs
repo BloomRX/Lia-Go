@@ -9,9 +9,13 @@ import {
   erroDeSpawn,
   lerEnvDoTexto,
   candidatosDePython,
+  comandosDeExtracao,
+  escolherArquivoDeBinarios,
   explicarLogDoServidor,
   montarComando,
+  montarDiagnostico,
   ocultarUrl,
+  sufixoDeBinarios,
   versaoCompativel,
   resumoSaida,
   valeTentarDeNovo,
@@ -241,4 +245,67 @@ test("log do PostgreSQL vira dica acionável (administrador, porta ocupada)", ()
   const porta = explicarLogDoServidor('could not bind IPv4 address "127.0.0.1": Address already in use', "55432");
   assert.match(porta, /55432/, "a dica precisa dizer qual porta está ocupada");
   assert.equal(explicarLogDoServidor("database system is ready to accept connections"), "", "log normal não gera dica");
+});
+
+test("escolhe o arquivo de binários certo por sistema (e avisa quando não existe)", () => {
+  const catalogo = {
+    info: { version: "0.1.4" },
+    urls: [
+      { filename: "pgserver-0.1.4-cp39-cp39-win_amd64.whl", url: "https://exemplo/win39.whl", size: 12 },
+      { filename: "pgserver-0.1.4-cp312-cp312-win_amd64.whl", url: "https://exemplo/win312.whl", size: 13 },
+      { filename: "pgserver-0.1.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", url: "https://exemplo/linux.whl", size: 11 },
+    ],
+  };
+  const win = escolherArquivoDeBinarios(catalogo, "win32", "x64");
+  assert.equal(win.url, "https://exemplo/win312.whl", "no Windows pega o pacote win_amd64 (o .pyd do Python não é usado: só os programas)");
+  assert.equal(win.tamanho, 13);
+  assert.match(escolherArquivoDeBinarios(catalogo, "linux", "x64").nome, /manylinux_2_17_x86_64/);
+  assert.equal(sufixoDeBinarios("darwin", "arm64"), "macosx_11_0_arm64", "macOS Apple Silicon tem o seu próprio sufixo");
+  assert.equal(escolherArquivoDeBinarios(catalogo, "darwin", "arm64"), null, "catálogo sem pacote para macOS devolve null");
+  assert.equal(escolherArquivoDeBinarios({ urls: [] }, "win32", "x64"), null, "catálogo vazio não pode virar download errado");
+});
+
+test("avisa quando a plataforma não tem binário publicado (Windows/Linux ARM)", () => {
+  assert.equal(sufixoDeBinarios("win32", "arm64"), "win_arm64");
+  assert.equal(sufixoDeBinarios("linux", "arm64"), "manylinux_2_17_aarch64.manylinux2014_aarch64");
+  const catalogo = { info: { version: "1" }, urls: [{ filename: "pgserver-0.1.4-cp312-cp312-win_amd64.whl", url: "x", size: 1 }] };
+  assert.equal(escolherArquivoDeBinarios(catalogo, "win32", "arm64"), null);
+});
+
+test("extração do arquivo baixado tenta os programas certos em cada sistema", () => {
+  assert.deepEqual(comandosDeExtracao("linux", "banco.whl", "destino").map(([programa]) => programa), [
+    "tar",
+    "unzip",
+    "python3",
+  ]);
+  assert.deepEqual(comandosDeExtracao("win32", "banco.whl", "destino").map(([programa]) => programa), [
+    "tar",
+    "powershell",
+  ]);
+  const [, segundo] = comandosDeExtracao("win32", "banco.whl", "destino");
+  assert.match(segundo[1].join(" "), /Expand-Archive/, "no Windows sem tar, o PowerShell extrai o zip");
+});
+
+test("diagnóstico do computador diz o essencial em português", () => {
+  const texto = montarDiagnostico({
+    quando: "12/10/2026 22:00",
+    sistema: "win32 x64",
+    node: "v26.8.1",
+    npm: "11.18.0",
+    python: "python 3.14 (sem binários prontos do banco)",
+    docker: "indisponível",
+    banco: "portátil em .pgbin (PostgreSQL do próprio projeto)",
+    dependencias: "instaladas e conferidas",
+    testes: "170 passaram, 0 falharam, 0 pulados",
+    branch: "arena/f1ac5ed6-lia-go",
+    commit: "49720ae",
+    ocorrencias: ["O envio para o GitHub não terminou: sem rede"],
+    detalhes: [{ titulo: "Log do banco de dados (fim)", texto: "database system is ready" }],
+  });
+  assert.match(texto, /Sistema:\*\* win32 x64/);
+  assert.match(texto, /python 3\.14/);
+  assert.match(texto, /170 passaram/);
+  assert.match(texto, /Avisos desta rodada/);
+  assert.match(texto, /sem rede/);
+  assert.match(texto, /database system is ready/);
 });

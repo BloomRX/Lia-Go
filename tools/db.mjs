@@ -5,25 +5,37 @@
  * Modos (nesta ordem de preferência):
  *  1. docker  — Docker Compose (padrão na máquina do desenvolvedor; decisão confirmada);
  *  2. local   — binários do PostgreSQL já instalados no sistema (PG_BIN, PATH ou pastas padrão);
- *  3. binarios— idem, com os binários do pacote Python `pgserver` (PostgreSQL embutido);
- *  4. pgserver— instala o pacote Python `pgserver` sozinho e usa o PostgreSQL embutido
- *               (é o caminho sem Docker e sem administrador — importante no Windows);
- *  5. url     — não sobe nada: apenas valida a DATABASE_URL já definida.
+ *  3. portatil— baixa uma única vez (~12 MB) os binários prontos do PostgreSQL para `.pgbin`
+ *               (fora do Git): funciona sem Docker, sem administrador e sem depender do Python;
+ *  4. pgserver— pacote Python `pgserver`, se já estiver instalado na máquina;
+ *  5. local   — binários do PostgreSQL instalados no sistema (`PG_BIN` ou pastas padrão);
+ *  6. url     — não sobe nada: apenas valida a DATABASE_URL já definida.
  *
  * Comandos: up · down · status · url · instalar
- * `LIA_DB_MODO=binarios|pgserver|url` força um modo (usado nos testes automatizados).
+ * `LIA_DB_MODO=binarios|pgserver|portateis|url` força um modo (usado nos testes automatizados).
  *
  * Sempre escreve `.env` na raiz quando o banco é iniciado (o .env é ignorado pelo Git).
  * Nunca apaga dados: `down` apenas para o serviço.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { candidatosDePython, explicarLogDoServidor, PYTHON_MAX, PYTHON_MIN, versaoCompativel } from "./dev-util.mjs";
+import {
+  candidatosDePython,
+  comandosDeExtracao,
+  escolherArquivoDeBinarios,
+  explicarLogDoServidor,
+  PYTHON_MAX,
+  PYTHON_MIN,
+  versaoCompativel,
+} from "./dev-util.mjs";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR_DADOS = path.join(RAIZ, ".pgdata");
+/** Onde ficam os binários portáteis do PostgreSQL (baixados uma vez, fora do Git). */
+const DIR_PORTATIL = path.join(RAIZ, ".pgbin");
+const URL_PYPI = "https://pypi.org/pypi/pgserver/json";
 const COMPOSE = path.join(RAIZ, "infra", "docker-compose.yml");
 const PORTA = process.env.LIA_PG_PORTA ?? "55432";
 const USUARIO = "lia_go";
@@ -102,13 +114,15 @@ function candidatosWindows() {
 }
 
 /**
- * Descobre os binários do PostgreSQL instalados na máquina:
- * `PG_BIN` → pacote Python `pgserver` (embutido) → pastas padrão do sistema.
+ * Descobre os binários do PostgreSQL disponíveis na máquina, sem baixar nada:
+ * `PG_BIN` → portáteis já baixados → pacote Python `pgserver` (se estiver instalado) → pastas do sistema.
  */
-function binariosPgserver() {
+function binariosPostgres() {
   if (process.env.PG_BIN && existsSync(path.join(process.env.PG_BIN, "initdb" + EXE))) {
     return process.env.PG_BIN;
   }
+  const portateis = binariosPortateis();
+  if (portateis) return portateis;
   for (const python of pythonsDisponiveis()) {
     try {
       const codigo =
@@ -134,44 +148,99 @@ function binariosPgserver() {
   return null;
 }
 
+/** Binários portáteis já baixados e extraídos, quando existirem. */
+function binariosPortateis() {
+  const bin = path.join(DIR_PORTATIL, "pgserver", "pginstall", "bin");
+  return existsSync(path.join(bin, "initdb" + EXE)) ? bin : null;
+}
+
 /**
- * Instala o PostgreSQL embutido (pacote Python `pgserver`) na conta do usuário.
- * É o caminho que não exige Docker Desktop nem administrador — decisivo no Windows.
+ * Apaga o que veio junto no pacote e não é usado para rodar o banco (sobras do Python: `.pyd`/`.so`
+ * do módulo, `dist-info`, `.py`). Mantém `pginstall/{bin,share,lib}` e a pasta `*.libs`, que no
+ * Linux guarda as bibliotecas compartilhadas que os programas do PostgreSQL procuram.
  */
-function instalarPgserver(python) {
-  if (!python) {
-    throw new Error(
-      "Não encontrei o Python para instalar o PostgreSQL embutido. Instale o Python 3 (https://www.python.org/downloads/) e rode de novo, ou abra o Docker Desktop.",
-    );
-  }
-  const temPip = spawnSync(python.programa, [...python.prefixo, "-m", "pip", "--version"], { encoding: "utf8" });
-  if (temPip.status !== 0) {
-    throw new Error(
-      "O Python encontrado não tem o pip disponível. Reinstale o Python marcando a opção \"pip\" (ou use o Docker Desktop).",
-    );
-  }
-  log("Instalando o PostgreSQL embutido (pacote pgserver) na sua conta — sem Docker e sem administrador…");
-  const argumentos = [...python.prefixo, "-m", "pip", "install", "--user", "--disable-pip-version-check", "pgserver"];
-  const primeira = spawnSync(python.programa, argumentos, { encoding: "utf8" });
-  if (primeira.status !== 0) {
-    const texto = `${primeira.stdout ?? ""}${primeira.stderr ?? ""}`;
-    // No Ubuntu/Debian o Python do sistema é "externally managed" (PEP 668) e exige a flag abaixo.
-    if (/externally-managed-environment|PEP 668/i.test(texto)) {
-      log("O Python do sistema pede uma permissão extra; repetindo com --break-system-packages…");
-      const segunda = spawnSync(python.programa, [...argumentos, "--break-system-packages"], { stdio: "inherit" });
-      if (segunda.status === 0) return;
-    } else {
-      console.error(texto.trim().split("\n").slice(-12).join("\n"));
+function limparSobras() {
+  const remover = [];
+  for (const entrada of readdirSync(DIR_PORTATIL)) {
+    // `*.libs` NÃO entra aqui: no Linux os programas do PostgreSQL procuram as bibliotecas dele.
+    if (/\.(whl|dist-info)$/i.test(entrada) || /^_postgresql.*\.(so|pyd)$/i.test(entrada)) {
+      remover.push(path.join(DIR_PORTATIL, entrada));
     }
-    const dicaDeVersao = python.compativel
-      ? ""
-      : ` O Python ${python.versao} ainda não tem binários prontos deste pacote (a janela publicada é ${PYTHON_MIN.join(".")}–${PYTHON_MAX.join(".")}).`;
+  }
+  const pastaPgserver = path.join(DIR_PORTATIL, "pgserver");
+  if (existsSync(pastaPgserver)) {
+    for (const entrada of readdirSync(pastaPgserver)) {
+      if (entrada !== "pginstall") remover.push(path.join(pastaPgserver, entrada));
+    }
+  }
+  for (const caminho of remover) rmSync(caminho, { recursive: true, force: true });
+}
+
+/** Extrai o arquivo baixado tentando os programas de extração disponíveis em cada sistema. */
+function extrairArquivo(arquivo) {
+  mkdirSync(DIR_PORTATIL, { recursive: true });
+  for (const [programa, argumentos] of comandosDeExtracao(process.platform, arquivo, DIR_PORTATIL)) {
+    const resultado = spawnSync(programa, argumentos, { stdio: "ignore" });
+    if (resultado.status === 0 && binariosPortateis()) return true;
+  }
+  return false;
+}
+
+/**
+ * Baixa os binários portáteis do PostgreSQL (uma vez, ~12 MB) para `.pgbin`.
+ * É o caminho que funciona sem Docker, sem administrador e **sem depender do Python** da máquina —
+ * inclusive quando o Python instalado é mais novo do que os pacotes publicados.
+ */
+async function baixarBinariosPortateis() {
+  const pronto = binariosPortateis();
+  if (pronto) return pronto;
+  if (typeof fetch !== "function") {
+    throw new Error("Este Node não sabe baixar arquivos (é preciso o Node 22 ou mais novo).");
+  }
+  log("Baixando os binários do PostgreSQL (arquivo único de ~12 MB, só na primeira vez)…");
+  let catalogo;
+  try {
+    const resposta = await fetch(URL_PYPI);
+    if (!resposta.ok) throw new Error(`o servidor respondeu ${resposta.status}`);
+    catalogo = await resposta.json();
+  } catch (erro) {
     throw new Error(
-      `Não foi possível instalar o PostgreSQL embutido.${dicaDeVersao} Alternativas, em ordem: ` +
-        "instalar um Python dessa janela (https://www.python.org/downloads/), " +
-        "abrir o Docker Desktop, ou instalar o PostgreSQL (https://www.postgresql.org/download/windows/) e definir PG_BIN.",
+      `Não consegui consultar o catálogo do banco (${erro.message}). Confira a internet, o proxy ou o antivírus — ou abra o Docker Desktop.`,
     );
   }
+  const arquivo = escolherArquivoDeBinarios(catalogo);
+  if (!arquivo) {
+    throw new Error(
+      `Não existem binários portáteis do PostgreSQL para ${process.platform}/${process.arch}. ` +
+        "Abra o Docker Desktop ou instale o PostgreSQL (https://www.postgresql.org/download/windows/) e defina PG_BIN.",
+    );
+  }
+  log(`Binários disponíveis: ${arquivo.nome}`);
+  mkdirSync(DIR_PORTATIL, { recursive: true });
+  const destino = path.join(DIR_PORTATIL, arquivo.nome);
+  try {
+    const baixado = await fetch(arquivo.url);
+    if (!baixado.ok) throw new Error(`o servidor respondeu ${baixado.status}`);
+    writeFileSync(destino, Buffer.from(await baixado.arrayBuffer()));
+  } catch (erro) {
+    throw new Error(
+      `A conexão falhou durante o download do banco (${erro.message}). Rode de novo para tentar outra vez — o arquivo só é usado quando estiver completo.`,
+    );
+  }
+  log("Extraindo os binários…");
+  if (!extrairArquivo(destino)) {
+    rmSync(destino, { force: true });
+    throw new Error(
+      "Baixei o arquivo do banco, mas não consegui extrair (tentei tar, unzip e PowerShell). " +
+        "Instale o 7-Zip (ou o unzip) e rode de novo, ou use o Docker Desktop.",
+    );
+  }
+  rmSync(destino, { force: true });
+  limparSobras();
+  const bin = binariosPortateis();
+  if (!bin) throw new Error("O download terminou, mas os programas do banco não apareceram na pasta esperada.");
+  log(`Banco pronto em ${path.relative(RAIZ, DIR_PORTATIL)} (pasta fora do Git).`);
+  return bin;
 }
 
 function iniciarComDocker() {
@@ -295,8 +364,8 @@ async function principal() {
   const modo = process.env.LIA_DB_MODO;
   const temDocker = dockerDisponivel();
   const python = pythonParaBanco();
-  let bin = binariosPgserver();
-  const usarDocker = temDocker && modo !== "binarios" && modo !== "pgserver" && modo !== "url";
+  let bin = binariosPostgres();
+  const usarDocker = temDocker && !["binarios", "pgserver", "portateis", "url"].includes(modo ?? "");
 
   if (comando === "url") {
     log(process.env.DATABASE_URL ?? (usarDocker ? urlLocal() : bin ? urlBinarios() : ""));
@@ -305,7 +374,11 @@ async function principal() {
 
   if (comando === "status") {
     log(temDocker ? "Docker: disponível" : "Docker: indisponível neste ambiente");
-    log(bin ? `Binários PostgreSQL: ${bin}` : "Binários PostgreSQL: não encontrados (dá para instalar o embutido: `node tools/db.mjs instalar`)");
+    log(
+      bin
+        ? `Binários PostgreSQL: ${bin}`
+        : `Binários PostgreSQL: não encontrados — a opção 4 baixa um portátil em ${path.relative(RAIZ, DIR_PORTATIL)} (fora do Git)`,
+    );
     const pythons = pythonsDisponiveis();
     log(
       pythons.length > 0
@@ -319,18 +392,15 @@ async function principal() {
   }
 
   if (comando === "instalar") {
-    instalarPgserver(python);
-    bin = binariosPgserver();
-    if (!bin) {
-      throw new Error(
-        "O pacote foi instalado, mas os binários do PostgreSQL não apareceram. Rode de novo; se repetir, abra o Docker Desktop.",
-      );
-    }
-    log(`PostgreSQL embutido pronto: ${bin}`);
+    bin = await baixarBinariosPortateis();
+    log(`PostgreSQL pronto: ${bin}`);
     return;
   }
 
   if (comando === "up") {
+    if (modo === "portateis") {
+      bin = await baixarBinariosPortateis();
+    }
     if (modo === "url") {
       if (!process.env.DATABASE_URL) throw new Error("O modo 'url' exige DATABASE_URL definida.");
       log("Usando a DATABASE_URL já definida.");
@@ -343,9 +413,8 @@ async function principal() {
       return;
     }
     if (!bin && !process.env.DATABASE_URL) {
-      log("Não encontrei Docker nem PostgreSQL instalado — vou preparar o PostgreSQL embutido (sem administrador)…");
-      instalarPgserver(python);
-      bin = binariosPgserver();
+      log("Não encontrei Docker nem PostgreSQL instalado — vou preparar um PostgreSQL portátil (sem administrador)…");
+      bin = await baixarBinariosPortateis();
     }
     if (bin) {
       iniciarComBinarios(bin);
@@ -359,7 +428,7 @@ async function principal() {
       return;
     }
     throw new Error(
-      "Nenhum PostgreSQL disponível. Instale o Python 3 (https://www.python.org/downloads/) e rode de novo — o Lia Go instala o resto sozinho.",
+      "Nenhum PostgreSQL disponível. Rode `node tools/db.mjs instalar` para baixar o banco portátil, ou abra o Docker Desktop.",
     );
   }
 

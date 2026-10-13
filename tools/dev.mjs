@@ -3,6 +3,7 @@
  * tools/dev.mjs — orquestração do desenvolvimento do Lia Go.
  *
  * É o cérebro por trás do LiaGo.bat (Windows) e pode ser usado direto em qualquer sistema:
+ *   node tools/dev.mjs tudo         → UMA tecla: atualiza, prepara, testa, relata, envia e deixa o app no ar
  *   node tools/dev.mjs auto         → banco + migrações + testes + relatório + sincronização
  *   node tools/dev.mjs testes       → roda a suíte completa e grava relatório
  *   node tools/dev.mjs banco        → sobe o PostgreSQL local e aplica migrações
@@ -19,13 +20,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   abriuPromptDoWindows,
+  candidatosDePython,
+  explicarLogDoServidor,
   caminhoDoLogDoNpm,
   diagnosticarComLog,
   diagnosticarFalhaNpm,
   erroDeSpawn,
   lerEnvDoTexto,
   montarComando,
+  montarDiagnostico,
   ocultarUrl,
+  versaoCompativel,
   resumoSaida,
   valeTentarDeNovo,
 } from "./dev-util.mjs";
@@ -34,6 +39,12 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR_RELATORIOS = path.join(RAIZ, "reports");
 const NPM = process.platform === "win32" ? "npm.cmd" : "npm";
 const NODE = process.platform === "win32" ? "node.exe" : "node";
+
+/** Avisos coletados durante a rodada: vão para reports/estado-do-computador.md. */
+const OCORRENCIAS = [];
+function registrarAviso(texto) {
+  OCORRENCIAS.push(texto);
+}
 
 function titulo(texto) {
   console.log(`\n=== ${texto} ===`);
@@ -504,10 +515,14 @@ async function comandoDevParalelo() {
   instalarDependencias();
   subirBanco();
   titulo("Subindo API e app web juntos");
+  await subirServidores();
+}
+
+/** Sobe a API e o app web e fica vigiando: se algum cair, a tela explica. */
+async function subirServidores() {
   const { spawn } = await import("node:child_process");
   const api = spawn(...comandoComoArgumentos("dev:api"));
   const web = spawn(...comandoComoArgumentos("dev:web"));
-  // Se um dos dois morrer, a pessoa precisa saber — antes a tela ficava parada sem explicação.
   const vigiar = (nome, processo) => {
     processo.on("error", (erro) => console.error(`\nNão foi possível iniciar ${nome}: ${erro.message}`));
     processo.on("exit", (codigo) => {
@@ -558,9 +573,136 @@ function relatoriosRecentes() {
     .slice(0, 5);
 }
 
+/**
+ * O caminho de uma tecla só: baixa a versão nova, prepara tudo, roda os testes, grava os relatórios,
+ * envia para o GitHub e deixa o app no ar. Nenhuma pergunta no meio do caminho.
+ */
+async function comandoTudo() {
+  const inicio = Date.now();
+  console.log("=== Lia Go: rodada automática (não precisa escolher nada) ===");
+  atualizarDoGitHub();
+  verificarNode();
+  banner();
+  instalarDependencias();
+  const bancoOk = subirBanco();
+  const testes = rodarTestes();
+  const caminhoRelatorio = gravarRelatorio(testes);
+  gravarDiagnostico(bancoOk, testes);
+  const enviado = enviarParaOGitHub();
+  resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio });
+  await subirServidores();
+}
+
+/** Traz o que houver de novo no GitHub — sem nunca descartar trabalho local. */
+function atualizarDoGitHub() {
+  titulo("Baixando a versão mais nova do projeto (GitHub)");
+  const branch = branchAtual();
+  if (!branch || branch === "main" || branch === "master") {
+    garantirBranchDeTrabalho();
+  }
+  const nome = branchAtual();
+  const busca = rodar("git", ["fetch", "origin"], { capturar: true });
+  if (busca.status !== 0) {
+    registrarAviso("Não consegui falar com o GitHub para baixar novidades nesta rodada.");
+    console.warn("Não consegui falar com o GitHub agora; sigo com o que já existe aqui.");
+    console.warn(resumoSaida(busca.saida, 4));
+    return false;
+  }
+  const avancar = rodar("git", ["merge", "--ff-only", `origin/${nome}`], { capturar: true });
+  if (avancar.status === 0) {
+    console.log(resumoSaida(avancar.saida, 4) || "Projeto já estava atualizado.");
+    return true;
+  }
+  console.log("Existem mudanças locais ou o histórico divergiu; a sincronização no fim da rodada resolve.");
+  registrarAviso("A atualização automática não avançou sozinha (havia mudanças locais); a sincronização do fim resolve.");
+  return false;
+}
+
+/** Envia o que a rodada produziu (relatórios e diagnóstico) para o GitHub. */
+function enviarParaOGitHub() {
+  titulo("Enviando o resultado para o GitHub");
+  try {
+    sincronizar(`chore: rodada automatica do LiaGo.bat (${new Date().toISOString().slice(0, 16).replace("T", " ")})`);
+    console.log("Enviado. Os relatórios desta rodada já estão no GitHub.");
+    return true;
+  } catch (erro) {
+    registrarAviso(`O envio para o GitHub não terminou: ${erro instanceof Error ? erro.message : String(erro)}`);
+    console.error(`Não consegui enviar agora: ${erro instanceof Error ? erro.message : String(erro)}`);
+    console.error("O trabalho local está salvo; a próxima rodada tenta enviar de novo.");
+    return false;
+  }
+}
+
+/** Escreve o retrato do computador (mesmo nome sempre) para o responsável ler no GitHub. */
+function gravarDiagnostico(bancoOk, testes) {
+  const env = lerEnv();
+  const url = process.env.DATABASE_URL ?? env.DATABASE_URL ?? "";
+  const portatil = path.join(RAIZ, ".pgbin", "pgserver", "pginstall", "bin", `initdb${process.platform === "win32" ? ".exe" : ""}`);
+  const docker = rodar("docker", ["info"], { capturar: true }).status === 0 ? "disponível" : "indisponível";
+  const pythons = candidatosDePython().map(([programa, prefixo]) => {
+    const versao = rodar(programa, [...prefixo, "-c", "import sys;print('%d.%d' % sys.version_info[:2])"], { capturar: true }).saida.trim();
+    return `${programa} ${versao}${versaoCompativel(versao) ? "" : " (sem binários prontos do banco)"}`;
+  });
+  const banco = bancoOk
+    ? existsSync(portatil)
+      ? "portátil em .pgbin (PostgreSQL do próprio projeto)"
+      : `via ${ocultarUrl(url)}`
+    : "NÃO SUBIU nesta rodada";
+  const testesTexto = testes.passou === 0 ? "nenhum teste rodou (ver avisos)" : `${testes.passou} passaram, ${testes.falhou} falharam, ${testes.pulados} pulados`;
+  const git = gitInfo();
+  const arquivoDeLog = path.join(RAIZ, ".pgdata", "servidor.log");
+  const conteudo = montarDiagnostico({
+    quando: new Date().toLocaleString("pt-BR"),
+    sistema: `${process.platform} ${process.arch}`,
+    node: versaoNode(),
+    npm: versaoNpm(),
+    python: pythons.length ? pythons.join(" · ") : "não encontrado",
+    docker,
+    banco,
+    dependencias: instalacaoAconteceu() ? "instaladas e conferidas" : "NÃO ficaram prontas",
+    testes: testesTexto,
+    branch: git.branch || "(destacada)",
+    commit: git.ultimo || "(nenhum)",
+    ocorrencias: OCORRENCIAS,
+    detalhes: [
+      { titulo: "Últimas linhas dos testes", texto: testes.saida.split("\n").slice(-25).join("\n") },
+      { titulo: "Log do banco de dados (fim)", texto: lerFimDoArquivo(arquivoDeLog, 15) },
+    ],
+  });
+  mkdirSync(DIR_RELATORIOS, { recursive: true });
+  const destino = path.join(DIR_RELATORIOS, "estado-do-computador.md");
+  writeFileSync(destino, conteudo, "utf8");
+  console.log(`Diagnóstico do computador gravado em ${path.relative(RAIZ, destino)}`);
+}
+
+/** Lê as últimas linhas de um arquivo, sem estourar se ele não existir. */
+function lerFimDoArquivo(caminho, quantas) {
+  try {
+    return readFileSync(caminho, "utf8").trim().split("\n").slice(-quantas).join("\n");
+  } catch {
+    return "(ainda não existe nesta máquina)";
+  }
+}
+
+function resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio }) {
+  const segundos = Math.round((Date.now() - inicio) / 1000);
+  console.log("\n==================== RESUMO DA RODADA ====================");
+  console.log(`Banco de dados ....... ${bancoOk ? "pronto" : "não subiu (veja os avisos acima)"}`);
+  console.log(`Testes ............... ${testes.passou} passaram · ${testes.falhou} falharam · ${testes.pulados} pulados`);
+  console.log(`Relatório ............ ${path.relative(RAIZ, caminhoRelatorio)}`);
+  console.log(`Diagnóstico do PC .... reports/estado-do-computador.md`);
+  console.log(`Enviado ao GitHub .... ${enviado ? "sim" : "não (tentará de novo na próxima)"}`);
+  console.log(`Tempo total .......... ${segundos}s`);
+  console.log("O app está subindo nas próximas linhas. Ctrl+C encerra.");
+  console.log("Para opções avançadas: LiaGo.bat menu");
+  console.log("==========================================================");
+}
+
 async function principal() {
   const comando = (process.argv[2] ?? "auto").toLowerCase();
   switch (comando) {
+    case "tudo":
+      return comandoTudo();
     case "auto":
       return comandoAuto();
     case "testes":
@@ -590,7 +732,7 @@ async function principal() {
       return 0;
     }
     default:
-      console.log("Comandos: auto · testes · banco · dev · android · sincronizar · instalar · relatorios");
+      console.log("Comandos: tudo · auto · testes · banco · dev · android · sincronizar · instalar · relatorios");
       return 1;
   }
 }

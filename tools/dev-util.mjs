@@ -327,3 +327,99 @@ export function explicarLogDoServidor(linhas, porta = "55432") {
   }
   return dicas.map((dica) => `\n→ ${dica}`).join("");
 }
+
+// ---------------------------------------------------------------------------
+// Binários portáteis do PostgreSQL (baixados do PyPI: sem Docker e sem Python)
+// ---------------------------------------------------------------------------
+//
+// Os arquivos do PyPI são imutáveis e ficam para sempre — e o pacote `pgserver` carrega dentro dele
+// o PostgreSQL **compilado**: `initdb`, `pg_ctl`, `psql` e os arquivos de apoio. Baixamos o pacote,
+// extraímos (é um zip comum) e usamos esses programas direto. Não precisa de Docker, não precisa de
+// Python instalado, e a versão do Python da máquina deixa de importar.
+
+/** Sufixo do arquivo de binários compatível com esta máquina (mesmo esquema dos wheels do PyPI). */
+export function sufixoDeBinarios(plataforma = process.platform, arquitetura = process.arch) {
+  if (plataforma === "win32") return arquitetura === "arm64" ? "win_arm64" : "win_amd64";
+  if (plataforma === "darwin") return arquitetura === "arm64" ? "macosx_11_0_arm64" : "macosx_10_9_x86_64";
+  if (arquitetura === "arm64" || arquitetura === "arm")
+    return "manylinux_2_17_aarch64.manylinux2014_aarch64";
+  return "manylinux_2_17_x86_64.manylinux2014_x86_64";
+}
+
+/**
+ * Escolhe, na resposta do PyPI, o arquivo de binários desta máquina.
+ * Devolve `null` quando não há binário publicado para a plataforma (ex.: Windows ARM, Linux ARM).
+ */
+export function escolherArquivoDeBinarios(dados, plataforma = process.platform, arquitetura = process.arch) {
+  const sufixo = sufixoDeBinarios(plataforma, arquitetura);
+  const arquivos = Array.isArray(dados?.urls) ? dados.urls : [];
+  const candidatos = arquivos.filter(
+    (arquivo) => typeof arquivo?.filename === "string" && arquivo.filename.endsWith(`${sufixo}.whl`),
+  );
+  const ordem = ["cp312", "cp311", "cp310", "cp39", "cp313"];
+  const peso = (nome) => {
+    const achado = ordem.findIndex((abi) => nome.includes(abi));
+    return achado === -1 ? ordem.length : achado;
+  };
+  candidatos.sort((a, b) => peso(a.filename) - peso(b.filename));
+  const escolhido = candidatos[0];
+  if (!escolhido) return null;
+  return {
+    nome: escolhido.filename,
+    url: escolhido.url,
+    tamanho: typeof escolhido.size === "number" && escolhido.size > 0 ? escolhido.size : 0,
+    versao: dados?.info?.version ?? "",
+  };
+}
+
+/**
+ * Programas a tentar para extrair o arquivo baixado, na ordem.
+ * No Windows o `tar.exe` (que já vem no sistema desde o Windows 10) lê zip; no Linux, `unzip`.
+ */
+export function comandosDeExtracao(plataforma, arquivo, destino) {
+  const comandos = [["tar", ["-xf", arquivo, "-C", destino]]];
+  if (plataforma === "win32") {
+    comandos.push([
+      "powershell",
+      ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${arquivo}' -DestinationPath '${destino}' -Force`],
+    ]);
+  } else {
+    comandos.push(["unzip", ["-o", arquivo, "-d", destino]]);
+    comandos.push(["python3", ["-m", "zipfile", "-e", arquivo, destino]]);
+  }
+  return comandos;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnóstico do computador (vai para reports/estado-do-computador.md e é enviado ao GitHub)
+// ---------------------------------------------------------------------------
+
+/** Monta o arquivo que conta ao responsável como está a máquina, sem precisar de print de tela. */
+export function montarDiagnostico(dados) {
+  const linhas = [
+    "# Estado do computador (gerado automaticamente pelo LiaGo.bat)",
+    "",
+    `- **Quando:** ${dados.quando ?? ""}`,
+    `- **Sistema:** ${dados.sistema ?? "?"} · **Node:** ${dados.node ?? "?"} · **npm:** ${dados.npm ?? "?"}`,
+    `- **Python:** ${dados.python ?? "não encontrado"}`,
+    `- **Docker:** ${dados.docker ?? "?"} · **Banco de dados:** ${dados.banco ?? "?"}`,
+    `- **Dependências:** ${dados.dependencias ?? "?"}`,
+    `- **Testes:** ${dados.testes ?? "não rodaram"}`,
+    `- **Branch:** ${dados.branch ?? "?"} · **Último commit local:** ${dados.commit ?? "?"}`,
+    "",
+  ];
+  if (dados.ocorrencias?.length) {
+    linhas.push("## Avisos desta rodada", "");
+    for (const aviso of dados.ocorrencias) linhas.push(`- ${aviso}`);
+    linhas.push("");
+  } else {
+    linhas.push("## Avisos desta rodada", "", "- Nenhum: tudo correu como esperado.", "");
+  }
+  if (dados.detalhes?.length) {
+    linhas.push("## Detalhes técnicos (últimas linhas)", "");
+    for (const bloco of dados.detalhes) {
+      linhas.push(`### ${bloco.titulo}`, "", "```", (bloco.texto ?? "").trim() || "(vazio)", "```", "");
+    }
+  }
+  return `${linhas.join("\n")}\n`;
+}

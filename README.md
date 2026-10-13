@@ -14,7 +14,7 @@ Celular é a plataforma principal; a versão web é complementar.
 | API (auth, viagens, convites, transições, despesas, saldos, acertos) | ✅ **39 testes** com PostgreSQL real |
 | App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
 | Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **38 + 13 testes** (`npm run test:sync`, `npm run test:app`) |
-| Automação de execução | ✅ `LiaGo.bat` (um duplo clique: banco, testes, relatório, sincronização, reinstalar dependências e diagnóstico de falhas) |
+| Automação de execução | ✅ `LiaGo.bat` (**duplo clique faz tudo**: atualiza do GitHub, instala dependências, sobe o banco, testa, grava relatórios/diagnóstico, envia ao GitHub e deixa o app no ar) |
 | Roteiro / reservas / documentos | ⬜ próximas fatias |
 | Ferramentas de git seguro (DevKit) | ✅ funcionando, 44 testes passando |
 

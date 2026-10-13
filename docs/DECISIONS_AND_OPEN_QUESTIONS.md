@@ -65,12 +65,24 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
 - **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
 
+### Automação de um clique (2026-10-13) — comportamento do `LiaGo.bat`
+- **Duplo clique não pergunta nada**: `LiaGo.bat` (sem argumento) roda `node tools/dev.mjs tudo` e ao final
+  deixa a API e o app web no ar. As opções manuais continuam existindo em `LiaGo.bat menu`.
+- **A rodada sempre envia o retrato da máquina**: `reports/estado-do-computador.md` (sistema, Node, npm,
+  Python, Docker, modo do banco, dependências, testes, avisos e as últimas linhas do log) vai junto no commit
+  automático — é assim que o responsável acompanha sem precisar de print de tela.
+- **Falha nunca é escondida**: avisos da rodada entram no diagnóstico; se o envio não terminar, o trabalho
+  local fica salvo e a próxima rodada tenta de novo.
+
 ### Ambiente de desenvolvimento no Windows (2026-10-12, terceira rodada) — hipóteses reversíveis
 - **PostgreSQL do dia a dia continua sendo o Docker Compose** (decisão confirmada). O que mudou foi a
-  **ordem de tentativa** quando não há Docker rodando: binários já instalados (`PG_BIN`) → **PostgreSQL
-  embutido** (pacote Python `pgserver`, instalado na conta do usuário, sem administrador) → `DATABASE_URL`
+  **ordem de tentativa** quando não há Docker rodando: binários já instalados (`PG_BIN`/pastas padrão) →
+  **PostgreSQL portátil** (download único de ~12 MB do PyPI para `.pgbin/`, fora do Git) → `DATABASE_URL`
   existente. Motivo: no Windows o Docker Desktop costuma estar fechado, e sem banco os testes de integração
   eram pulados em silêncio. Nada disso substitui a decisão do Docker; é só o caminho de entrada.
+- **Por que baixar do PyPI e não instalar via `pip`**: o caminho anterior dependia do Python da máquina
+  (os pacotes publicados param no 3.12, e o PC do usuário tem 3.14). O pacote do PyPI é um arquivo
+  imutável que carrega o PostgreSQL compilado — baixamos e usamos os programas direto, sem Python.
 - **Nunca fingir sucesso:** comando que termina com código 0 mas não fez o trabalho (o Windows abrindo um
   prompt de comando no lugar do `npm`, ou `npm test` sem nenhum teste) passa a **falhar com explicação**.
   Relatórios marcam explicitamente "nenhum teste rodou".

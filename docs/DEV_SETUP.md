@@ -1,31 +1,46 @@
 # Como rodar o Lia Go — guia único de execução
 
-> Para o dia a dia no Windows: **dê dois cliques em `LiaGo.bat`** e escolha a opção 1.
-> Ela sobe o banco, roda os testes, grava um relatório em `reports/` e sincroniza a branch.
-> O mesmo menu existe em qualquer sistema com `node tools/dev.mjs <comando>`.
+> Para o dia a dia no Windows: **dê dois cliques em `LiaGo.bat`. Só isso.** Nenhuma escolha no meio do
+> caminho: ele baixa a versão nova do GitHub, instala o que falta, sobe o banco, roda os testes, grava o
+> relatório (`reports/relatorio-*.md`) e o diagnóstico do computador (`reports/estado-do-computador.md`),
+> envia tudo para o GitHub e deixa o app no ar (`http://localhost:3000` e `http://localhost:5273`).
+> As opções manuais ficam em `LiaGo.bat menu`; o mesmo conjunto existe em qualquer sistema com
+> `node tools/dev.mjs <comando>`.
 
 ## 1. O que você precisa instalar (uma vez)
 
 | Item | Versão mínima | Para quê | Obrigatório? |
 |---|---|---|---|
 | Node.js | **22.12+** (LTS) | rodar API, app e testes | sim |
-| Python 3.10+ | — | DevKit (git seguro) e **PostgreSQL embutido** quando não houver Docker | recomendado |
 | Docker Desktop | atual | PostgreSQL local em contêiner (`npm run db:up`) | recomendado (padrão para quem já usa) |
+| Python 3.10+ | — | apenas o DevKit (git seguro, sincronização) | recomendado |
 | Android Studio + JDK 21 | Otter 2025.2.1+ | gerar o app Android | só quando for gerar o app |
 | Android SDK 36 (minSdk 24) | — | build Android | só quando for gerar o app |
 
-**Sem Docker o projeto continua funcionando.** O Lia Go sobe o banco nesta ordem: Docker → binários do
-PostgreSQL já instalados na máquina (`PG_BIN=...`) → **PostgreSQL embutido**, que ele mesmo instala na sua conta
-(pacote Python `pgserver`, sem administrador e sem contêiner). Se já existe um banco, basta definir `DATABASE_URL`
-ou `TEST_DATABASE_URL`. Todos esses modos servem **apenas para desenvolvimento/testes com dados sintéticos** —
-a decisão de usar Docker Compose no dia a dia continua valendo.
+**Sem Docker o projeto continua funcionando.** O Lia Go sobe o banco nesta ordem:
+
+1. **Docker**, se estiver disponível (o padrão do dia a dia);
+2. binários do PostgreSQL **já instalados** na máquina (`PG_BIN=...` ou pastas padrão);
+3. **PostgreSQL portátil**: baixa uma única vez (~12 MB, em `.pgbin/`, fora do Git) os binários prontos
+   publicados no PyPI, extrai e usa — **sem Docker, sem administrador e sem depender do Python instalado**;
+4. `DATABASE_URL`/`TEST_DATABASE_URL` de um banco existente.
+
+O passo 3 é o que faz o duplo clique funcionar em qualquer Windows: não importa qual Python (ou nenhum) a
+máquina tenha. Os binários ficam em `.pgbin/`, são removíveis a qualquer momento e não entram no Git.
+Todos esses modos servem **apenas para desenvolvimento/testes com dados sintéticos** — a decisão de usar
+Docker Compose no dia a dia continua valendo.
 
 ## 2. Comandos do dia a dia
 
-### Via `LiaGo.bat` (Windows, duplo clique)
+### Via `LiaGo.bat` (Windows)
+
+**Duplo clique, sem argumento:** rodada completa automática (`node tools/dev.mjs tudo`) — atualiza do GitHub,
+instala dependências, sobe o banco, roda testes e tipos, grava relatório + diagnóstico, envia ao GitHub e sobe
+API e app web. Para as opções abaixo: `LiaGo.bat menu`.
+
 | Opção | O que faz |
 |---|---|
-| 1 | **Tudo**: banco + testes + relatório + sincronização com o GitHub (recomendado) |
+| 1 | **Rodada completa** (o mesmo do duplo clique) |
 | 2 | Só testes e relatório |
 | 3 | Desenvolvimento: sobe banco, API (`:3000`) e app web (`:5273`) |
 | 4 | Sobe o banco e aplica migrações |
@@ -35,8 +50,8 @@ a decisão de usar Docker Compose no dia a dia continua valendo.
 | 8 | Diagnóstico do ambiente (DevKit) |
 | 9 | Reinstala as dependências (`node_modules`) — usar quando algo estiver estranho |
 
-> As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §1) — inclusive
-> instalando o PostgreSQL embutido na primeira vez, o que pode demorar um pouco.
+> As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §1). A **primeira**
+> execução é a mais demorada: instala as dependências e baixa os binários do banco (uma vez só).
 
 ### Via terminal (qualquer sistema)
 ```bash
@@ -112,7 +127,8 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 |---|---|---|
 | `DATABASE_URL não configurada` | banco não subiu | `npm run db:up` (com Docker, abra o Docker Desktop antes; sem Docker, instale o Python 3 e o Lia Go instala o banco embutido) |
 | Testes de API pulados | sem banco | `npm run db:up` e rode de novo |
-| Banco não sobe e não uso Docker | falta o Python 3 (versão 3.9–3.12) para o banco embutido | instale em <https://www.python.org/downloads/> e rode a opção 4 de novo (ou `node tools/db.mjs instalar`); se seu Python for 3.13+, use o Docker Desktop ou instale o PostgreSQL e defina `PG_BIN` |
+| Banco não sobe e não uso Docker | o download do banco portátil falhou (internet, proxy, antivírus) | a mensagem mostra a causa; rode de novo (o download é retomado do zero, sem sujeira) ou `node tools/db.mjs instalar`. Alternativas: Docker Desktop, `PG_BIN` ou `DATABASE_URL` |
+| `Não consegui extrair` ao baixar o banco | falta um extrator no sistema | no Windows o próprio sistema (tar/PowerShell) faz isso; se aparecer, instale o 7-Zip e rode de novo |
 | Preview responde **HTTP 403** | host não autorizado no Vite | já tratado em `apps/mobile/vite.config.ts` (`allowedHosts`); se usar outro host, adicione ali |
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |

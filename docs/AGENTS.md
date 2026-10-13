@@ -41,7 +41,8 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 7. Ao terminar, informe arquivos alterados, comportamento entregue, testes executados, limitações e próximo passo.
 
 ## Comandos de verificação
-- `npm test` roda a suíte completa: ferramentas (26) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
+- Windows: **duplo clique em `LiaGo.bat`** faz a rodada completa (`node tools/dev.mjs tudo`: atualizar → dependências → banco → testes → relatório/diagnóstico → envio → app no ar). Opções manuais: `LiaGo.bat menu`.
+- `npm test` roda a suíte completa: ferramentas (30) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
 - `npm run typecheck` confere os tipos dos quatro pacotes e é pré-requisito da automação antes de sincronizar.
 - `npm run test:sync` cobre fila de envio, conflito e cursor; `npm run test:app` cobre o armazenamento do aparelho e o sincronizador.
 - `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.

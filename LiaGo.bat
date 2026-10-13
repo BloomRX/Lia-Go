@@ -1,8 +1,14 @@
 @echo off
 rem ============================================================
-rem  Lia Go - automacao de desenvolvimento em um duplo clique
-rem  Nao instala nada silenciosamente, nao publica em main e
-rem  nao imprime segredo (a senha do banco aparece oculta).
+rem  Lia Go - duplo clique = faz tudo sozinho
+rem
+rem  Sem argumento: baixa a versao nova do GitHub, instala o que
+rem  falta, sobe o banco (baixa um PostgreSQL portatil se a maquina
+rem  nao tiver Docker nem PostgreSQL), roda os testes, grava os
+rem  relatorios, envia o resultado para o GitHub e deixa o app no ar.
+rem
+rem  Opcoes avancadas: LiaGo.bat menu
+rem  Nao publica em main e nao imprime segredo (a senha do banco sai oculta).
 rem ============================================================
 setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
@@ -17,12 +23,28 @@ if errorlevel 1 (
     goto :fim
 )
 
-if not "%~1"=="" goto :comargumento
+if "%~1"=="" goto :tudo
+if /i "%~1"=="menu" goto :menu
+
+:comargumento
+if /i "%~1"=="tudo" goto :tudo
+if /i "%~1"=="auto" goto :tudo
+if /i "%~1"=="testes" goto :testes
+if /i "%~1"=="dev" goto :dev
+if /i "%~1"=="banco" goto :banco
+if /i "%~1"=="android" goto :android
+if /i "%~1"=="sincronizar" goto :sincronizar
+if /i "%~1"=="relatorios" goto :relatorios
+if /i "%~1"=="diagnostico" goto :diagnostico
+if /i "%~1"=="instalar" goto :instalar
+echo Comandos: tudo ^| menu ^| testes ^| dev ^| banco ^| android ^| sincronizar ^| instalar ^| relatorios ^| diagnostico
+set "RC=1"
+goto :fim
 
 :menu
 echo.
 echo ==== LIA GO ====
-echo  1  Tudo: banco + testes + relatorio + sincronizar (recomendado)
+echo  1  Rodada completa: tudo automatico (o mesmo do duplo clique)
 echo  2  Somente testes e relatorio
 echo  3  Desenvolvimento: subir banco, API e app web
 echo  4  Subir banco de dados e aplicar migracoes
@@ -34,7 +56,7 @@ echo  9  Reinstalar dependencias (usar quando algo estiver estranho)
 echo  0  Sair
 echo.
 set /p OPCAO="Escolha: "
-if "%OPCAO%"=="1" goto :auto
+if "%OPCAO%"=="1" goto :tudo
 if "%OPCAO%"=="2" goto :testes
 if "%OPCAO%"=="3" goto :dev
 if "%OPCAO%"=="4" goto :banco
@@ -47,23 +69,11 @@ if "%OPCAO%"=="0" goto :sair
 echo Opcao invalida.
 goto :menu
 
-:comargumento
-if /i "%~1"=="auto" goto :auto
-if /i "%~1"=="testes" goto :testes
-if /i "%~1"=="dev" goto :dev
-if /i "%~1"=="banco" goto :banco
-if /i "%~1"=="android" goto :android
-if /i "%~1"=="sincronizar" goto :sincronizar
-if /i "%~1"=="relatorios" goto :relatorios
-if /i "%~1"=="diagnostico" goto :diagnostico
-if /i "%~1"=="instalar" goto :instalar
-echo Comandos: auto ^| testes ^| dev ^| banco ^| android ^| sincronizar ^| instalar ^| relatorios ^| diagnostico
-set "RC=1"
-goto :fim
-
-:auto
-node "%~dp0tools\dev.mjs" auto
+:tudo
+node "%~dp0tools\dev.mjs" tudo
 set "RC=%ERRORLEVEL%"
+if not "%RC%"=="0" goto :fim
+rem A rodada deixa o app no ar; se ela terminar sozinha, a janela espera a tecla.
 goto :fim
 
 :testes
