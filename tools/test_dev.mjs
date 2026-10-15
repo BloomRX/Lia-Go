@@ -518,6 +518,7 @@ test("as funções principais do orquestrador continuam existindo (nenhuma remo�
   const { readFileSync } = await import("node:fs");
   const fonte = readFileSync(new URL("./dev.mjs", import.meta.url), "utf8");
   const esperadas = [
+    "abrirNoNavegador",
     "atualizarDoGitHub",
     "caminhosAlterados",
     "conferirInstalacaoReal",

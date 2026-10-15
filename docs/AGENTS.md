@@ -41,7 +41,8 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 7. Ao terminar, informe arquivos alterados, comportamento entregue, testes executados, limitações e próximo passo.
 
 ## Comandos de verificação
-- Windows: **duplo clique em `LiaGo.bat`** faz a rodada completa (`node tools/dev.mjs tudo`, 7 etapas numeradas: atualizar → dependências → banco → testes → relatório/diagnóstico → envio → app no ar). Opções manuais: `LiaGo.bat menu`.
+- Windows: **duplo clique em `LiaGo.bat`** faz a rodada completa (`node tools/dev.mjs tudo`, 7 etapas numeradas: atualizar → dependências → banco → testes → relatório/diagnóstico → envio → app no ar, com o navegador abrindo sozinho no fim; `LIA_ABRIR_NAVEGADOR=0` desliga). Opções manuais: `LiaGo.bat menu`.
+- Primeiro uso do app: tela de entrada do próprio Lia Go (nada de serviço externo) — "Criar conta" com e-mail qualquer e senha de 10+ caracteres; depois criar viagem, convidar (token aparece uma vez) e lançar despesa. Passo a passo em `docs/DEV_SETUP.md` §1.
 - **Nada de descartar trabalho local**: a atualização compara arquivos alterados aqui × os que chegam do GitHub e decide; nunca usa `stash` + `reset --hard`. Colisão real ⇒ adiar com explicação.
 - **Etapas que deixam processo vivo** (banco): saída **herdada** e encerramento explícito — `stdio: "pipe"` + processo neto = rodada presa para sempre (há teste).
 - **Teto de tempo em etapas longas** (banco/dependências/testes) com aviso "⏳ ainda trabalhando" a cada 15s.

@@ -658,6 +658,24 @@ function acompanharSaida(rotulo, processo) {
   }
 }
 
+/**
+ * Abre o app no navegador do próprio computador (Windows).
+ *
+ * O objetivo do duplo clique é não sobrar nada para a pessoa fazer — inclusive copiar endereço.
+ * Por isso a rodada termina com o app aberto na tela. Para desligar: `LIA_ABRIR_NAVEGADOR=0`.
+ * Em outros sistemas não tentamos (aqui é ambiente de servidor, não de pessoa).
+ */
+function abrirNoNavegador(url) {
+  if (process.platform !== "win32") return false;
+  if (process.env.LIA_ABRIR_NAVEGADOR === "0") return false;
+  try {
+    const resultado = spawnSync("cmd", ["/c", "start", "", url], { stdio: "ignore", timeout: 10000 });
+    return resultado.status === 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Sobe a API e o app web e fica vigiando: se algum cair, a tela explica. */
 async function subirServidores() {
   // Duplo clique com o app já aberto de uma rodada anterior: avisar é melhor do que dar erro de porta.
@@ -665,6 +683,7 @@ async function subirServidores() {
     console.log("\nO app já está no ar de uma rodada anterior — não vou subir outro.");
     console.log("Abra no navegador: http://localhost:5273  (API em http://localhost:3000)");
     console.log("Para encerrar o que está rodando, feche aquela janela do Lia Go.");
+    if (abrirNoNavegador("http://localhost:5273")) console.log("Abrindo o app no seu navegador…");
     return;
   }
   const { spawn } = await import("node:child_process");
@@ -687,6 +706,8 @@ async function subirServidores() {
   console.log("\nAPI: http://localhost:3000 · App web: http://localhost:5273");
   console.log("Cada linha abaixo vem marcada: [api] ou [app] — é o servidor que a escreveu.");
   console.log("Para o celular na mesma rede: use o endereço 'Network' mostrado pelo app web e defina VITE_API_URL.");
+  // Deixa o app aberto na tela: o duplo clique não deve exigir copiar endereço nenhum.
+  if (abrirNoNavegador("http://localhost:5273")) console.log("Abrindo o app no seu navegador…");
   const encerrar = () => {
     api.kill();
     web.kill();

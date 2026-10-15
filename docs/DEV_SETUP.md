@@ -8,11 +8,33 @@
 > **barra de progresso com velocidade** e, quando um passo fica quieto por 15 segundos, aparece
 > `⏳ ainda trabalhando` — ou seja, nunca é preciso adivinhar se travou.
 > Na última etapa, cada linha da API e do app web vem identificada (`[api]` / `[app]`) e a tela termina com
-> um **resumo da rodada** (banco, testes, relatório, envio e tempo total).
+> um **resumo da rodada** (banco, testes, relatório, envio e tempo total). No Windows, o **navegador abre
+> sozinho** no endereço do app (desliga com `LIA_ABRIR_NAVEGADOR=0`).
 > As opções manuais ficam em `LiaGo.bat menu`; o mesmo conjunto existe em qualquer sistema com
 > `node tools/dev.mjs <comando>`.
 
-## 1. O que você precisa instalar (uma vez)
+## 1. Primeiros passos dentro do app
+
+A primeira tela é a entrada do próprio Lia Go — **não existe serviço externo nem conta em nuvem**: tudo roda
+no seu computador (banco local, dados sintéticos). Para começar:
+
+1. **Criar conta** (botão abaixo de "Entrar"): nome, um e-mail qualquer (nada é enviado — ainda não há
+   provedor de e-mail) e uma senha com **pelo menos 10 caracteres**. Você entra direto, já conectado.
+2. **Criar viagem**: nome e destino ("Viagem de teste", "Ubatuba") e "Salvar rascunho". Abra a viagem e use
+   "Planejada" para tirá-la do rascunho — é quando ela passa a aceitar despesas.
+3. **Convidar pessoa** (dentro da viagem): informe o e-mail de quem vai participar. O convite aparece **uma
+   vez**, com um token: quem receber cria a própria conta com **aquele mesmo e-mail** e cola o token em
+   "Recebeu um convite? Cole o link/token".
+4. **Nova despesa**: descrição, valor (ex.: `87,50`), compartilhada ou pessoal, e quem pagou. Despesa nova
+   nasce **pendente** e só entra no saldo depois que **outra pessoa** confirma (quem lançou não confirma o
+   próprio lançamento).
+5. **Saldos e acertos**: a viagem mostra o saldo oficial e os acertos sugeridos. Nada é transferido de
+   verdade: o Lia Go só sugere, o pagamento acontece fora do app.
+
+> Esqueceu a senha? Como os dados são sintéticos, basta criar outra conta com outro e-mail — a recuperação
+> automática depende do provedor de e-mail, que ainda é uma decisão pendente.
+
+## 2. O que você precisa instalar (uma vez)
 
 | Item | Versão mínima | Para quê | Obrigatório? |
 |---|---|---|---|
@@ -35,7 +57,7 @@ máquina tenha. Os binários ficam em `.pgbin/`, são removíveis a qualquer mom
 Todos esses modos servem **apenas para desenvolvimento/testes com dados sintéticos** — a decisão de usar
 Docker Compose no dia a dia continua valendo.
 
-## 2. Comandos do dia a dia
+## 3. Comandos do dia a dia
 
 ### Via `LiaGo.bat` (Windows)
 
@@ -56,7 +78,7 @@ API e app web. Para as opções abaixo: `LiaGo.bat menu`.
 | 9 | Reinstala as dependências (`node_modules`) — usar quando algo estiver estranho |
 | 10 | Atualizar do GitHub, sem rodar testes |
 
-> As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §1). A **primeira**
+> As opções 1, 2, 3 e 4 sobem o banco sozinhas pelo caminho mais simples disponível (ver §2). A **primeira**
 > execução é a mais demorada: instala as dependências e baixa os binários do banco (uma vez só).
 >
 > Nenhuma etapa pode travar sem avisar: cada passo longo tem **teto de tempo** (banco 15 min, dependências
@@ -76,14 +98,14 @@ npm run db:down        # para o banco (não apaga dados)
 node tools/dev.mjs testes      # suíte completa + relatório em reports/
 ```
 
-## 3. Testando no celular (mesma rede Wi-Fi)
+## 4. Testando no celular (mesma rede Wi-Fi)
 
 1. Rode a opção 3 do `LiaGo.bat` (ou `npm run dev:web`).
 2. O Vite mostra um endereço **Network**, por exemplo `http://192.168.0.10:5273/`.
 3. Abra esse endereço no navegador do celular. Use apenas **dados sintéticos** nesse modo:
    a rede local não tem HTTPS e o projeto proíbe dados reais fora de HTTPS.
 
-## 4. Gerando o app Android
+## 5. Gerando o app Android
 
 ```bash
 LiaGo.bat android           # ou: npm run build:web && cd apps/mobile && npx cap add android
@@ -94,7 +116,7 @@ cd apps\mobile && npx cap open android
 - A pasta `apps/mobile/android` **não é versionada** (é gerada): cada máquina gera a sua.
 - Antes de qualquer dado real no celular, a API precisa estar em **HTTPS**.
 
-## 4.1 Testando o modo offline (o coração desta fatia)
+## 5.1 Testando o modo offline (o coração desta fatia)
 
 1. Abra o app (`LiaGo.bat` opção 3) e entre na sua conta.
 2. No navegador, abra o DevTools (`F12`) → aba **Network** → marque **Offline**
@@ -116,7 +138,7 @@ cd apps\mobile && npx cap open android
 O que **não** funciona sem internet (de propósito, porque quem decide é o servidor): entrar/cadastrar,
 aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses casos a tela avisa.
 
-## 5. Testes
+## 6. Testes
 
 - Domínio (regras puras, sem banco): `npm run test:domain` — 54 testes.
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 38 testes.
@@ -131,7 +153,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
   versionados**, então o resultado da sua execução aparece no GitHub depois do envio — é o "voltar" do
   `LiaGo.bat`. Relatórios antigos são apagados automaticamente para o repositório não inchar.
 
-## 6. Problemas comuns
+## 7. Problemas comuns
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
@@ -155,7 +177,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 | Quero mandar o erro para alguém analisar | — | a falha do npm grava `reports/npm-install-<data>.log` **com o log interno do npm dentro** (é lá que o motivo real aparece) |
 | `EACCES`/permissão no Docker | Docker não iniciado | abra o Docker Desktop |
 
-## 7. O que **não** é feito pelo app (por regra do projeto)
+## 8. O que **não** é feito pelo app (por regra do projeto)
 
 - Não executa pagamentos, Pix, reservas nem cancelamentos externos.
 - Não confirma despesa pelo próprio autor do lançamento.
