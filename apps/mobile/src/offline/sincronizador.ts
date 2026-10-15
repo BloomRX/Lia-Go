@@ -56,6 +56,9 @@ export class Sincronizador {
   private estado: EstadoSincronizacao;
   private ouvintes = new Set<Ouvinte>();
   private passadaEmAndamento: Promise<RelatorioSincronizacao> | null = null;
+  /** Quem pediu sincronizar durante uma passada espera **uma** passada seguinte, não uma cada. */
+  private pedidoPendente: { resolver: (relatorio: RelatorioSincronizacao) => void; rejeitar: (causa: unknown) => void } | null = null;
+  private proximaPassada: Promise<RelatorioSincronizacao> | null = null;
   /** Depois de sair da conta o sincronizador para de escrever: nada volta para o aparelho. */
   private desligado = false;
 
@@ -169,23 +172,41 @@ export class Sincronizador {
     void this.sincronizarAgora();
   }
 
-  /** Uma passada por vez: duas em paralelo confundiriam a ordem da fila. */
+  /**
+   * Uma passada por vez: duas em paralelo confundiriam a ordem da fila.
+   *
+   * Pedidos que chegam **durante** uma passada (ex.: acabei de criar uma viagem) não viram uma
+   * passada cada um: todos esperam **a mesma** passada seguinte. Sem isso, abrir o app disparava uma
+   * avalanche de sincronizações (uma por pedido) e a tela ficava presa em "Confirmando a viagem com o
+   * servidor…" — defeito relatado em uso real (2026-10-15).
+   */
   sincronizarAgora(): Promise<RelatorioSincronizacao> {
     if (this.passadaEmAndamento) {
-      // Pedido durante uma passada (ex.: acabei de criar uma viagem): a passada em andamento não
-      // conhece o pedido, então esperamos a **próxima** — quem chamou recebe o resultado que já
-      // inclui o que ele acabou de fazer, em vez de olhar para trás.
-      return this.passadaEmAndamento.then(
-        () => this.sincronizarAgora(),
-        () => this.sincronizarAgora(),
-      );
+      if (!this.proximaPassada) {
+        this.proximaPassada = new Promise<RelatorioSincronizacao>((resolver, rejeitar) => {
+          this.pedidoPendente = { resolver, rejeitar };
+        });
+      }
+      return this.proximaPassada;
     }
+
     this.publicar({ sincronizando: true });
-    this.passadaEmAndamento = this.executarPassada().finally(() => {
-      this.passadaEmAndamento = null;
+    const passada = this.executarPassada().finally(() => {
+      if (this.passadaEmAndamento === passada) this.passadaEmAndamento = null;
       this.publicar({ sincronizando: false });
+      this.atenderPedidoPendente();
     });
-    return this.passadaEmAndamento;
+    this.passadaEmAndamento = passada;
+    return passada;
+  }
+
+  /** Chama **uma** passada para todos os pedidos feitos durante a anterior. */
+  private atenderPedidoPendente(): void {
+    const pedido = this.pedidoPendente;
+    if (!pedido) return;
+    this.pedidoPendente = null;
+    this.proximaPassada = null;
+    void this.sincronizarAgora().then(pedido.resolver, pedido.rejeitar);
   }
 
   private async executarPassada(): Promise<RelatorioSincronizacao> {

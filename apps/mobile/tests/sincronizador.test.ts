@@ -201,3 +201,36 @@ test("limpar dados deste aparelho apaga fila e cache, e a tela reflete na hora",
   const reaberto = await Sincronizador.criar(armazem, porta);
   assert.equal(reaberto.obter().fila.operacoes.length, 0, "não sobra nada no aparelho");
 });
+
+test("cinco pedidos durante uma passada viram uma passada seguinte, não cinco", async () => {
+  // A passada 1 fica presa de propósito (o servidor "demora") para os pedidos caírem no meio dela.
+  let liberarBusca: () => void = () => undefined;
+  const presa = new Promise<void>((resolver) => {
+    liberarBusca = resolver;
+  });
+  let buscaViagens = 0;
+  const porta: PortaServidor = {
+    async enviar() {
+      return { ok: true, resposta: { id: "x" } };
+    },
+    async buscarViagens(): Promise<ResultadoBusca> {
+      buscaViagens += 1;
+      if (buscaViagens === 1) await presa;
+      return { ok: true, carga: { viagens: [{ id: "v1", nome: "Praia", estado: "planejada" }], convitesParaMim: [] } };
+    },
+    async buscarMudancas(): Promise<ResultadoBusca> {
+      return { ok: true, cursor: "1", carga: { viagem: null } };
+    },
+  };
+
+  const sincronizador = await Sincronizador.criar(criarArmazenamentoIndexedDB("sync-teste-coalescencia"), porta);
+  const primeira = sincronizador.sincronizarAgora();
+  const esperas = [sincronizador.sincronizarAgora(), sincronizador.sincronizarAgora(), sincronizador.sincronizarAgora(), sincronizador.sincronizarAgora(), sincronizador.sincronizarAgora()];
+
+  assert.ok(esperas.every((pedido) => pedido === esperas[0]), "todos os pedidos durante a passada esperam a mesma passada seguinte");
+
+  liberarBusca();
+  await Promise.all([primeira, ...esperas]);
+
+  assert.equal(buscaViagens, 2, `duas passadas no total (a presa + a que atendeu todos os pedidos). Foram ${buscaViagens}`);
+});

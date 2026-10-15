@@ -3420,6 +3420,9 @@ var Sincronizador = class Sincronizador {
 	estado;
 	ouvintes = /* @__PURE__ */ new Set();
 	passadaEmAndamento = null;
+	/** Quem pediu sincronizar durante uma passada espera **uma** passada seguinte, não uma cada. */
+	pedidoPendente = null;
+	proximaPassada = null;
 	/** Depois de sair da conta o sincronizador para de escrever: nada volta para o aparelho. */
 	desligado = false;
 	constructor(armazemLocal, porta) {
@@ -3529,15 +3532,40 @@ var Sincronizador = class Sincronizador {
 		});
 		this.sincronizarAgora();
 	}
-	/** Uma passada por vez: duas em paralelo confundiriam a ordem da fila. */
+	/**
+	* Uma passada por vez: duas em paralelo confundiriam a ordem da fila.
+	*
+	* Pedidos que chegam **durante** uma passada (ex.: acabei de criar uma viagem) não viram uma
+	* passada cada um: todos esperam **a mesma** passada seguinte. Sem isso, abrir o app disparava uma
+	* avalanche de sincronizações (uma por pedido) e a tela ficava presa em "Confirmando a viagem com o
+	* servidor…" — defeito relatado em uso real (2026-10-15).
+	*/
 	sincronizarAgora() {
-		if (this.passadaEmAndamento) return this.passadaEmAndamento.then(() => this.sincronizarAgora(), () => this.sincronizarAgora());
+		if (this.passadaEmAndamento) {
+			if (!this.proximaPassada) this.proximaPassada = new Promise((resolver, rejeitar) => {
+				this.pedidoPendente = {
+					resolver,
+					rejeitar
+				};
+			});
+			return this.proximaPassada;
+		}
 		this.publicar({ sincronizando: true });
-		this.passadaEmAndamento = this.executarPassada().finally(() => {
-			this.passadaEmAndamento = null;
+		const passada = this.executarPassada().finally(() => {
+			if (this.passadaEmAndamento === passada) this.passadaEmAndamento = null;
 			this.publicar({ sincronizando: false });
+			this.atenderPedidoPendente();
 		});
-		return this.passadaEmAndamento;
+		this.passadaEmAndamento = passada;
+		return passada;
+	}
+	/** Chama **uma** passada para todos os pedidos feitos durante a anterior. */
+	atenderPedidoPendente() {
+		const pedido = this.pedidoPendente;
+		if (!pedido) return;
+		this.pedidoPendente = null;
+		this.proximaPassada = null;
+		this.sincronizarAgora().then(pedido.resolver, pedido.rejeitar);
 	}
 	async executarPassada() {
 		if (this.desligado) return relatorioVazio();
