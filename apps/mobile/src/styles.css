@@ -263,3 +263,94 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:fo
 .impacto ul { margin: 0; padding-left: 1.1rem; }
 .impacto li { margin-bottom: var(--e1); font-size: 0.85rem; line-height: 1.45; }
 .impacto-atencao li::marker { color: var(--atencao); }
+
+/* ---------------------------------------------------------------------------
+   Referências oficiais (`assets/references/`) aplicadas na interface:
+   hero da viagem com a Lia (concept-03), orçamento com barra (concept-03),
+   próximo compromisso em destaque e listas de checklist/documentos.
+   Regra mantida (§13): nenhuma informação crítica só por cor — toda barra e
+   toda etiqueta têm texto ao lado.
+--------------------------------------------------------------------------- */
+
+.hero-viagem {
+  display: grid;
+  gap: var(--e3);
+  grid-template-columns: 1fr;
+  padding: 0;
+  overflow: hidden;
+}
+@media (min-width: 560px) {
+  .hero-viagem { grid-template-columns: 220px 1fr; align-items: stretch; }
+}
+.hero-viagem-imagem { position: relative; min-height: 150px; background: #120a1f; }
+.hero-viagem-imagem img {
+  width: 100%;
+  height: 100%;
+  min-height: 150px;
+  object-fit: cover;
+  object-position: 50% 22%;
+  display: block;
+}
+/* Véu do fundo para a foto encostar no cartão sem corte seco. */
+.hero-viagem-imagem::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(11, 10, 18, 0) 35%, rgba(23, 15, 39, 0.92) 100%);
+  pointer-events: none;
+}
+.hero-viagem-texto { padding: var(--e4) var(--e4) var(--e4) 0; }
+@media (max-width: 559px) {
+  .hero-viagem-texto { padding: 0 var(--e4) var(--e4); }
+}
+.hero-viagem-texto h2 { margin: var(--e1) 0; font-size: 1.35rem; }
+
+/* Barra do orçamento (concept-03): preenchimento com gradiente da marca,
+   espessura confortável e rótulo em texto sempre presente. */
+.barra-orcamento {
+  margin: var(--e2) 0 var(--e1);
+  height: 12px;
+  border-radius: 999px;
+  background: #241636;
+  border: 1px solid var(--borda);
+  overflow: hidden;
+}
+.barra-orcamento .preenchimento {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--roxo), var(--magenta));
+  transition: width 220ms ease-out;
+}
+.barra-orcamento.preenchimento-atencao .preenchimento { background: linear-gradient(90deg, var(--atencao), var(--magenta)); }
+.barra-orcamento.preenchimento-estourado .preenchimento { background: linear-gradient(90deg, var(--erro), var(--magneta, var(--magenta))); }
+
+.etiqueta.estado-orcamento-dentro { background: #10352c; color: var(--bom); }
+.etiqueta.estado-orcamento-atencao { background: #3a2f12; color: var(--atencao); }
+.etiqueta.estado-orcamento-estourado { background: #3b1622; color: var(--erro); }
+.etiqueta.estado-orcamento-sem_limite { background: #241636; color: var(--texto-suave); }
+
+.lista-alertas { margin: var(--e2) 0; padding-left: 1.1rem; }
+.lista-alertas li { color: var(--atencao); font-size: 0.85rem; line-height: 1.4; margin-bottom: var(--e1); }
+
+/* Checklist e documentos: listas legíveis, com alvo de toque confortável. */
+.lista-checklist, .lista-documentos { list-style: none; margin: var(--e2) 0 0; padding: 0; }
+.lista-checklist > li, .lista-documentos > li {
+  border-top: 1px solid var(--borda);
+  padding: var(--e3) 0;
+}
+.lista-checklist > li:first-child, .lista-documentos > li:first-child { border-top: 0; }
+.lista-checklist > li.item-atrasado { border-left: 3px solid var(--atencao); padding-left: var(--e3); }
+.lista-checklist > li.item-feito { opacity: 0.75; }
+.lista-documentos > li.item-removido { opacity: 0.75; }
+.lista-checklist button, .lista-documentos button { min-height: 44px; }
+
+#fechamento-texto {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  background: var(--fundo-cartao-alto);
+  color: var(--texto);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-medio);
+  padding: var(--e3);
+}

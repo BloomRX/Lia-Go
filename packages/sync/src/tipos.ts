@@ -26,6 +26,7 @@ export type Operacao =
   | { tipo: "cancelar_reserva"; viagemId: string; reservaId: string; motivo: string; versao?: number; descricao: string }
   | { tipo: "criar_item_checklist"; viagemId: string; corpo: Record<string, unknown>; descricao: string }
   | { tipo: "concluir_item_checklist"; viagemId: string; itemId: string; versao?: number; descricao: string }
+  | { tipo: "reabrir_item_checklist"; viagemId: string; itemId: string; motivo: string; versao?: number; descricao: string }
   | { tipo: "criar_documento"; viagemId: string; corpo: Record<string, unknown>; descricao: string };
 
 export type TipoOperacao = Operacao["tipo"];

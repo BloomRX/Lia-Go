@@ -82,6 +82,14 @@ async function enviarOperacao(operacao: Operacao, idempotencia: string): Promise
       return api.cancelarReserva(operacao.viagemId, operacao.reservaId, operacao.motivo, operacao.versao);
     case "corrigir_atividade":
       return api.corrigirAtividade(operacao.viagemId, operacao.atividadeId, operacao.corpo as { motivo: string });
+    case "criar_item_checklist":
+      return api.criarItemChecklist(operacao.viagemId, operacao.corpo as Parameters<typeof api.criarItemChecklist>[1], idempotencia);
+    case "concluir_item_checklist":
+      return api.concluirItemChecklist(operacao.viagemId, operacao.itemId, operacao.versao);
+    case "reabrir_item_checklist":
+      return api.reabrirItemChecklist(operacao.viagemId, operacao.itemId, operacao.motivo, operacao.versao);
+    case "criar_documento":
+      return api.criarDocumento(operacao.viagemId, operacao.corpo as Parameters<typeof api.criarDocumento>[1], idempotencia);
   }
 }
 
@@ -104,6 +112,9 @@ export function extrairCarga(mudancas: MudancasApi): Record<string, unknown> {
     convites: mudancas.convites,
     atividades: (mudancas.atividades ?? []) as unknown as Record<string, unknown>[],
     reservas: (mudancas.reservas ?? []) as unknown as Record<string, unknown>[],
+    itensChecklist: (mudancas.itensChecklist ?? []) as unknown as Record<string, unknown>[],
+    // O aviso de remoção (`{id, removido: true}`) chega junto: é o que faz o documento sair do aparelho.
+    documentos: (mudancas.documentos ?? []) as unknown as Record<string, unknown>[],
   };
 }
 

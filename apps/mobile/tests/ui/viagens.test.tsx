@@ -174,13 +174,14 @@ test("aba Gastos mostra o previsto do roteiro separado do dinheiro oficial", asy
   clicar(botaoCom("Chapada"));
   await esperarPor(() => textoDaTela().includes("← Minhas viagens"), "a viagem abrir");
   clicar(botaoCom("Gastos"));
-  await esperarPor(() => textoDaTela().includes("Previsto no roteiro"), "a aba de gastos abrir");
+  await esperarPor(() => textoDaTela().includes("Orçamento da viagem"), "a aba de gastos abrir");
 
   const tela = textoDaTela();
   assert.match(tela, /Previsto \(estimativas \+ combinado\)R\$ 185,00/, `o previsto junta combinado e estimativa: ${tela.slice(0, 500)}`);
   assert.match(tela, /já combinadoR\$ 150,00/);
   assert.match(tela, /estimativaR\$ 35,00/);
-  assert.match(tela, /1 atividade com custo a verificar/);
-  assert.match(tela, /não entra no saldo oficial/, "o previsto nunca se confunde com o saldo oficial");
+  assert.match(tela, /1 custo ainda sem valor informado/, "custo sem valor é sinalizado, nunca somado como zero");
+  assert.match(tela, /Enquanto houver custo a verificar, o previsto é o valor mínimo/);
+  assert.match(tela, /não entram no saldo oficial/, "o previsto nunca se confunde com o saldo oficial");
   assert.match(tela, /Gasto confirmado \(oficial\)/);
 });

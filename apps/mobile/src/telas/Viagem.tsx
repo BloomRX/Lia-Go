@@ -7,14 +7,32 @@ import {
   formatarBRL,
   formatarData,
   hojeIso,
+  horaDoAparelho,
   paraCentavos,
 } from "../services/formato.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 import { Platform } from "../services/plataforma.ts";
-import { atividadesDoDominio, dadosDaViagemAberta, pode } from "../services/viagem-local.ts";
 import { Reservas } from "./Reservas.tsx";
+import { Orcamento } from "./Orcamento.tsx";
+import { Checklist } from "./Checklist.tsx";
+import { Documentos } from "./Documentos.tsx";
+import { Fechamento } from "./Fechamento.tsx";
 import { resumirOrcamentoDoRoteiro } from "@lia-go/domain";
 import { rotuloDeArmazenamento } from "../services/tokens.ts";
+import {
+  atividadesDoDominio,
+  checklistDoDominio,
+  dadosDaViagemAberta,
+  documentosDoDominio,
+  pode,
+  proximoCompromisso,
+  quandoDoCompromisso,
+} from "../services/viagem-local.ts";
+import { comoReserva } from "../services/reserva-cache.ts";
+import { formatarDiaCurto, hojeIso as hojeDoAparelho } from "../services/formato.ts";
+
+/** Imagem oficial da Lia (referência `assets/references/lia-character-hero.png`, comprimida). */
+import heroLia from "../assets/lia-hero.jpg";
 
 interface Props {
   viagemId: string;
@@ -101,6 +119,8 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
   // Só os dados **desta** viagem: enquanto a troca de viagem não termina, o cache pode ser o da
   // viagem anterior e mostrar isso seria mentir sobre a viagem aberta.
   const { detalhe, despesas, movimentos, reservas } = dadosDaViagemAberta(estado, viagemId);
+  const itensDoChecklist = checklistDoDominio(estado, viagemId);
+  const documentosDaViagem = documentosDoDominio(estado, viagemId);
   const viagem = detalhe?.viagem ?? null;
   const participantes = (detalhe?.participantes ?? []) as unknown as Participante[];
   const permissoes = detalhe?.permissoes as
@@ -112,6 +132,12 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
         criarReserva?: { permitido?: boolean; motivo?: string };
         confirmarReserva?: { permitido?: boolean; motivo?: string };
         cancelarReserva?: { permitido?: boolean; motivo?: string };
+        definirLimite?: { permitido?: boolean; motivo?: string };
+        definirLimiteProprio?: { permitido?: boolean; motivo?: string };
+        criarItemChecklist?: { permitido?: boolean; motivo?: string };
+        concluirItemChecklist?: { permitido?: boolean; motivo?: string };
+        criarDocumento?: { permitido?: boolean; motivo?: string };
+        exportar?: { permitido?: boolean; motivo?: string };
         transicoesPermitidas: string[];
       }
     | undefined;
@@ -119,7 +145,13 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
   const pendencias = detalhe?.pendencias as { despesas: number; convites: number } | undefined;
 
   // Orçamento do roteiro: mesmo cálculo do domínio, sobre as atividades **desta** viagem.
-  const orcamento = resumirOrcamentoDoRoteiro(atividadesDoDominio(estado, viagemId));
+  const atividades = atividadesDoDominio(estado, viagemId);
+  const orcamento = resumirOrcamentoDoRoteiro(atividades);
+  const reservasDoDominio = reservas
+    .map((item) => comoReserva(item as Record<string, unknown>))
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+  // Destaque da Visão geral: o que vem a seguir no roteiro (referência `concept-03`).
+  const proximo = proximoCompromisso(atividades, { dia: hojeDoAparelho(), hora: horaDoAparelho() });
 
   const nomePorId = new Map(participantes.map((pessoa) => [pessoa.usuario_id, pessoa.nome]));
   const ativos = participantes.filter((pessoa) => pessoa.estado === "ativo");
@@ -203,6 +235,45 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
 
       {aba === "visao" ? (
         <>
+          <section className="hero-viagem cartao">
+            <div className="hero-viagem-imagem">
+              <img src={heroLia} alt="" aria-hidden="true" />
+            </div>
+            <div className="hero-viagem-texto">
+              <p className="suave pequeno">Viagem ativa</p>
+              <h2>{viagem.destino as string || "Sua próxima viagem"}</h2>
+              <p className="suave pequeno">
+                {formatarData(viagem.data_inicio as string | null)} a {formatarData(viagem.data_fim as string | null)} ·{" "}
+                {ativos.length} {ativos.length === 1 ? "pessoa" : "pessoas"}
+              </p>
+              <span className={`etiqueta estado-${viagem.estado as string}`}>
+                {(viagem.rotuloEstado as string) ?? ROTULO_ESTADO[viagem.estado as string] ?? (viagem.estado as string)}
+              </span>
+            </div>
+          </section>
+
+          <section className="cartao destaque" aria-labelledby="titulo-proximo">
+            <h2 id="titulo-proximo">Próximo compromisso</h2>
+            {proximo ? (
+              <>
+                <div className="linha entre">
+                  <div>
+                    <strong>{proximo.titulo}</strong>
+                    <br />
+                    <small className="suave">
+                      {quandoDoCompromisso(proximo.dia, proximo.hora, hojeDoAparelho())}
+                      {proximo.local ? ` · ${proximo.local}` : ""}
+                    </small>
+                  </div>
+                  <span className="etiqueta estado-planejada">{formatarDiaCurto(proximo.dia).split(", ")[0]}</span>
+                </div>
+                <p className="suave pequeno">Ainda não aconteceu: nada aqui muda saldo nem confirma reserva.</p>
+              </>
+            ) : (
+              <p className="suave pequeno">Nada marcado à frente no roteiro. Quando você adicionar algo, aparece aqui.</p>
+            )}
+          </section>
+
           <section className="cartao destaque">
             <h2>Organização</h2>
             <p>
@@ -351,29 +422,19 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
             </small></p>
           </section>
 
-          {/* Orçamento do roteiro x dinheiro oficial (decisões visuais V1 §7 e §8). */}
-          <section className="cartao">
-            <h2>Previsto no roteiro</h2>
-            <div className="linha"><span>Previsto (estimativas + combinado)</span><strong>{formatarBRL(orcamento.previstoCentavos)}</strong></div>
-            {orcamento.compromissoCentavos > 0n ? (
-              <div className="linha"><span>· já combinado</span><span>{formatarBRL(orcamento.compromissoCentavos)}</span></div>
-            ) : null}
-            {orcamento.estimativaCentavos > 0n ? (
-              <div className="linha"><span>· estimativa</span><span>{formatarBRL(orcamento.estimativaCentavos)}</span></div>
-            ) : null}
-            {orcamento.aVerificar > 0 ? (
-              <div className="linha">
-                <span className="custo-a-verificar">
-                  {orcamento.aVerificar === 1 ? "1 atividade com custo a verificar" : `${orcamento.aVerificar} atividades com custo a verificar`}
-                </span>
-              </div>
-            ) : null}
-            <p><small className="suave">
-              O previsto é <strong>planejamento</strong>: vem do roteiro, não entra no saldo oficial e não substitui a despesa
-              registrada. Gastar de verdade é o que aparece em "Gasto confirmado" acima, confirmado no servidor.
-              {orcamento.aVerificar > 0 ? " Enquanto houver custo a verificar, o previsto é o valor mínimo." : ""}
-            </small></p>
-          </section>
+          {/* Orçamento com limite e barra (tela 9 / decisões V1 §7 e §8), na referência concept-03. */}
+          <Orcamento
+            viagemId={viagemId}
+            usuarioId={usuarioId}
+            sincronizador={sincronizador}
+            atividades={atividades}
+            reservas={reservasDoDominio}
+            gastoConfirmadoCentavos={saldos?.realizado ?? null}
+            aguardandoCentavos={saldos?.comprometido ?? null}
+            saldosEm={saldosEm}
+            ehOrganizador={detalhe?.papel === "organizador"}
+            permissoes={permissoes ?? {}}
+          />
 
           {saldos && saldos.saldos.length > 0 ? (
             <section className="cartao">
@@ -656,6 +717,27 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
             reservas={reservas}
             permissoes={permissoes ?? {}}
           />
+
+          <Checklist
+            viagemId={viagemId}
+            usuarioId={usuarioId}
+            sincronizador={sincronizador}
+            itens={itensDoChecklist}
+            participantes={participantes.map((pessoa) => ({ usuario_id: pessoa.usuario_id, nome: pessoa.nome, estado: pessoa.estado }))}
+            permissoes={permissoes ?? {}}
+          />
+
+          <Documentos
+            viagemId={viagemId}
+            usuarioId={usuarioId}
+            sincronizador={sincronizador}
+            documentos={documentosDaViagem}
+            participantes={participantes.map((pessoa) => ({ usuario_id: pessoa.usuario_id, nome: pessoa.nome, estado: pessoa.estado }))}
+            ehOrganizador={detalhe?.papel === "organizador"}
+            avisoDePrivacidade={null}
+          />
+
+          <Fechamento viagemId={viagemId} nomeDaViagem={String(viagem.nome ?? "viagem")} />
 
           <section className="cartao">
             <h2>Este aparelho</h2>

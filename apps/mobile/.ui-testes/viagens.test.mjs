@@ -6,7 +6,7 @@ import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { ROTULO_ESTADO_RESERVA, ROTULO_TIPO_RESERVA, agruparPorDia, cancelarReserva, confirmarReserva, conflitosDoDia, criarReserva, ordenarReservas, resumirDia, resumirOrcamentoDoRoteiro, resumirReservas, revisarImpacto, revisarImpactoDaReserva } from "@lia-go/domain";
+import { CATEGORIAS_CHECKLIST, ROTULO_CATEGORIA_CHECKLIST, ROTULO_ESTADO_ORCAMENTO, ROTULO_ESTADO_RESERVA, ROTULO_TIPO_DOCUMENTO, ROTULO_TIPO_RESERVA, TIPOS_DE_DOCUMENTO, agruparPorDia, cancelarReserva, concluirItem, confirmarReserva, conflitosDoDia, criarItemChecklist, criarReserva, itemAtrasado, itemParaHoje, ordenarChecklist, ordenarReservas, podeVerDocumento, reabrirItem, resumirChecklist, resumirDia, resumirDocumentos, resumirOrcamentoDoRoteiro, resumirReservas, revisarImpacto, revisarImpactoDaReserva, situacaoDoOrcamento } from "@lia-go/domain";
 import { cargaCompleta, cargaVazia, compararParaDecisao, descartar, enfileirar, filaVazia, mesclarCarga, resumoFila, retentar, sincronizar, trocarViagemAberta } from "@lia-go/sync";
 //#region tests/ui/ambiente.ts
 /**
@@ -227,17 +227,43 @@ function criarServidorFalso(viagens, usuarioId = "u1") {
 					permitido: viagem.estado !== "cancelada",
 					motivo: "ok"
 				},
+				definirLimite: {
+					permitido: viagem.papel === "organizador",
+					motivo: "ok"
+				},
+				definirLimiteProprio: {
+					permitido: true,
+					motivo: "ok"
+				},
+				criarItemChecklist: {
+					permitido: viagem.estado !== "cancelada",
+					motivo: "ok"
+				},
+				concluirItemChecklist: {
+					permitido: true,
+					motivo: "ok"
+				},
+				criarDocumento: {
+					permitido: viagem.estado !== "cancelada",
+					motivo: "ok"
+				},
+				exportar: {
+					permitido: true,
+					motivo: "ok"
+				},
 				transicoesPermitidas: []
 			},
 			despesas: viagem.despesas ?? [],
 			movimentos: [],
 			convites: [],
 			atividades: viagem.atividades ?? [],
-			reservas: viagem.reservas ?? []
+			reservas: viagem.reservas ?? [],
+			itensChecklist: viagem.checklist ?? [],
+			documentos: viagem.documentos ?? []
 		});
 		if (caminho.endsWith("/saldos")) return json({
-			realizado: "0",
-			comprometido: "0",
+			realizado: viagem.realizado ?? "0",
+			comprometido: viagem.comprometido ?? "0",
 			haDivergencia: false,
 			saldos: [],
 			transferenciasSugeridas: [],
@@ -313,6 +339,286 @@ function criarServidorFalso(viagens, usuarioId = "u1") {
 			reserva["motivoCancelamento"] = corpo.motivo ?? null;
 			reserva["versao"] = Number(reserva["versao"] ?? 1) + 1;
 			return json({ reserva });
+		}
+		if (caminho.endsWith("/orcamento") && metodo === "GET") {
+			const limite = viagem.limiteColetivoCentavos ?? null;
+			const previsto = (viagem.atividades ?? []).reduce((soma, atividade) => {
+				const custo = atividade["custo"] ?? {};
+				return soma + BigInt(custo.centavos ?? "0");
+			}, 0n);
+			const gasto = BigInt(viagem.realizado ?? "0");
+			const percentual = limite === null || BigInt(limite) === 0n ? null : Number(previsto * 100n / BigInt(limite));
+			return json({
+				limiteColetivo: limite === null ? null : {
+					id: "l1",
+					centavos: limite,
+					atualizadoEm: (/* @__PURE__ */ new Date()).toISOString(),
+					versao: 1
+				},
+				limiteIndividualProprio: null,
+				limitesIndividuais: [],
+				situacao: {
+					temLimite: limite !== null,
+					limiteCentavos: limite,
+					previstoCentavos: previsto.toString(),
+					gastoConfirmadoCentavos: gasto.toString(),
+					aguardandoCentavos: viagem.comprometido ?? "0",
+					restantePrevistoCentavos: limite === null ? null : (BigInt(limite) - previsto).toString(),
+					restanteGastoCentavos: limite === null ? null : (BigInt(limite) - gasto).toString(),
+					percentualPrevisto: percentual,
+					percentualGasto: limite === null ? null : Number(gasto * 100n / BigInt(limite)),
+					estado: limite === null ? "sem_limite" : percentual === null ? "dentro" : percentual > 100 ? "estourado" : percentual >= 80 ? "atencao" : "dentro",
+					alertas: [],
+					resumo: limite === null ? "Sem limite definido." : `Previsto de ${limite}.`
+				},
+				planejamento: {
+					previstoCentavos: previsto.toString(),
+					custosAVerificar: 0
+				},
+				oficial: {
+					gastoConfirmadoCentavos: gasto.toString(),
+					aguardandoCentavos: viagem.comprometido ?? "0"
+				},
+				rotulos: {
+					sem_limite: "Sem limite",
+					dentro: "Dentro do limite",
+					atencao: "Perto do limite",
+					estourado: "Passou do limite"
+				}
+			});
+		}
+		if (caminho.endsWith("/orcamento/limite") && metodo === "PUT") {
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			viagem.limiteColetivoCentavos = corpo.centavos ?? null;
+			return json({ limite: {
+				id: "l1",
+				centavos: corpo.centavos ?? "0",
+				atualizadoEm: (/* @__PURE__ */ new Date()).toISOString(),
+				versao: 1
+			} });
+		}
+		if (caminho.endsWith("/checklist") && metodo === "GET") return json({
+			itens: viagem.checklist ?? [],
+			categorias: [
+				{
+					categoria: "documento",
+					rotulo: "Documento"
+				},
+				{
+					categoria: "reserva",
+					rotulo: "Reserva"
+				},
+				{
+					categoria: "compras",
+					rotulo: "Compras"
+				},
+				{
+					categoria: "saude",
+					rotulo: "Saúde"
+				},
+				{
+					categoria: "outro",
+					rotulo: "Outro"
+				}
+			],
+			permissoes: {
+				criar: true,
+				concluir: true
+			}
+		});
+		if (caminho.endsWith("/checklist") && metodo === "POST") {
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const novo = {
+				id: `c${(viagem.checklist ?? []).length + 1}`,
+				viagemId: viagem.id,
+				autorId: usuarioId,
+				titulo: corpo.titulo ?? "sem título",
+				categoria: corpo.categoria ?? "outro",
+				categoriaRotulo: "Outro",
+				responsavelId: corpo.responsavelId ?? null,
+				prazo: corpo.prazo ?? null,
+				estado: "aberto",
+				feitoPor: null,
+				feitoEm: null,
+				observacao: null,
+				motivoReabertura: null,
+				versao: 1
+			};
+			viagem.checklist = [...viagem.checklist ?? [], novo];
+			return json({ item: novo }, 201);
+		}
+		if (caminho.includes("/checklist/") && caminho.endsWith("/concluir")) {
+			const id = caminho.split("/").at(-2);
+			const item = (viagem.checklist ?? []).find((candidato) => candidato["id"] === id);
+			if (!item) return json({
+				erro: "nao_encontrado",
+				mensagem: "Item não encontrado."
+			}, 404);
+			item["estado"] = "feito";
+			item["feitoPor"] = usuarioId;
+			item["feitoEm"] = (/* @__PURE__ */ new Date()).toISOString();
+			item["versao"] = Number(item["versao"] ?? 1) + 1;
+			return json({ item });
+		}
+		if (caminho.includes("/checklist/") && caminho.endsWith("/reabrir")) {
+			const id = caminho.split("/").at(-2);
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const item = (viagem.checklist ?? []).find((candidato) => candidato["id"] === id);
+			if (!item) return json({
+				erro: "nao_encontrado",
+				mensagem: "Item não encontrado."
+			}, 404);
+			item["estado"] = "aberto";
+			item["feitoPor"] = null;
+			item["feitoEm"] = null;
+			item["motivoReabertura"] = corpo.motivo ?? null;
+			item["versao"] = Number(item["versao"] ?? 1) + 1;
+			return json({ item });
+		}
+		if (caminho.endsWith("/documentos") && metodo === "GET") return json({
+			documentos: viagem.documentos ?? [],
+			tipos: [
+				{
+					tipo: "passagem",
+					rotulo: "Passagem"
+				},
+				{
+					tipo: "seguro",
+					rotulo: "Seguro"
+				},
+				{
+					tipo: "outro",
+					rotulo: "Outro"
+				}
+			],
+			avisoDePrivacidade: "Documento começa privado: só quem criou vê. Compartilhar é um passo separado e pode ser revogado. O Lia Go guarda o link e a descrição — o arquivo continua onde você o colocou."
+		});
+		if (caminho.endsWith("/documentos") && metodo === "POST") {
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const novo = {
+				id: `d${(viagem.documentos ?? []).length + 1}`,
+				viagemId: viagem.id,
+				autorId: usuarioId,
+				tipo: corpo.tipo ?? "outro",
+				tipoRotulo: "Outro",
+				nome: corpo.nome ?? "sem nome",
+				descricao: corpo.descricao ?? null,
+				link: corpo.link ?? null,
+				visibilidade: "privado",
+				compartilhadoCom: [],
+				estado: "ativo",
+				removidoPor: null,
+				removidoEm: null,
+				motivoRemocao: null,
+				versao: 1
+			};
+			viagem.documentos = [...viagem.documentos ?? [], novo];
+			return json({ documento: novo }, 201);
+		}
+		if (caminho.includes("/documentos/") && caminho.endsWith("/impacto")) {
+			const acao = url.searchParams.get("acao") ?? "compartilhar";
+			return json({ impacto: {
+				itens: acao === "remover" ? ["O documento sai da lista de todo mundo e o acesso é revogado.", "Nada é apagado em definitivo: o registro e o motivo continuam guardados."] : ["Todas as 2 pessoas com acesso ativo passam a ver este documento.", "O documento guarda o link e a descrição; o arquivo continua onde você o colocou (o Lia Go não copia o arquivo)."],
+				atencao: acao === "remover" ? [] : ["Documento de identidade: compartilhe só com quem precisa."]
+			} });
+		}
+		if (caminho.includes("/documentos/") && (caminho.endsWith("/compartilhar") || caminho.endsWith("/revogar"))) {
+			const id = caminho.split("/").at(-2);
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const documento = (viagem.documentos ?? []).find((candidato) => candidato["id"] === id);
+			if (!documento) return json({
+				erro: "nao_encontrado",
+				mensagem: "Documento não encontrado."
+			}, 404);
+			if (caminho.endsWith("/compartilhar") && corpo.com === "viagem") {
+				documento["visibilidade"] = "viagem";
+				documento["compartilhadoCom"] = [];
+			} else if (caminho.endsWith("/revogar")) {
+				documento["visibilidade"] = "privado";
+				documento["compartilhadoCom"] = [];
+			} else documento["compartilhadoCom"] = Array.isArray(corpo.com) ? corpo.com : [];
+			documento["versao"] = Number(documento["versao"] ?? 1) + 1;
+			return json({ documento });
+		}
+		if (caminho.includes("/documentos/") && caminho.endsWith("/remover")) {
+			const id = caminho.split("/").at(-2);
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const documento = (viagem.documentos ?? []).find((candidato) => candidato["id"] === id);
+			if (!documento) return json({
+				erro: "nao_encontrado",
+				mensagem: "Documento não encontrado."
+			}, 404);
+			documento["estado"] = "removido";
+			documento["motivoRemocao"] = corpo.motivo ?? null;
+			documento["visibilidade"] = "privado";
+			documento["compartilhadoCom"] = [];
+			documento["versao"] = Number(documento["versao"] ?? 1) + 1;
+			return json({ documento });
+		}
+		if (caminho.endsWith("/fechamento") && metodo === "GET") {
+			const confirmadas = (viagem.despesas ?? []).filter((despesa) => despesa["estado"] === "confirmada");
+			const total = confirmadas.reduce((soma, despesa) => soma + BigInt(String(despesa["valorCentavos"] ?? "0")), 0n);
+			const conta = total / 2n;
+			return json({
+				viagem: {
+					id: viagem.id,
+					nome: viagem.nome,
+					destino: viagem.destino,
+					moeda: "BRL",
+					estado: viagem.estado
+				},
+				geradoEm: (/* @__PURE__ */ new Date()).toISOString(),
+				linhas: confirmadas.map((despesa) => ({
+					despesaId: despesa["id"],
+					data: despesa["data"],
+					descricao: despesa["descricao"],
+					tipo: despesa["tipo"],
+					estado: "confirmada",
+					valorCentavos: despesa["valorCentavos"],
+					moeda: "BRL",
+					pagadorId: usuarioId,
+					pagadorNome: "Ana",
+					partes: [{
+						participanteId: usuarioId,
+						nome: "Ana",
+						valorCentavos: conta.toString()
+					}, {
+						participanteId: "u2",
+						nome: "Bruno",
+						valorCentavos: conta.toString()
+					}]
+				})),
+				totalConfirmadoCentavos: total.toString(),
+				totalAguardandoCentavos: "0",
+				despesasAbertas: 0,
+				saldos: [{
+					participanteId: usuarioId,
+					nome: "Ana",
+					pagoCentavos: total.toString(),
+					parteCentavos: conta.toString(),
+					saldoCentavos: (total - conta).toString()
+				}, {
+					participanteId: "u2",
+					nome: "Bruno",
+					pagoCentavos: "0",
+					parteCentavos: conta.toString(),
+					saldoCentavos: (-conta).toString()
+				}],
+				acertosSugeridos: [{
+					deId: "u2",
+					deNome: "Bruno",
+					paraId: usuarioId,
+					paraNome: "Ana",
+					valorCentavos: conta.toString()
+				}],
+				previstoCentavos: "0",
+				previstoRoteiroCentavos: "0",
+				previstoReservasCentavos: "0",
+				limiteCentavos: null,
+				alertas: [],
+				texto: `Lia Go — fechamento de ${viagem.nome}\nConfirmado: R$ ${total.toString()}\nAcertos sugeridos (sugestão — ninguém pagou nada até alguém registrar).\n`,
+				csv: "\"viagem\";\"data\";\"descricao\";\"valor\"\n" + confirmadas.map((despesa) => `"${viagem.nome}";"${despesa["data"]}";"${despesa["descricao"]}";"${despesa["valorCentavos"]}"`).join("\n")
+			});
 		}
 		if (caminho.endsWith("/atividades") && metodo === "POST") return json({
 			dia: "2026-12-20",
@@ -723,6 +1029,89 @@ const api = {
 			}
 		});
 	},
+	async orcamento(viagemId) {
+		return requisitar(`/viagens/${viagemId}/orcamento`);
+	},
+	async definirLimiteColetivo(viagemId, centavos) {
+		return requisitar(`/viagens/${viagemId}/orcamento/limite`, {
+			metodo: "PUT",
+			corpo: { centavos }
+		});
+	},
+	async definirLimiteIndividual(viagemId, usuarioId, centavos) {
+		return requisitar(`/viagens/${viagemId}/orcamento/limites/${usuarioId}`, {
+			metodo: "PUT",
+			corpo: { centavos }
+		});
+	},
+	async fechamento(viagemId) {
+		return requisitar(`/viagens/${viagemId}/fechamento`);
+	},
+	async checklist(viagemId) {
+		return requisitar(`/viagens/${viagemId}/checklist`);
+	},
+	async criarItemChecklist(viagemId, corpo, idempotencia) {
+		return requisitar(`/viagens/${viagemId}/checklist`, {
+			metodo: "POST",
+			corpo,
+			idempotencia
+		});
+	},
+	async concluirItemChecklist(viagemId, itemId, versao) {
+		return requisitar(`/viagens/${viagemId}/checklist/${itemId}/concluir`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? {} : { versao }
+		});
+	},
+	async reabrirItemChecklist(viagemId, itemId, motivo, versao) {
+		return requisitar(`/viagens/${viagemId}/checklist/${itemId}/reabrir`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? { motivo } : {
+				motivo,
+				versao
+			}
+		});
+	},
+	async documentos(viagemId) {
+		return requisitar(`/viagens/${viagemId}/documentos`);
+	},
+	async criarDocumento(viagemId, corpo, idempotencia) {
+		return requisitar(`/viagens/${viagemId}/documentos`, {
+			metodo: "POST",
+			corpo,
+			idempotencia
+		});
+	},
+	async impactoDocumento(viagemId, documentoId, acao) {
+		return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/impacto?acao=${acao}`);
+	},
+	async compartilharDocumento(viagemId, documentoId, com, versao) {
+		return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/compartilhar`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? { com } : {
+				com,
+				versao
+			}
+		});
+	},
+	async revogarDocumento(viagemId, documentoId, com, versao) {
+		return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/revogar`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? { com } : {
+				com,
+				versao
+			}
+		});
+	},
+	async removerDocumento(viagemId, documentoId, motivo, versao) {
+		return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/remover`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? { motivo } : {
+				motivo,
+				versao
+			}
+		});
+	},
 	async mudancas(viagemId, cursor) {
 		return requisitar(`/viagens/${viagemId}/mudancas?desde=${encodeURIComponent(cursor ?? "0")}`);
 	},
@@ -883,6 +1272,15 @@ function formatarData(iso) {
 	if (!iso) return "sem data";
 	const [ano, mes, dia] = iso.slice(0, 10).split("-");
 	return `${dia}/${mes}/${ano}`;
+}
+/** Hora local do aparelho no formato HH:MM (mesma lógica do dia: quem lê é a pessoa). */
+function horaDoAparelho(agora = /* @__PURE__ */ new Date()) {
+	return new Intl.DateTimeFormat("pt-BR", {
+		timeZone: "America/Sao_Paulo",
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: false
+	}).format(agora);
 }
 function hojeIso() {
 	const agora = /* @__PURE__ */ new Date();
@@ -1345,16 +1743,22 @@ function dadosDaViagemAberta(estado, viagemId) {
 		despesas: [],
 		movimentos: [],
 		atividades: [],
-		reservas: []
+		reservas: [],
+		itensChecklist: [],
+		documentos: []
 	};
 	const atividades = estado.carga.atividades.filter((atividade) => atividade.viagemId === void 0 || atividade.viagemId === viagemId);
 	const reservas = (estado.carga.reservas ?? []).filter((reserva) => reserva.viagemId === void 0 || reserva.viagemId === viagemId);
+	const itensChecklist = (estado.carga.itensChecklist ?? []).filter((item) => item.viagemId === void 0 || item.viagemId === viagemId);
+	const documentos = (estado.carga.documentos ?? []).filter((documento) => documento.viagemId === void 0 || documento.viagemId === viagemId);
 	return {
 		detalhe,
 		despesas: estado.carga.despesas,
 		movimentos: estado.carga.movimentos,
 		atividades,
-		reservas
+		reservas,
+		itensChecklist,
+		documentos
 	};
 }
 /** Permissão que pode vir ausente de um cache antigo: nunca derruba a tela por isso. */
@@ -1392,6 +1796,82 @@ function atividadeDoDominio(item) {
 /** Atividades da viagem, prontas para as funções do domínio (roteiro e orçamento). */
 function atividadesDoDominio(estado, viagemId) {
 	return dadosDaViagemAberta(estado, viagemId).atividades.map((item) => atividadeDoDominio(item)).filter((atividade) => atividade !== null);
+}
+/**
+* Item do checklist como o domínio entende. `null` para item estragado no cache: dado ruim do
+* aparelho não derruba a tela (mesma regra de `atividadeDoDominio`).
+*/
+function itemChecklistDoDominio(item) {
+	if (typeof item["id"] !== "string" || typeof item["titulo"] !== "string") return null;
+	return {
+		id: item["id"],
+		viagemId: String(item["viagemId"] ?? ""),
+		autorId: String(item["autorId"] ?? ""),
+		titulo: item["titulo"],
+		categoria: item["categoria"] ?? "outro",
+		responsavelId: item["responsavelId"] ?? null,
+		prazo: item["prazo"] ?? null,
+		estado: item["estado"] ?? "aberto",
+		feitoPor: item["feitoPor"] ?? null,
+		feitoEm: item["feitoEm"] ?? null,
+		observacao: item["observacao"] ?? null,
+		motivoReabertura: item["motivoReabertura"] ?? null,
+		versao: Number(item["versao"] ?? 1)
+	};
+}
+/** Checklist da viagem aberta, pronto para as funções do domínio (resumo e ordem). */
+function checklistDoDominio(estado, viagemId) {
+	return dadosDaViagemAberta(estado, viagemId).itensChecklist.map((item) => itemChecklistDoDominio(item)).filter((item) => item !== null);
+}
+/** Documento como o domínio entende (a visibilidade é decidida no servidor; aqui só leitura). */
+function documentoDoDominio(item) {
+	if (typeof item["id"] !== "string" || typeof item["nome"] !== "string") return null;
+	return {
+		id: item["id"],
+		viagemId: String(item["viagemId"] ?? ""),
+		autorId: String(item["autorId"] ?? ""),
+		tipo: item["tipo"] ?? "outro",
+		nome: item["nome"],
+		descricao: item["descricao"] ?? null,
+		link: item["link"] ?? null,
+		visibilidade: item["visibilidade"] ?? "privado",
+		compartilhadoCom: Array.isArray(item["compartilhadoCom"]) ? item["compartilhadoCom"] : [],
+		estado: item["estado"] ?? "ativo",
+		removidoPor: item["removidoPor"] ?? null,
+		removidoEm: item["removidoEm"] ?? null,
+		motivoRemocao: item["motivoRemocao"] ?? null,
+		versao: Number(item["versao"] ?? 1)
+	};
+}
+function documentosDoDominio(estado, viagemId) {
+	return dadosDaViagemAberta(estado, viagemId).documentos.map((item) => documentoDoDominio(item)).filter((documento) => documento !== null);
+}
+/**
+* Próximo compromisso do roteiro (destaque da Visão geral, referência `concept-03`).
+*
+* Regras: só o que ainda **vale** (planejada), só a partir de agora, e sem hora o compromisso vale
+* pelo dia inteiro — por isso ele fica no fim do próprio dia, não no começo. Devolve `null` quando
+* não há nada à frente: a tela então não inventa um "próximo" que não existe.
+*/
+function proximoCompromisso(atividades, agora) {
+	return atividades.filter((atividade) => atividade.estado === "planejada").filter((atividade) => {
+		if (atividade.dia > agora.dia) return true;
+		if (atividade.dia < agora.dia) return false;
+		return atividade.hora === null || atividade.hora >= agora.hora;
+	}).sort((a, b) => {
+		if (a.dia !== b.dia) return a.dia < b.dia ? -1 : 1;
+		const horaA = a.hora ?? "99:99";
+		const horaB = b.hora ?? "99:99";
+		if (horaA !== horaB) return horaA < horaB ? -1 : 1;
+		return a.ordem - b.ordem;
+	})[0] ?? null;
+}
+/** Rótulo humano do "quando" do próximo compromisso (hoje, amanhã ou o dia). */
+function quandoDoCompromisso(dia, hora, hoje) {
+	const [ano, mes, dataDia] = hoje.split("-").map(Number);
+	const amanha = new Date(Date.UTC(ano, (mes ?? 1) - 1, (dataDia ?? 1) + 1, 12)).toISOString().slice(0, 10);
+	const quando = dia === hoje ? "hoje" : dia === amanha ? "amanhã" : dia.split("-").reverse().join("/");
+	return hora === null ? `${quando}, sem hora marcada` : `${quando} às ${hora}`;
 }
 //#endregion
 //#region src/componentes/CartaoAtividade.tsx
@@ -1886,17 +2366,7 @@ function Roteiro({ viagemId, usuarioId, sincronizador, abrirAtividade, dataInici
 	] });
 }
 //#endregion
-//#region src/telas/Reservas.tsx
-/**
-* Reservas da viagem (tela 14 de `docs/UX_SCREENS.md`): hospedagem, transporte, passeio e "outro".
-*
-* Regras que esta tela **não** quebra (decisões V1 §13 e a disciplina de dinheiro do roteiro):
-*  - reserva nasce **prevista**; confirmar é ação separada e exige **evidência** (localizador, código,
-*    comprovante) — a tela nunca dá a entender que alguém falou com o hotel por nós;
-*  - cancelar exige motivo e diz, antes, que isso **não** cancela a reserva no fornecedor;
-*  - valor desconhecido aparece como "valor a verificar", nunca como `R$ 0,00`;
-*  - tudo entra na fila do aparelho: vale na hora e sobe quando houver rede.
-*/
+//#region src/services/reserva-cache.ts
 /** Objeto do aparelho → reserva do domínio (mesma forma que o servidor devolve). */
 function comoReserva(item) {
 	if (typeof item["id"] !== "string" || typeof item["titulo"] !== "string") return null;
@@ -1920,6 +2390,18 @@ function comoReserva(item) {
 		versao: Number(item["versao"] ?? 1)
 	};
 }
+//#endregion
+//#region src/telas/Reservas.tsx
+/**
+* Reservas da viagem (tela 14 de `docs/UX_SCREENS.md`): hospedagem, transporte, passeio e "outro".
+*
+* Regras que esta tela **não** quebra (decisões V1 §13 e a disciplina de dinheiro do roteiro):
+*  - reserva nasce **prevista**; confirmar é ação separada e exige **evidência** (localizador, código,
+*    comprovante) — a tela nunca dá a entender que alguém falou com o hotel por nós;
+*  - cancelar exige motivo e diz, antes, que isso **não** cancela a reserva no fornecedor;
+*  - valor desconhecido aparece como "valor a verificar", nunca como `R$ 0,00`;
+*  - tudo entra na fila do aparelho: vale na hora e sobe quando houver rede.
+*/
 function quando(inicio, fim) {
 	if (inicio === null) return "Ainda sem data";
 	const formatar = (iso) => new Date(iso).toLocaleString("pt-BR", {
@@ -2254,7 +2736,1188 @@ function Reservas({ viagemId, usuarioId, sincronizador, reservas, permissoes }) 
 	] });
 }
 //#endregion
+//#region src/telas/Orcamento.tsx
+/**
+* Orçamento da viagem (tela 9 / decisões V1 §7 e §8): limite com barra, na aba Gastos.
+*
+* Regras que a tela **não** quebra:
+*  - o limite é **planejamento**; o gasto oficial continua sendo só o confirmado no servidor;
+*  - o previsto aparece como "mínimo" enquanto houver custo a verificar;
+*  - sem conexão, o aparelho mostra o **previsto** (que ele calcula do roteiro e das reservas) e diz
+*    com todas as letras que o número oficial precisa do servidor — nunca inventa saldo;
+*  - definir limite coletivo é do organizador; o individual é de cada pessoa (§13: permissão não se
+*    decide no cliente — aqui só se mostra o que o servidor permitiu).
+*/
+function Orcamento({ viagemId, usuarioId, sincronizador, atividades, reservas, gastoConfirmadoCentavos, aguardandoCentavos, saldosEm, ehOrganizador, permissoes }) {
+	const [doServidor, setDoServidor] = useState(null);
+	/** Por que o número do servidor não chegou: a tela explica o caso certo, sem culpar a rede à toa. */
+	const [motivoSemServidor, setMotivoSemServidor] = useState(null);
+	const [erro, setErro] = useState(null);
+	const [aviso, setAviso] = useState(null);
+	const [coletivo, setColetivo] = useState("");
+	const [individual, setIndividual] = useState("");
+	const [editando, setEditando] = useState(false);
+	const [enviando, setEnviando] = useState(false);
+	useEffect(() => {
+		let vivo = true;
+		sincronizador.sincronizarAgora().finally(async () => {
+			try {
+				const resposta = await api.orcamento(viagemId);
+				if (!vivo) return;
+				setDoServidor(resposta);
+				setMotivoSemServidor(null);
+			} catch (falha) {
+				if (!vivo) return;
+				setMotivoSemServidor(falha instanceof ErroApi ? "sem_resposta" : "sem_rede");
+			}
+		});
+		return () => {
+			vivo = false;
+		};
+	}, [viagemId, sincronizador]);
+	/**
+	* Previsto calculado no aparelho (roteiro + reservas) — o mesmo cálculo que o servidor faz.
+	* A separação entre "já combinado" e "estimativa" vem daqui também: é o que impede o número de
+	* parecer mais firme do que é (decisão V1 §8).
+	*/
+	const previstoLocal = useMemo(() => {
+		const roteiro = resumirOrcamentoDoRoteiro(atividades);
+		const deReservas = resumirReservas(reservas);
+		return {
+			previstoCentavos: roteiro.previstoCentavos + deReservas.previstoCentavos,
+			custosAVerificar: roteiro.aVerificar + deReservas.semCustoInformado,
+			compromissoCentavos: roteiro.compromissoCentavos + deReservas.compromissoCentavos,
+			estimativaCentavos: roteiro.estimativaCentavos + deReservas.estimativaCentavos,
+			deReservasCentavos: deReservas.previstoCentavos,
+			semCustoInformadoReservas: deReservas.semCustoInformado
+		};
+	}, [atividades, reservas]);
+	const situacao = useMemo(() => {
+		if (doServidor) return {
+			temLimite: doServidor.situacao.temLimite,
+			limiteCentavos: doServidor.situacao.limiteCentavos === null ? null : BigInt(doServidor.situacao.limiteCentavos),
+			previstoCentavos: BigInt(doServidor.situacao.previstoCentavos),
+			gastoConfirmadoCentavos: BigInt(doServidor.situacao.gastoConfirmadoCentavos),
+			aguardandoCentavos: BigInt(doServidor.situacao.aguardandoCentavos),
+			restantePrevistoCentavos: doServidor.situacao.restantePrevistoCentavos === null ? null : BigInt(doServidor.situacao.restantePrevistoCentavos),
+			restanteGastoCentavos: doServidor.situacao.restanteGastoCentavos === null ? null : BigInt(doServidor.situacao.restanteGastoCentavos),
+			percentualPrevisto: doServidor.situacao.percentualPrevisto,
+			percentualGasto: doServidor.situacao.percentualGasto,
+			estado: doServidor.situacao.estado,
+			alertas: doServidor.situacao.alertas,
+			resumo: doServidor.situacao.resumo
+		};
+		return situacaoDoOrcamento({
+			limiteCentavos: null,
+			previstoCentavos: previstoLocal.previstoCentavos,
+			gastoConfirmadoCentavos: gastoConfirmadoCentavos === null ? 0n : BigInt(gastoConfirmadoCentavos),
+			aguardandoCentavos: aguardandoCentavos === null ? 0n : BigInt(aguardandoCentavos),
+			custosAVerificar: previstoLocal.custosAVerificar
+		});
+	}, [
+		doServidor,
+		previstoLocal,
+		gastoConfirmadoCentavos,
+		aguardandoCentavos
+	]);
+	const comServidor = doServidor !== null;
+	const custosAVerificar = doServidor?.planejamento.custosAVerificar ?? previstoLocal.custosAVerificar;
+	const semLimite = !situacao.temLimite;
+	const percentual = situacao.percentualPrevisto ?? 0;
+	const largura = Math.min(100, Math.max(0, percentual));
+	const restante = situacao.restantePrevistoCentavos;
+	async function definir(escopo) {
+		const texto = escopo === "coletivo" ? coletivo : individual;
+		setErro(null);
+		setAviso(null);
+		let centavos;
+		try {
+			centavos = paraCentavos(texto);
+		} catch (falha) {
+			setErro(falha instanceof Error ? falha.message : "Valor inválido.");
+			return;
+		}
+		setEnviando(true);
+		try {
+			if (escopo === "coletivo") {
+				const resposta = await api.definirLimiteColetivo(viagemId, centavos);
+				setAviso(`Limite da viagem: ${formatarBRL(resposta.limite.centavos)}. Vale como planejamento do grupo.`);
+				setColetivo("");
+			} else {
+				const resposta = await api.definirLimiteIndividual(viagemId, usuarioId, centavos);
+				setAviso(`Seu limite nesta viagem: ${formatarBRL(resposta.limite.centavos)}.`);
+				setIndividual("");
+			}
+			const atualizado = await api.orcamento(viagemId);
+			setDoServidor(atualizado);
+			setEditando(false);
+		} catch (falha) {
+			setErro(falha instanceof ErroApi ? falha.message : "Não foi possível salvar o limite agora.");
+		} finally {
+			setEnviando(false);
+		}
+	}
+	const podeColetivo = ehOrganizador && pode(permissoes.definirLimite);
+	const podeIndividual = pode(permissoes.definirLimiteProprio);
+	return /* @__PURE__ */ jsxs("section", {
+		className: "cartao",
+		"aria-labelledby": "titulo-orcamento",
+		children: [
+			/* @__PURE__ */ jsx("h2", {
+				id: "titulo-orcamento",
+				children: "Orçamento da viagem"
+			}),
+			semLimite ? /* @__PURE__ */ jsxs("p", { children: [
+				"Nenhum limite definido. Você pode combinar um teto — ele serve de ",
+				/* @__PURE__ */ jsx("strong", { children: "planejamento" }),
+				", não bloqueia nada."
+			] }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha entre",
+					children: [/* @__PURE__ */ jsxs("span", { children: [
+						formatarBRL(situacao.previstoCentavos),
+						" de ",
+						/* @__PURE__ */ jsx("strong", { children: formatarBRL(situacao.limiteCentavos ?? 0n) })
+					] }), /* @__PURE__ */ jsx("span", {
+						className: `etiqueta estado-orcamento-${situacao.estado}`,
+						children: ROTULO_ESTADO_ORCAMENTO[situacao.estado]
+					})]
+				}),
+				/* @__PURE__ */ jsx("div", {
+					className: `barra-orcamento preenchimento-${situacao.estado}`,
+					role: "progressbar",
+					"aria-valuemin": 0,
+					"aria-valuemax": 100,
+					"aria-valuenow": largura,
+					"aria-label": `Orçamento previsto: ${largura}% do limite`,
+					children: /* @__PURE__ */ jsx("div", {
+						className: "preenchimento",
+						style: { width: `${largura}%` }
+					})
+				}),
+				/* @__PURE__ */ jsxs("p", {
+					className: "suave pequeno",
+					children: [
+						percentual,
+						"% do limite em planejamento.",
+						situacao.estado === "estourado" ? " O previsto passou do combinado — combine mais ou reveja o roteiro." : restante !== null && restante > 0n ? ` Ainda cabem ${formatarBRL(restante)} de planejamento.` : ""
+					]
+				})
+			] }),
+			/* @__PURE__ */ jsxs("div", {
+				className: "linha",
+				children: [/* @__PURE__ */ jsx("span", { children: "Gasto confirmado (oficial)" }), /* @__PURE__ */ jsx("strong", { children: formatarBRL(situacao.gastoConfirmadoCentavos) })]
+			}),
+			situacao.limiteCentavos !== null && situacao.gastoConfirmadoCentavos > 0n ? /* @__PURE__ */ jsxs("p", {
+				className: "suave pequeno",
+				children: [
+					"Do gasto confirmado, ",
+					formatarBRL(situacao.gastoConfirmadoCentavos),
+					" de ",
+					formatarBRL(situacao.limiteCentavos),
+					" —",
+					" ",
+					situacao.percentualGasto ?? 0,
+					"% do teto."
+				]
+			}) : null,
+			situacao.aguardandoCentavos > 0n ? /* @__PURE__ */ jsxs("p", {
+				className: "suave pequeno",
+				children: ["Aguardando confirmação (fora do oficial): ", formatarBRL(situacao.aguardandoCentavos)]
+			}) : null,
+			!comServidor ? /* @__PURE__ */ jsx("div", {
+				className: "aviso atencao",
+				children: motivoSemServidor === "sem_resposta" ? "O servidor não devolveu o orçamento desta viagem agora: abaixo está o previsto calculado no aparelho. O gasto oficial e o limite combinado aparecem quando o servidor responder." : "Sem conexão agora: o previsto vem do que está no aparelho. O gasto confirmado e o limite combinado precisam do servidor para aparecer atualizados."
+			}) : null,
+			/* @__PURE__ */ jsx("h3", {
+				style: { marginTop: 12 },
+				children: "Previsto (planejamento)"
+			}),
+			/* @__PURE__ */ jsxs("div", {
+				className: "linha",
+				children: [/* @__PURE__ */ jsx("span", { children: "Previsto (estimativas + combinado)" }), /* @__PURE__ */ jsx("strong", { children: formatarBRL(previstoLocal.previstoCentavos) })]
+			}),
+			previstoLocal.compromissoCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
+				className: "linha",
+				children: [/* @__PURE__ */ jsx("span", { children: "· já combinado" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(previstoLocal.compromissoCentavos) })]
+			}) : null,
+			previstoLocal.estimativaCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
+				className: "linha",
+				children: [/* @__PURE__ */ jsx("span", { children: "· estimativa" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(previstoLocal.estimativaCentavos) })]
+			}) : null,
+			previstoLocal.deReservasCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
+				className: "linha",
+				children: [/* @__PURE__ */ jsx("span", { children: "· reservas" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(previstoLocal.deReservasCentavos) })]
+			}) : null,
+			situacao.alertas.length > 0 ? /* @__PURE__ */ jsx("ul", {
+				className: "lista-alertas custo-a-verificar",
+				children: situacao.alertas.map((alerta) => /* @__PURE__ */ jsx("li", { children: alerta }, alerta))
+			}) : null,
+			/* @__PURE__ */ jsxs("p", {
+				className: "suave pequeno",
+				children: [
+					"O previsto e o limite são ",
+					/* @__PURE__ */ jsx("strong", { children: "planejamento" }),
+					": não entram no saldo oficial e não substituem a despesa registrada. Gastar de verdade é o que aparece em \"Gasto confirmado\", confirmado no servidor.",
+					custosAVerificar > 0 ? " Enquanto houver custo a verificar, o previsto é o valor mínimo." : "",
+					comServidor && saldosEm ? ` Números do servidor de ${new Date(saldosEm).toLocaleString("pt-BR")}.` : ""
+				]
+			}),
+			editando ? /* @__PURE__ */ jsxs(Fragment, { children: [podeColetivo ? /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "orcamento-coletivo",
+					children: "Limite da viagem (ex.: 3.000,00)"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "orcamento-coletivo",
+					inputMode: "decimal",
+					value: coletivo,
+					onChange: (evento) => setColetivo(evento.target.value),
+					placeholder: "3000,00"
+				}),
+				/* @__PURE__ */ jsx("div", {
+					className: "acoes",
+					children: /* @__PURE__ */ jsx("button", {
+						className: "principal",
+						disabled: enviando || coletivo.trim() === "",
+						onClick: () => void definir("coletivo"),
+						children: "Salvar limite do grupo"
+					})
+				})
+			] }) : /* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: "Só quem organiza define o limite do grupo."
+			}), podeIndividual ? /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "orcamento-individual",
+					children: "Meu limite individual (opcional)"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "orcamento-individual",
+					inputMode: "decimal",
+					value: individual,
+					onChange: (evento) => setIndividual(evento.target.value),
+					placeholder: "800,00"
+				}),
+				/* @__PURE__ */ jsxs("div", {
+					className: "acoes",
+					children: [/* @__PURE__ */ jsx("button", {
+						className: "sutil",
+						disabled: enviando || individual.trim() === "",
+						onClick: () => void definir("individual"),
+						children: "Salvar meu limite"
+					}), /* @__PURE__ */ jsx("button", {
+						className: "sutil",
+						onClick: () => setEditando(false),
+						children: "Fechar"
+					})]
+				})
+			] }) : /* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: permissoes.definirLimiteProprio?.motivo ?? "Seu limite individual não está disponível agora."
+			})] }) : /* @__PURE__ */ jsx("div", {
+				className: "acoes",
+				children: /* @__PURE__ */ jsx("button", {
+					className: "sutil",
+					onClick: () => setEditando(true),
+					children: semLimite ? "Definir limite" : "Ajustar limite"
+				})
+			}),
+			doServidor && doServidor.limitesIndividuais.length > 0 ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("h3", {
+				style: { marginTop: 12 },
+				children: "Limites individuais"
+			}), doServidor.limitesIndividuais.map((limite) => /* @__PURE__ */ jsxs("div", {
+				className: "linha",
+				children: [/* @__PURE__ */ jsx("span", { children: limite.usuarioId === usuarioId ? `${limite.nome ?? "você"} (você)` : limite.nome ?? "participante" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(limite.centavos) })]
+			}, limite.id))] }) : null,
+			aviso ? /* @__PURE__ */ jsx("div", {
+				className: "aviso ok",
+				children: aviso
+			}) : null,
+			erro ? /* @__PURE__ */ jsx("div", {
+				className: "aviso erro",
+				children: erro
+			}) : null
+		]
+	});
+}
+//#endregion
+//#region src/telas/Checklist.tsx
+/**
+* Checklist da viagem (tela 15).
+*
+* Regras que esta tela respeita (`packages/domain/src/checklist.ts`):
+*  - **prazo não conclui nada**: atraso é rótulo de leitura, quem conclui é uma pessoa;
+*  - concluir registra quem e quando; reabrir exige motivo (é o que explica o item voltar);
+*  - item novo entra na **fila do aparelho**: vale na hora e sobe quando houver rede;
+*  - a ordem de leitura é do domínio (atrasado → prazo mais próximo → sem prazo → feito).
+*/
+/** Id local para validação no domínio (o servidor gera o definitivo quando o item sobe). */
+function idLocal() {
+	return globalThis.crypto?.randomUUID?.() ?? `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+function Checklist({ viagemId, usuarioId, sincronizador, itens, participantes, permissoes }) {
+	const [formularioAberto, setFormularioAberto] = useState(false);
+	const [titulo, setTitulo] = useState("");
+	const [categoria, setCategoria] = useState("outro");
+	const [responsavelId, setResponsavelId] = useState("");
+	const [prazo, setPrazo] = useState("");
+	const [erro, setErro] = useState(null);
+	const [aviso, setAviso] = useState(null);
+	const [reabrindo, setReabrindo] = useState(null);
+	const hoje = hojeIso();
+	const lista = useMemo(() => ordenarChecklist(itens, hoje), [itens, hoje]);
+	const resumo = useMemo(() => resumirChecklist(itens, hoje), [itens, hoje]);
+	const podeCriar = permissoes.criarItemChecklist?.permitido !== false;
+	const podeConcluir = permissoes.concluirItemChecklist?.permitido !== false;
+	const pessoas = useMemo(() => participantes.filter((pessoa) => pessoa.estado === "ativo"), [participantes]);
+	function nomeDe(usuarioId) {
+		if (usuarioId === null) return "sem responsável";
+		return pessoas.find((pessoa) => pessoa.usuario_id === usuarioId)?.nome ?? "participante";
+	}
+	async function enfileirar(operacao, mensagem) {
+		setErro(null);
+		await sincronizador.enfileirar(operacao);
+		setAviso(sincronizador.obter().online ? mensagem : `${mensagem} Ficou guardado no aparelho e sobe quando o sinal voltar.`);
+	}
+	async function criar() {
+		setErro(null);
+		setAviso(null);
+		let entrada;
+		try {
+			entrada = criarItemChecklist({
+				id: idLocal(),
+				viagemId,
+				autorId: usuarioId,
+				titulo,
+				categoria,
+				responsavelId: responsavelId === "" ? null : responsavelId,
+				prazo: prazo === "" ? null : prazo
+			});
+		} catch (falha) {
+			setErro(falha instanceof Error ? falha.message : "Não foi possível criar o item.");
+			return;
+		}
+		await enfileirar({
+			tipo: "criar_item_checklist",
+			viagemId,
+			corpo: {
+				titulo: entrada.titulo,
+				categoria: entrada.categoria,
+				responsavelId: entrada.responsavelId,
+				prazo: entrada.prazo
+			},
+			descricao: `Checklist: ${entrada.titulo}`
+		}, "Item adicionado ao checklist.");
+		setTitulo("");
+		setCategoria("outro");
+		setResponsavelId("");
+		setPrazo("");
+		setFormularioAberto(false);
+	}
+	async function concluir(item) {
+		setErro(null);
+		try {
+			concluirItem(item, { porId: usuarioId });
+		} catch (falha) {
+			setErro(falha instanceof Error ? falha.message : "Não foi possível concluir o item.");
+			return;
+		}
+		await enfileirar({
+			tipo: "concluir_item_checklist",
+			viagemId,
+			itemId: item.id,
+			versao: item.versao,
+			descricao: `Checklist: ${item.titulo} concluído`
+		}, "Item concluído. Fica registrado quem marcou e quando.");
+	}
+	async function reabrir() {
+		if (!reabrindo) return;
+		const item = itens.find((candidato) => candidato.id === reabrindo.itemId);
+		if (!item) return;
+		setErro(null);
+		try {
+			reabrirItem(item, {
+				porId: usuarioId,
+				motivo: reabrindo.motivo
+			});
+		} catch (falha) {
+			setErro(falha instanceof Error ? falha.message : "Informe o motivo da reabertura.");
+			return;
+		}
+		await enfileirar({
+			tipo: "reabrir_item_checklist",
+			viagemId,
+			itemId: item.id,
+			motivo: reabrindo.motivo.trim(),
+			versao: item.versao,
+			descricao: `Checklist: ${item.titulo} reaberto`
+		}, "Item reaberto com o motivo registrado.");
+		setReabrindo(null);
+	}
+	return /* @__PURE__ */ jsxs("section", {
+		className: "cartao",
+		"aria-labelledby": "titulo-checklist",
+		children: [
+			/* @__PURE__ */ jsxs("div", {
+				className: "linha entre",
+				children: [/* @__PURE__ */ jsx("h2", {
+					id: "titulo-checklist",
+					children: "Checklist"
+				}), podeCriar ? /* @__PURE__ */ jsx("button", {
+					className: "sutil",
+					onClick: () => setFormularioAberto((aberto) => !aberto),
+					children: formularioAberto ? "Fechar" : "Novo item"
+				}) : null]
+			}),
+			/* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: resumo.resumo
+			}),
+			formularioAberto ? /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "checklist-titulo",
+					children: "O que precisa acontecer"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "checklist-titulo",
+					value: titulo,
+					onChange: (evento) => setTitulo(evento.target.value),
+					placeholder: "Ex.: levar o passaporte"
+				}),
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "checklist-categoria",
+					children: "Categoria"
+				}),
+				/* @__PURE__ */ jsx("select", {
+					id: "checklist-categoria",
+					value: categoria,
+					onChange: (evento) => setCategoria(evento.target.value),
+					children: CATEGORIAS_CHECKLIST.map((valor) => /* @__PURE__ */ jsx("option", {
+						value: valor,
+						children: ROTULO_CATEGORIA_CHECKLIST[valor]
+					}, valor))
+				}),
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "checklist-responsavel",
+					children: "Quem cuida disso (opcional)"
+				}),
+				/* @__PURE__ */ jsxs("select", {
+					id: "checklist-responsavel",
+					value: responsavelId,
+					onChange: (evento) => setResponsavelId(evento.target.value),
+					children: [/* @__PURE__ */ jsx("option", {
+						value: "",
+						children: "sem responsável"
+					}), pessoas.map((pessoa) => /* @__PURE__ */ jsx("option", {
+						value: pessoa.usuario_id,
+						children: pessoa.nome
+					}, pessoa.usuario_id))]
+				}),
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "checklist-prazo",
+					children: "Prazo (opcional)"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "checklist-prazo",
+					type: "date",
+					value: prazo,
+					onChange: (evento) => setPrazo(evento.target.value)
+				}),
+				/* @__PURE__ */ jsx("p", {
+					className: "suave pequeno",
+					children: "O prazo é só um aviso de leitura: quando a data passa, o item continua em aberto — quem conclui é uma pessoa, não o calendário."
+				}),
+				/* @__PURE__ */ jsx("div", {
+					className: "acoes",
+					children: /* @__PURE__ */ jsx("button", {
+						className: "principal",
+						disabled: titulo.trim().length < 3,
+						onClick: () => void criar(),
+						children: "Adicionar item"
+					})
+				})
+			] }) : null,
+			lista.length === 0 ? /* @__PURE__ */ jsx("p", { children: "Nada no checklist ainda. O que não pode ser esquecido entra aqui." }) : /* @__PURE__ */ jsx("ul", {
+				className: "lista-checklist",
+				children: lista.map((item) => {
+					const feito = item.estado === "feito";
+					const atrasado = itemAtrasado(item, hoje);
+					const paraHoje = itemParaHoje(item, hoje);
+					return /* @__PURE__ */ jsxs("li", {
+						className: feito ? "item-feito" : atrasado ? "item-atrasado" : void 0,
+						children: [
+							/* @__PURE__ */ jsxs("div", {
+								className: "linha entre",
+								children: [/* @__PURE__ */ jsxs("span", { children: [
+									/* @__PURE__ */ jsx("strong", { children: item.titulo }),
+									/* @__PURE__ */ jsx("br", {}),
+									/* @__PURE__ */ jsxs("small", {
+										className: "suave",
+										children: [
+											ROTULO_CATEGORIA_CHECKLIST[item.categoria],
+											" · ",
+											nomeDe(item.responsavelId),
+											item.prazo !== null ? ` · prazo ${item.prazo.split("-").reverse().join("/")}` : " · sem prazo",
+											atrasado ? " · atrasado" : paraHoje ? " · para hoje" : ""
+										]
+									})
+								] }), /* @__PURE__ */ jsx("span", {
+									className: `etiqueta ${feito ? "estado-concluida" : atrasado ? "estado-pendente" : "estado-planejada"}`,
+									children: feito ? "Feito" : atrasado ? "Atrasado" : "Em aberto"
+								})]
+							}),
+							feito ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsxs("p", {
+								className: "suave pequeno",
+								children: [
+									"Concluído por ",
+									nomeDe(item.feitoPor),
+									item.feitoEm ? ` em ${new Date(item.feitoEm).toLocaleString("pt-BR")}` : "",
+									"."
+								]
+							}), /* @__PURE__ */ jsx("button", {
+								className: "sutil",
+								onClick: () => setReabrindo({
+									itemId: item.id,
+									motivo: ""
+								}),
+								children: "Reabrir item"
+							})] }) : podeConcluir ? /* @__PURE__ */ jsx("div", {
+								className: "acoes",
+								children: /* @__PURE__ */ jsx("button", {
+									className: "principal compacto",
+									onClick: () => void concluir(item),
+									children: "Marcar como feito"
+								})
+							}) : /* @__PURE__ */ jsx("p", {
+								className: "suave pequeno",
+								children: permissoes.concluirItemChecklist?.motivo
+							}),
+							reabrindo?.itemId === item.id ? /* @__PURE__ */ jsxs(Fragment, { children: [
+								/* @__PURE__ */ jsx("label", {
+									htmlFor: `checklist-reabrir-${item.id}`,
+									children: "Motivo da reabertura (mínimo 5 caracteres)"
+								}),
+								/* @__PURE__ */ jsx("input", {
+									id: `checklist-reabrir-${item.id}`,
+									value: reabrindo.motivo,
+									onChange: (evento) => setReabrindo({
+										itemId: item.id,
+										motivo: evento.target.value
+									})
+								}),
+								/* @__PURE__ */ jsxs("div", {
+									className: "acoes",
+									children: [/* @__PURE__ */ jsx("button", {
+										className: "principal compacto",
+										onClick: () => void reabrir(),
+										children: "Reabrir"
+									}), /* @__PURE__ */ jsx("button", {
+										className: "sutil",
+										onClick: () => setReabrindo(null),
+										children: "Cancelar"
+									})]
+								})
+							] }) : null
+						]
+					}, item.id);
+				})
+			}),
+			!podeCriar ? /* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: permissoes.criarItemChecklist?.motivo
+			}) : null,
+			aviso ? /* @__PURE__ */ jsx("div", {
+				className: "aviso ok",
+				children: aviso
+			}) : null,
+			erro ? /* @__PURE__ */ jsx("div", {
+				className: "aviso erro",
+				children: erro
+			}) : null
+		]
+	});
+}
+//#endregion
+//#region src/telas/Documentos.tsx
+/**
+* Documentos da viagem (tela 16).
+*
+* Regras que esta tela respeita (decisões V1 §13 e `packages/domain/src/documento.ts`):
+*  - documento **nasce privado**: só quem criou vê, e ninguém — nem quem organiza — vê o conteúdo
+*    antes de um compartilhamento explícito (o servidor responde 404 para quem não pode ver);
+*  - compartilhar e remover são passos separados, com **revisão de impacto antes**;
+*  - remover exige motivo e a tela diz que nada é apagado em definitivo;
+*  - o app guarda **link e descrição**; o arquivo continua onde a pessoa o colocou — a tela nunca
+*    dá a entender que o Lia Go copiou, enviou ou guardou o arquivo.
+*/
+/** Chave de idempotência da criação (reenvio nunca duplica o documento). */
+function idDeOperacao() {
+	return globalThis.crypto?.randomUUID?.() ?? `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+function Documentos({ viagemId, usuarioId, sincronizador, documentos, participantes, ehOrganizador, avisoDePrivacidade }) {
+	const [formularioAberto, setFormularioAberto] = useState(false);
+	const [tipo, setTipo] = useState("passagem");
+	const [nome, setNome] = useState("");
+	const [descricao, setDescricao] = useState("");
+	const [link, setLink] = useState("");
+	const [erro, setErro] = useState(null);
+	const [aviso, setAviso] = useState(null);
+	const [acao, setAcao] = useState(null);
+	const [impacto, setImpacto] = useState(null);
+	const [motivo, setMotivo] = useState("");
+	const [escolhidos, setEscolhidos] = useState([]);
+	const lista = useMemo(() => documentos.filter((documento) => podeVerDocumento(documento, usuarioId, { ehOrganizador })).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")), [
+		documentos,
+		usuarioId,
+		ehOrganizador
+	]);
+	const resumo = useMemo(() => resumirDocumentos(documentos), [documentos]);
+	const pessoas = useMemo(() => participantes.filter((pessoa) => pessoa.estado === "ativo" && pessoa.usuario_id !== usuarioId), [participantes, usuarioId]);
+	function nomeDe(usuarioId) {
+		return participantes.find((pessoa) => pessoa.usuario_id === usuarioId)?.nome ?? "participante";
+	}
+	async function recarregar() {
+		await sincronizador.sincronizarAgora();
+	}
+	async function criar() {
+		setErro(null);
+		setAviso(null);
+		try {
+			await api.criarDocumento(viagemId, {
+				tipo,
+				nome,
+				descricao: descricao.trim() === "" ? null : descricao,
+				link: link.trim() === "" ? null : link
+			}, idDeOperacao());
+			setAviso("Documento guardado como privado. Só você vê até compartilhar.");
+			setNome("");
+			setDescricao("");
+			setLink("");
+			setTipo("passagem");
+			setFormularioAberto(false);
+			await recarregar();
+		} catch (falha) {
+			setErro(falha instanceof ErroApi ? falha.message : "Não foi possível salvar o documento agora.");
+		}
+	}
+	async function abrirAcao(documento, tipoDaAcao) {
+		setErro(null);
+		setAviso(null);
+		setAcao({
+			documento,
+			tipo: tipoDaAcao
+		});
+		setImpacto(null);
+		setMotivo("");
+		setEscolhidos([]);
+		try {
+			const resposta = await api.impactoDocumento(viagemId, documento.id, tipoDaAcao);
+			setImpacto(resposta.impacto);
+		} catch {
+			setImpacto(null);
+		}
+	}
+	async function confirmarAcao() {
+		if (!acao) return;
+		setErro(null);
+		try {
+			if (acao.tipo === "compartilhar") {
+				const com = escolhidos.length === 0 ? "viagem" : escolhidos;
+				await api.compartilharDocumento(viagemId, acao.documento.id, com, acao.documento.versao);
+				setAviso(com === "viagem" ? "Compartilhado com a viagem: todo mundo com acesso ativo vê o link e a descrição." : `Compartilhado com ${escolhidos.map(nomeDe).join(", ")}. Dá para revogar quando quiser.`);
+			} else {
+				await api.removerDocumento(viagemId, acao.documento.id, motivo, acao.documento.versao);
+				setAviso("Documento removido da lista. O registro e o motivo continuam guardados com quem organiza.");
+			}
+			setAcao(null);
+			await recarregar();
+		} catch (falha) {
+			setErro(falha instanceof ErroApi ? falha.message : "Não foi possível concluir a ação agora.");
+		}
+	}
+	async function revogar(documento) {
+		setErro(null);
+		try {
+			await api.revogarDocumento(viagemId, documento.id, "viagem", documento.versao);
+			setAviso("Acesso revogado: o documento voltou a ser só seu.");
+			await recarregar();
+		} catch (falha) {
+			setErro(falha instanceof ErroApi ? falha.message : "Não foi possível revogar o acesso agora.");
+		}
+	}
+	return /* @__PURE__ */ jsxs("section", {
+		className: "cartao",
+		"aria-labelledby": "titulo-documentos",
+		children: [
+			/* @__PURE__ */ jsxs("div", {
+				className: "linha entre",
+				children: [/* @__PURE__ */ jsx("h2", {
+					id: "titulo-documentos",
+					children: "Documentos"
+				}), /* @__PURE__ */ jsx("button", {
+					className: "sutil",
+					onClick: () => setFormularioAberto((aberto) => !aberto),
+					children: formularioAberto ? "Fechar" : "Novo documento"
+				})]
+			}),
+			/* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: avisoDePrivacidade ?? "Documento começa privado: só quem criou vê. Compartilhar é um passo separado e pode ser revogado."
+			}),
+			/* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: resumo.resumo
+			}),
+			formularioAberto ? /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "documento-tipo",
+					children: "Tipo"
+				}),
+				/* @__PURE__ */ jsx("select", {
+					id: "documento-tipo",
+					value: tipo,
+					onChange: (evento) => setTipo(evento.target.value),
+					children: TIPOS_DE_DOCUMENTO.map((valor) => /* @__PURE__ */ jsx("option", {
+						value: valor,
+						children: ROTULO_TIPO_DOCUMENTO[valor]
+					}, valor))
+				}),
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "documento-nome",
+					children: "Nome"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "documento-nome",
+					value: nome,
+					onChange: (evento) => setNome(evento.target.value),
+					placeholder: "Ex.: Voo GRU–LIS"
+				}),
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "documento-descricao",
+					children: "Descrição (opcional)"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "documento-descricao",
+					value: descricao,
+					onChange: (evento) => setDescricao(evento.target.value),
+					placeholder: "Ex.: localizador ABC123, saída 22h"
+				}),
+				/* @__PURE__ */ jsx("label", {
+					htmlFor: "documento-link",
+					children: "Link (opcional)"
+				}),
+				/* @__PURE__ */ jsx("input", {
+					id: "documento-link",
+					value: link,
+					onChange: (evento) => setLink(evento.target.value),
+					placeholder: "https://…",
+					inputMode: "url"
+				}),
+				/* @__PURE__ */ jsx("p", {
+					className: "suave pequeno",
+					children: "O Lia Go guarda o link e a descrição — o arquivo continua onde você o colocou. Nada de binário é copiado para cá."
+				}),
+				/* @__PURE__ */ jsx("div", {
+					className: "acoes",
+					children: /* @__PURE__ */ jsx("button", {
+						className: "principal",
+						disabled: nome.trim().length < 2,
+						onClick: () => void criar(),
+						children: "Salvar como privado"
+					})
+				})
+			] }) : null,
+			lista.length === 0 ? /* @__PURE__ */ jsx("p", { children: "Nenhum documento ainda. Passagens, seguros e ingressos ficam aqui — privados até você compartilhar." }) : /* @__PURE__ */ jsx("ul", {
+				className: "lista-documentos",
+				children: lista.map((documento) => {
+					const removido = documento.estado === "removido";
+					const soVisualizacao = documento.autorId !== usuarioId && !ehOrganizador;
+					const compartilhado = documento.visibilidade === "viagem" || documento.compartilhadoCom.length > 0;
+					return /* @__PURE__ */ jsxs("li", {
+						className: removido ? "item-removido" : void 0,
+						children: [
+							/* @__PURE__ */ jsxs("div", {
+								className: "linha entre",
+								children: [/* @__PURE__ */ jsxs("span", { children: [
+									/* @__PURE__ */ jsx("strong", { children: documento.nome }),
+									/* @__PURE__ */ jsx("br", {}),
+									/* @__PURE__ */ jsxs("small", {
+										className: "suave",
+										children: [
+											ROTULO_TIPO_DOCUMENTO[documento.tipo],
+											" · ",
+											nomeDe(documento.autorId),
+											documento.descricao ? ` · ${documento.descricao}` : ""
+										]
+									})
+								] }), /* @__PURE__ */ jsx("span", {
+									className: `etiqueta ${removido ? "estado-cancelada" : compartilhado ? "estado-em_andamento" : "estado-rascunho"}`,
+									children: removido ? "Removido" : compartilhado ? "Compartilhado" : "Só você"
+								})]
+							}),
+							documento.link ? /* @__PURE__ */ jsxs("p", { children: [
+								/* @__PURE__ */ jsx("a", {
+									href: documento.link,
+									target: "_blank",
+									rel: "noreferrer noopener",
+									children: "Abrir link"
+								}),
+								" ",
+								/* @__PURE__ */ jsx("small", {
+									className: "suave",
+									children: "(abre fora do Lia Go)"
+								})
+							] }) : /* @__PURE__ */ jsx("p", {
+								className: "suave pequeno",
+								children: "Sem link: só a descrição."
+							}),
+							removido ? /* @__PURE__ */ jsxs("p", {
+								className: "suave pequeno",
+								children: ["Removido: ", documento.motivoRemocao]
+							}) : soVisualizacao ? /* @__PURE__ */ jsx("p", {
+								className: "suave pequeno",
+								children: "Compartilhado com você — só quem criou muda isto."
+							}) : /* @__PURE__ */ jsx("div", {
+								className: "acoes",
+								children: documento.autorId === usuarioId || ehOrganizador ? /* @__PURE__ */ jsxs(Fragment, { children: [!compartilhado ? /* @__PURE__ */ jsx("button", {
+									className: "sutil",
+									onClick: () => void abrirAcao(documento, "compartilhar"),
+									children: "Compartilhar"
+								}) : /* @__PURE__ */ jsx("button", {
+									className: "sutil",
+									onClick: () => void revogar(documento),
+									children: "Revogar acesso"
+								}), /* @__PURE__ */ jsx("button", {
+									className: "perigo",
+									onClick: () => void abrirAcao(documento, "remover"),
+									children: "Remover"
+								})] }) : null
+							}),
+							acao?.documento.id === documento.id ? /* @__PURE__ */ jsxs("div", {
+								className: "cartao impacto",
+								children: [
+									/* @__PURE__ */ jsx("h3", { children: acao.tipo === "compartilhar" ? "Antes de compartilhar" : "Antes de remover" }),
+									impacto ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("ul", { children: impacto.itens.map((item) => /* @__PURE__ */ jsx("li", { children: item }, item)) }), impacto.atencao.length > 0 ? /* @__PURE__ */ jsx("div", {
+										className: "aviso atencao",
+										children: impacto.atencao.map((item) => /* @__PURE__ */ jsx("p", { children: item }, item))
+									}) : null] }) : /* @__PURE__ */ jsx("p", {
+										className: "suave pequeno",
+										children: "Não foi possível carregar os detalhes agora — sem rede, esta ação espera."
+									}),
+									acao.tipo === "compartilhar" ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("label", {
+										htmlFor: `documento-pessoas-${documento.id}`,
+										children: "Com quem (deixe vazio para a viagem toda)"
+									}), /* @__PURE__ */ jsx("select", {
+										id: `documento-pessoas-${documento.id}`,
+										multiple: true,
+										value: escolhidos,
+										onChange: (evento) => setEscolhidos(Array.from(evento.target.selectedOptions).map((opcao) => opcao.value)),
+										children: pessoas.map((pessoa) => /* @__PURE__ */ jsx("option", {
+											value: pessoa.usuario_id,
+											children: pessoa.nome
+										}, pessoa.usuario_id))
+									})] }) : /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("label", {
+										htmlFor: `documento-motivo-${documento.id}`,
+										children: "Motivo da remoção (mínimo 5 caracteres)"
+									}), /* @__PURE__ */ jsx("input", {
+										id: `documento-motivo-${documento.id}`,
+										value: motivo,
+										onChange: (evento) => setMotivo(evento.target.value),
+										placeholder: "Ex.: passagem cancelada e reembolsada"
+									})] }),
+									/* @__PURE__ */ jsxs("div", {
+										className: "acoes",
+										children: [/* @__PURE__ */ jsx("button", {
+											className: acao.tipo === "remover" ? "perigo" : "principal",
+											disabled: acao.tipo === "remover" && motivo.trim().length < 5,
+											onClick: () => void confirmarAcao(),
+											children: acao.tipo === "compartilhar" ? "Confirmar compartilhamento" : "Confirmar remoção"
+										}), /* @__PURE__ */ jsx("button", {
+											className: "sutil",
+											onClick: () => setAcao(null),
+											children: "Voltar atrás"
+										})]
+									})
+								]
+							}) : null
+						]
+					}, documento.id);
+				})
+			}),
+			aviso ? /* @__PURE__ */ jsx("div", {
+				className: "aviso ok",
+				children: aviso
+			}) : null,
+			erro ? /* @__PURE__ */ jsx("div", {
+				className: "aviso erro",
+				children: erro
+			}) : null
+		]
+	});
+}
+//#endregion
+//#region src/services/exportacao.ts
+/**
+* Exportação de arquivo (tela 21 — fechamento).
+*
+* Duas realidades diferentes, uma função só:
+*  - **web**: navegador baixa o arquivo de verdade (`<a download>` + Blob);
+*  - **app nativo (Capacitor)**: não existe download de navegador. Em vez de fingir que baixou,
+*    devolvemos o texto para a tela mostrar em um campo que a pessoa copia e envia como quiser
+*    (ver decisão V1 §13: a interface não insinua ação externa que não aconteceu).
+*/
+function nomeDoArquivo(base, extensao, agora = /* @__PURE__ */ new Date()) {
+	return `${base.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "viagem"}-${agora.toISOString().slice(0, 10)}.${extensao}`;
+}
+/**
+* Entrega o conteúdo à pessoa. Nunca lança por causa de API ausente: se o navegador não deixar
+* baixar, o resultado é `copiar` e a tela mostra o texto — a informação nunca se perde.
+*/
+function exportarArquivo(nome, conteudo, tipoMime) {
+	if (Platform.ehNativo() || typeof document === "undefined" || typeof URL.createObjectURL !== "function") return {
+		tipo: "copiar",
+		nome,
+		conteudo
+	};
+	try {
+		const blob = new Blob([conteudo], { type: `${tipoMime};charset=utf-8` });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = nome;
+		document.body.append(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 1e4);
+		return {
+			tipo: "baixado",
+			nome
+		};
+	} catch {
+		return {
+			tipo: "copiar",
+			nome,
+			conteudo
+		};
+	}
+}
+//#endregion
+//#region src/telas/Fechamento.tsx
+/**
+* Fechamento e exportação (tela 21).
+*
+* O que esta tela **não** faz (decisões V1 §13):
+*  - não recalcula nada no cliente: totais, saldos e acertos são o que o servidor somou;
+*  - não diz que ninguém pagou nada: "acertos sugeridos" é sugestão, e a tela diz isso com todas as letras;
+*  - no app nativo não finge que baixou arquivo: mostra o texto para copiar e explica o porquê.
+*/
+function Fechamento({ viagemId, nomeDaViagem }) {
+	const [dados, setDados] = useState(null);
+	const [carregando, setCarregando] = useState(false);
+	const [erro, setErro] = useState(null);
+	const [aviso, setAviso] = useState(null);
+	const [paraCopiar, setParaCopiar] = useState(null);
+	async function carregar() {
+		setErro(null);
+		setCarregando(true);
+		try {
+			setDados(await api.fechamento(viagemId));
+		} catch (falha) {
+			setErro(falha instanceof ErroApi ? falha.message : "Não foi possível montar o fechamento agora. Ele é calculado no servidor — tente de novo com internet.");
+		} finally {
+			setCarregando(false);
+		}
+	}
+	function exportar(extensao) {
+		if (!dados) return;
+		const nome = nomeDoArquivo(`lia-go-${nomeDaViagem}`, extensao);
+		const resultado = exportarArquivo(nome, extensao === "csv" ? dados.csv : dados.texto, extensao === "csv" ? "text/csv" : "text/plain");
+		if (resultado.tipo === "baixado") {
+			setAviso(`Arquivo ${nome} gerado no navegador.`);
+			setParaCopiar(null);
+		} else {
+			setParaCopiar({
+				nome: resultado.nome,
+				conteudo: resultado.conteudo
+			});
+			setAviso("Neste aparelho não existe download de arquivo: copie o texto abaixo e envie como quiser.");
+		}
+	}
+	return /* @__PURE__ */ jsxs("section", {
+		className: "cartao",
+		"aria-labelledby": "titulo-fechamento",
+		children: [
+			/* @__PURE__ */ jsx("h2", {
+				id: "titulo-fechamento",
+				children: "Fechamento da viagem"
+			}),
+			/* @__PURE__ */ jsx("p", {
+				className: "suave pequeno",
+				children: "Para conferir juntos no fim da viagem: o que foi confirmado, quem deve quem e o que dá para exportar. Quem soma é o servidor — a tela só mostra."
+			}),
+			!dados ? /* @__PURE__ */ jsxs("div", {
+				className: "acoes",
+				children: [/* @__PURE__ */ jsx("button", {
+					className: "principal",
+					disabled: carregando,
+					onClick: () => void carregar(),
+					children: carregando ? "Montando o fechamento…" : "Ver fechamento"
+				}), /* @__PURE__ */ jsx("small", {
+					className: "suave",
+					children: "Precisa de conexão: é o servidor que fecha as contas."
+				})]
+			}) : /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha entre",
+					children: [/* @__PURE__ */ jsx("span", { children: dados.viagem.nome }), /* @__PURE__ */ jsx("span", {
+						className: "suave pequeno",
+						children: dados.viagem.destino ?? "sem destino"
+					})]
+				}),
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: "Gasto confirmado (oficial)" }), /* @__PURE__ */ jsx("strong", { children: formatarBRL(dados.totalConfirmadoCentavos) })]
+				}),
+				BigInt(dados.totalAguardandoCentavos) > 0n ? /* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: "Aguardando confirmação" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(dados.totalAguardandoCentavos) })]
+				}) : null,
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: "Previsto (planejamento)" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(dados.previstoCentavos) })]
+				}),
+				dados.limiteCentavos !== null ? /* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: "Limite combinado" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(dados.limiteCentavos) })]
+				}) : null,
+				/* @__PURE__ */ jsxs("p", {
+					className: "suave pequeno",
+					children: [
+						dados.linhas.filter((linha) => linha.estado === "confirmada").length,
+						" despesa(s) confirmada(s)",
+						dados.despesasAbertas > 0 ? ` · ${dados.despesasAbertas} ainda em aberto` : "",
+						"."
+					]
+				}),
+				dados.alertas.length > 0 ? /* @__PURE__ */ jsx("ul", {
+					className: "lista-alertas",
+					children: dados.alertas.map((alerta) => /* @__PURE__ */ jsx("li", { children: alerta }, alerta))
+				}) : null,
+				/* @__PURE__ */ jsx("h3", {
+					style: { marginTop: 12 },
+					children: "Saldo por pessoa"
+				}),
+				dados.saldos.length === 0 ? /* @__PURE__ */ jsx("p", {
+					className: "suave pequeno",
+					children: "Sem despesas confirmadas: ninguém deve nada."
+				}) : dados.saldos.map((saldo) => /* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: saldo.nome ?? "participante" }), /* @__PURE__ */ jsxs("span", {
+						className: BigInt(saldo.saldoCentavos) >= 0n ? "saldo-positivo" : "saldo-negativo",
+						children: [BigInt(saldo.saldoCentavos) > 0n ? "recebe " : BigInt(saldo.saldoCentavos) < 0n ? "deve " : "em dia ", formatarBRL(BigInt(saldo.saldoCentavos) < 0n ? -BigInt(saldo.saldoCentavos) : saldo.saldoCentavos)]
+					})]
+				}, saldo.participanteId)),
+				dados.acertosSugeridos.length > 0 ? /* @__PURE__ */ jsxs(Fragment, { children: [
+					/* @__PURE__ */ jsx("h3", {
+						style: { marginTop: 12 },
+						children: "Acertos sugeridos"
+					}),
+					dados.acertosSugeridos.map((acerto) => /* @__PURE__ */ jsxs("p", { children: [
+						acerto.deNome ?? "participante",
+						" → ",
+						acerto.paraNome ?? "participante",
+						":",
+						" ",
+						/* @__PURE__ */ jsx("strong", { children: formatarBRL(acerto.valorCentavos) })
+					] }, `${acerto.deId}-${acerto.paraId}-${acerto.valorCentavos}`)),
+					/* @__PURE__ */ jsx("div", {
+						className: "aviso atencao",
+						children: "Sugestão de quem paga quem, calculada pelo servidor. Ninguém pagou nada até alguém registrar o acerto na aba Gastos e quem recebeu confirmar."
+					})
+				] }) : /* @__PURE__ */ jsx("p", {
+					className: "suave pequeno",
+					children: "Nada a acertar: as contas estão fechadas."
+				}),
+				/* @__PURE__ */ jsx("h3", {
+					style: { marginTop: 12 },
+					children: "Exportar"
+				}),
+				/* @__PURE__ */ jsxs("div", {
+					className: "acoes",
+					children: [
+						/* @__PURE__ */ jsx("button", {
+							className: "principal",
+							onClick: () => exportar("txt"),
+							children: "Baixar resumo (.txt)"
+						}),
+						/* @__PURE__ */ jsx("button", {
+							className: "sutil",
+							onClick: () => exportar("csv"),
+							children: "Baixar planilha (.csv)"
+						}),
+						/* @__PURE__ */ jsx("button", {
+							className: "sutil",
+							disabled: carregando,
+							onClick: () => void carregar(),
+							children: "Atualizar"
+						})
+					]
+				}),
+				/* @__PURE__ */ jsxs("p", {
+					className: "suave pequeno",
+					children: ["O CSV abre no Excel, no Google Planilhas ou no Numbers: separador ponto e vírgula e valores com vírgula decimal. Campos que começam com =, +, - ou @ ganham apóstrofo para não virarem fórmula na sua planilha.", Platform.ehNativo() ? " No app do celular o arquivo não é baixado: o texto aparece para copiar." : ""]
+				}),
+				paraCopiar ? /* @__PURE__ */ jsxs(Fragment, { children: [
+					/* @__PURE__ */ jsx("label", {
+						htmlFor: "fechamento-texto",
+						children: paraCopiar.nome
+					}),
+					/* @__PURE__ */ jsx("textarea", {
+						id: "fechamento-texto",
+						readOnly: true,
+						rows: 10,
+						value: paraCopiar.conteudo
+					}),
+					/* @__PURE__ */ jsxs("div", {
+						className: "acoes",
+						children: [/* @__PURE__ */ jsx("button", {
+							className: "sutil",
+							onClick: () => void navigator.clipboard?.writeText(paraCopiar.conteudo).then(() => setAviso("Texto copiado.")).catch(() => setAviso("Selecione o texto acima e copie.")),
+							children: "Copiar texto"
+						}), /* @__PURE__ */ jsx("button", {
+							className: "sutil",
+							onClick: () => setParaCopiar(null),
+							children: "Fechar"
+						})]
+					})
+				] }) : null,
+				/* @__PURE__ */ jsxs("p", {
+					className: "suave pequeno",
+					children: [
+						"Gerado ",
+						new Date(dados.geradoEm).toLocaleString("pt-BR"),
+						" · exportar não muda nada nos registros."
+					]
+				})
+			] }),
+			aviso ? /* @__PURE__ */ jsx("div", {
+				className: "aviso ok",
+				children: aviso
+			}) : null,
+			erro ? /* @__PURE__ */ jsx("div", {
+				className: "aviso erro",
+				children: erro
+			}) : null
+		]
+	});
+}
+//#endregion
+//#region ../assets/lia-hero.jpg
+var lia_hero_default = "../assets/lia-hero.jpg";
+//#endregion
 //#region src/telas/Viagem.tsx
+/** Imagem oficial da Lia (referência `assets/references/lia-character-hero.png`, comprimida). */
 /**
 * Tela da viagem. Lê do aparelho primeiro (funciona sem sinal) e escreve pela fila:
 * o que a pessoa faz aqui vale na hora e sobe para o servidor quando houver rede.
@@ -2319,12 +3982,20 @@ function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }) 
 		estado.resumo.total
 	]);
 	const { detalhe, despesas, movimentos, reservas } = dadosDaViagemAberta(estado, viagemId);
+	const itensDoChecklist = checklistDoDominio(estado, viagemId);
+	const documentosDaViagem = documentosDoDominio(estado, viagemId);
 	const viagem = detalhe?.viagem ?? null;
 	const participantes = detalhe?.participantes ?? [];
 	const permissoes = detalhe?.permissoes;
 	const sugestao = detalhe?.sugestao;
 	const pendencias = detalhe?.pendencias;
-	const orcamento = resumirOrcamentoDoRoteiro(atividadesDoDominio(estado, viagemId));
+	const atividades = atividadesDoDominio(estado, viagemId);
+	resumirOrcamentoDoRoteiro(atividades);
+	const reservasDoDominio = reservas.map((item) => comoReserva(item)).filter((item) => item !== null);
+	const proximo = proximoCompromisso(atividades, {
+		dia: hojeIso(),
+		hora: horaDoAparelho()
+	});
 	const nomePorId = new Map(participantes.map((pessoa) => [pessoa.usuario_id, pessoa.nome]));
 	const ativos = participantes.filter((pessoa) => pessoa.estado === "ativo");
 	const eu = participantes.find((pessoa) => pessoa.usuario_id === usuarioId);
@@ -2424,6 +4095,70 @@ function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }) 
 				]
 			}) : null,
 			aba === "visao" ? /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsxs("section", {
+					className: "hero-viagem cartao",
+					children: [/* @__PURE__ */ jsx("div", {
+						className: "hero-viagem-imagem",
+						children: /* @__PURE__ */ jsx("img", {
+							src: lia_hero_default,
+							alt: "",
+							"aria-hidden": "true"
+						})
+					}), /* @__PURE__ */ jsxs("div", {
+						className: "hero-viagem-texto",
+						children: [
+							/* @__PURE__ */ jsx("p", {
+								className: "suave pequeno",
+								children: "Viagem ativa"
+							}),
+							/* @__PURE__ */ jsx("h2", { children: viagem.destino || "Sua próxima viagem" }),
+							/* @__PURE__ */ jsxs("p", {
+								className: "suave pequeno",
+								children: [
+									formatarData(viagem.data_inicio),
+									" a ",
+									formatarData(viagem.data_fim),
+									" ·",
+									" ",
+									ativos.length,
+									" ",
+									ativos.length === 1 ? "pessoa" : "pessoas"
+								]
+							}),
+							/* @__PURE__ */ jsx("span", {
+								className: `etiqueta estado-${viagem.estado}`,
+								children: viagem.rotuloEstado ?? ROTULO_ESTADO[viagem.estado] ?? viagem.estado
+							})
+						]
+					})]
+				}),
+				/* @__PURE__ */ jsxs("section", {
+					className: "cartao destaque",
+					"aria-labelledby": "titulo-proximo",
+					children: [/* @__PURE__ */ jsx("h2", {
+						id: "titulo-proximo",
+						children: "Próximo compromisso"
+					}), proximo ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsxs("div", {
+						className: "linha entre",
+						children: [/* @__PURE__ */ jsxs("div", { children: [
+							/* @__PURE__ */ jsx("strong", { children: proximo.titulo }),
+							/* @__PURE__ */ jsx("br", {}),
+							/* @__PURE__ */ jsxs("small", {
+								className: "suave",
+								children: [quandoDoCompromisso(proximo.dia, proximo.hora, hojeIso()), proximo.local ? ` · ${proximo.local}` : ""]
+							})
+						] }), /* @__PURE__ */ jsx("span", {
+							className: "etiqueta estado-planejada",
+							children: formatarDiaCurto(proximo.dia).split(", ")[0]
+						})]
+					}), /* @__PURE__ */ jsx("p", {
+						className: "suave pequeno",
+						children: "Ainda não aconteceu: nada aqui muda saldo nem confirma reserva."
+					})] }) : /* @__PURE__ */ jsx("p", {
+						className: "suave pequeno",
+						children: "Nada marcado à frente no roteiro. Quando você adicionar algo, aparece aqui."
+					})]
+				}),
 				/* @__PURE__ */ jsxs("section", {
 					className: "cartao destaque",
 					children: [
@@ -2576,39 +4311,17 @@ function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }) 
 						}) })
 					]
 				}),
-				/* @__PURE__ */ jsxs("section", {
-					className: "cartao",
-					children: [
-						/* @__PURE__ */ jsx("h2", { children: "Previsto no roteiro" }),
-						/* @__PURE__ */ jsxs("div", {
-							className: "linha",
-							children: [/* @__PURE__ */ jsx("span", { children: "Previsto (estimativas + combinado)" }), /* @__PURE__ */ jsx("strong", { children: formatarBRL(orcamento.previstoCentavos) })]
-						}),
-						orcamento.compromissoCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
-							className: "linha",
-							children: [/* @__PURE__ */ jsx("span", { children: "· já combinado" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(orcamento.compromissoCentavos) })]
-						}) : null,
-						orcamento.estimativaCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
-							className: "linha",
-							children: [/* @__PURE__ */ jsx("span", { children: "· estimativa" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(orcamento.estimativaCentavos) })]
-						}) : null,
-						orcamento.aVerificar > 0 ? /* @__PURE__ */ jsx("div", {
-							className: "linha",
-							children: /* @__PURE__ */ jsx("span", {
-								className: "custo-a-verificar",
-								children: orcamento.aVerificar === 1 ? "1 atividade com custo a verificar" : `${orcamento.aVerificar} atividades com custo a verificar`
-							})
-						}) : null,
-						/* @__PURE__ */ jsx("p", { children: /* @__PURE__ */ jsxs("small", {
-							className: "suave",
-							children: [
-								"O previsto é ",
-								/* @__PURE__ */ jsx("strong", { children: "planejamento" }),
-								": vem do roteiro, não entra no saldo oficial e não substitui a despesa registrada. Gastar de verdade é o que aparece em \"Gasto confirmado\" acima, confirmado no servidor.",
-								orcamento.aVerificar > 0 ? " Enquanto houver custo a verificar, o previsto é o valor mínimo." : ""
-							]
-						}) })
-					]
+				/* @__PURE__ */ jsx(Orcamento, {
+					viagemId,
+					usuarioId,
+					sincronizador,
+					atividades,
+					reservas: reservasDoDominio,
+					gastoConfirmadoCentavos: saldos?.realizado ?? null,
+					aguardandoCentavos: saldos?.comprometido ?? null,
+					saldosEm,
+					ehOrganizador: detalhe?.papel === "organizador",
+					permissoes: permissoes ?? {}
 				}),
 				saldos && saldos.saldos.length > 0 ? /* @__PURE__ */ jsxs("section", {
 					className: "cartao",
@@ -3044,6 +4757,35 @@ function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }) 
 					sincronizador,
 					reservas,
 					permissoes: permissoes ?? {}
+				}),
+				/* @__PURE__ */ jsx(Checklist, {
+					viagemId,
+					usuarioId,
+					sincronizador,
+					itens: itensDoChecklist,
+					participantes: participantes.map((pessoa) => ({
+						usuario_id: pessoa.usuario_id,
+						nome: pessoa.nome,
+						estado: pessoa.estado
+					})),
+					permissoes: permissoes ?? {}
+				}),
+				/* @__PURE__ */ jsx(Documentos, {
+					viagemId,
+					usuarioId,
+					sincronizador,
+					documentos: documentosDaViagem,
+					participantes: participantes.map((pessoa) => ({
+						usuario_id: pessoa.usuario_id,
+						nome: pessoa.nome,
+						estado: pessoa.estado
+					})),
+					ehOrganizador: detalhe?.papel === "organizador",
+					avisoDePrivacidade: null
+				}),
+				/* @__PURE__ */ jsx(Fechamento, {
+					viagemId,
+					nomeDaViagem: String(viagem.nome ?? "viagem")
 				}),
 				/* @__PURE__ */ jsxs("section", {
 					className: "cartao",
@@ -3836,6 +5578,10 @@ async function enviarOperacao(operacao, idempotencia) {
 		case "confirmar_reserva": return api.confirmarReserva(operacao.viagemId, operacao.reservaId, operacao.confirmacao, operacao.versao);
 		case "cancelar_reserva": return api.cancelarReserva(operacao.viagemId, operacao.reservaId, operacao.motivo, operacao.versao);
 		case "corrigir_atividade": return api.corrigirAtividade(operacao.viagemId, operacao.atividadeId, operacao.corpo);
+		case "criar_item_checklist": return api.criarItemChecklist(operacao.viagemId, operacao.corpo, idempotencia);
+		case "concluir_item_checklist": return api.concluirItemChecklist(operacao.viagemId, operacao.itemId, operacao.versao);
+		case "reabrir_item_checklist": return api.reabrirItemChecklist(operacao.viagemId, operacao.itemId, operacao.motivo, operacao.versao);
+		case "criar_documento": return api.criarDocumento(operacao.viagemId, operacao.corpo, idempotencia);
 	}
 }
 /**
@@ -3856,7 +5602,9 @@ function extrairCarga(mudancas) {
 		movimentos: mudancas.movimentos,
 		convites: mudancas.convites,
 		atividades: mudancas.atividades ?? [],
-		reservas: mudancas.reservas ?? []
+		reservas: mudancas.reservas ?? [],
+		itensChecklist: mudancas.itensChecklist ?? [],
+		documentos: mudancas.documentos ?? []
 	};
 }
 /**
@@ -4816,13 +6564,14 @@ test("aba Gastos mostra o previsto do roteiro separado do dinheiro oficial", asy
 	clicar(botaoCom("Chapada"));
 	await esperarPor(() => textoDaTela().includes("← Minhas viagens"), "a viagem abrir");
 	clicar(botaoCom("Gastos"));
-	await esperarPor(() => textoDaTela().includes("Previsto no roteiro"), "a aba de gastos abrir");
+	await esperarPor(() => textoDaTela().includes("Orçamento da viagem"), "a aba de gastos abrir");
 	const tela = textoDaTela();
 	assert.match(tela, /Previsto \(estimativas \+ combinado\)R\$ 185,00/, `o previsto junta combinado e estimativa: ${tela.slice(0, 500)}`);
 	assert.match(tela, /já combinadoR\$ 150,00/);
 	assert.match(tela, /estimativaR\$ 35,00/);
-	assert.match(tela, /1 atividade com custo a verificar/);
-	assert.match(tela, /não entra no saldo oficial/, "o previsto nunca se confunde com o saldo oficial");
+	assert.match(tela, /1 custo ainda sem valor informado/, "custo sem valor é sinalizado, nunca somado como zero");
+	assert.match(tela, /Enquanto houver custo a verificar, o previsto é o valor mínimo/);
+	assert.match(tela, /não entram no saldo oficial/, "o previsto nunca se confunde com o saldo oficial");
 	assert.match(tela, /Gasto confirmado \(oficial\)/);
 });
 //#endregion

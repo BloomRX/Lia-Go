@@ -26,7 +26,7 @@ export class ErroApi extends Error {
 const BASE = (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL ?? "/api";
 
 interface OpcoesRequisicao {
-  metodo?: "GET" | "POST" | "PATCH" | "DELETE";
+  metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   corpo?: unknown;
   idempotencia?: string;
   /** Não tenta renovar token automaticamente (usado no próprio login/renovação). */
@@ -168,6 +168,8 @@ export interface MudancasApi {
   convites: Record<string, unknown>[];
   atividades: AtividadeApi[];
   reservas: ReservaApi[];
+  itensChecklist: ItemChecklistApi[];
+  documentos: DocumentoApi[];
 }
 
 /** Reserva como o servidor devolve (custo em centavos, string; `null` = desconhecido). */
@@ -262,6 +264,98 @@ export interface SaldosApi {
   saldos: { participanteId: string; nome: string | null; pago: string; parteDevida: string; saldo: string }[];
   transferenciasSugeridas: { deId: string; deNome: string | null; paraId: string; paraNome: string | null; valorCentavos: string }[];
   aviso: string;
+}
+
+/** Orçamento da viagem (tela 9): limite é planejamento, o oficial vem das despesas confirmadas. */
+export interface OrcamentoApi {
+  limiteColetivo: { id: string; centavos: string; atualizadoEm: string; versao: number } | null;
+  limiteIndividualProprio: { id: string; centavos: string; versao: number } | null;
+  limitesIndividuais: { id: string; usuarioId: string | null; nome: string | null; centavos: string }[];
+  situacao: {
+    temLimite: boolean;
+    limiteCentavos: string | null;
+    previstoCentavos: string;
+    gastoConfirmadoCentavos: string;
+    aguardandoCentavos: string;
+    restantePrevistoCentavos: string | null;
+    restanteGastoCentavos: string | null;
+    percentualPrevisto: number | null;
+    percentualGasto: number | null;
+    estado: "sem_limite" | "dentro" | "atencao" | "estourado";
+    alertas: string[];
+    resumo: string;
+  };
+  planejamento: { previstoCentavos: string; custosAVerificar: number };
+  oficial: { gastoConfirmadoCentavos: string; aguardandoCentavos: string };
+  rotulos: Record<string, string>;
+}
+
+/** Item do checklist da viagem (tela 15). */
+export interface ItemChecklistApi {
+  id: string;
+  viagemId: string;
+  autorId: string;
+  titulo: string;
+  categoria: "documento" | "reserva" | "compras" | "saude" | "outro";
+  categoriaRotulo: string;
+  responsavelId: string | null;
+  prazo: string | null;
+  estado: "aberto" | "feito";
+  feitoPor: string | null;
+  feitoEm: string | null;
+  observacao: string | null;
+  motivoReabertura: string | null;
+  versao: number;
+}
+
+/** Documento da viagem (tela 16): o app guarda link/descrição — o arquivo fica onde a pessoa o colocou. */
+export interface DocumentoApi {
+  id: string;
+  viagemId: string;
+  autorId: string;
+  tipo: "passagem" | "reserva" | "seguro" | "identidade" | "ingresso" | "outro";
+  tipoRotulo: string;
+  nome: string;
+  descricao: string | null;
+  link: string | null;
+  visibilidade: "privado" | "viagem";
+  compartilhadoCom: string[];
+  estado: "ativo" | "removido";
+  removidoPor: string | null;
+  removidoEm: string | null;
+  motivoRemocao: string | null;
+  versao: number;
+}
+
+/** Fechamento da viagem (tela 21): o que o grupo confere e exporta no fim. */
+export interface FechamentoApi {
+  viagem: { id: string; nome: string; destino: string | null; moeda: string; estado: string };
+  geradoEm: string;
+  linhas: {
+    despesaId: string;
+    data: string;
+    descricao: string;
+    tipo: string;
+    estado: string;
+    valorCentavos: string;
+    moeda: string;
+    pagadorId: string;
+    pagadorNome: string | null;
+    partes: { participanteId: string; nome: string | null; valorCentavos: string }[];
+  }[];
+  totalConfirmadoCentavos: string;
+  totalAguardandoCentavos: string;
+  despesasAbertas: number;
+  saldos: { participanteId: string; nome: string | null; pagoCentavos: string; parteCentavos: string; saldoCentavos: string }[];
+  acertosSugeridos: { deId: string; deNome: string | null; paraId: string; paraNome: string | null; valorCentavos: string }[];
+  previstoCentavos: string;
+  previstoRoteiroCentavos: string;
+  previstoReservasCentavos: string;
+  limiteCentavos: string | null;
+  alertas: string[];
+  /** Texto legível e CSV já prontos no servidor: a tela não remonta exportação. */
+  texto: string;
+  csv: string;
 }
 
 export const api = {
@@ -488,6 +582,82 @@ export const api = {
 
   async cancelarReserva(viagemId: string, reservaId: string, motivo: string, versao?: number): Promise<{ reserva: ReservaApi }> {
     return requisitar(`/viagens/${viagemId}/reservas/${reservaId}/cancelar`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { motivo } : { motivo, versao },
+    });
+  },
+
+  async orcamento(viagemId: string): Promise<OrcamentoApi> {
+    return requisitar<OrcamentoApi>(`/viagens/${viagemId}/orcamento`);
+  },
+
+  async definirLimiteColetivo(viagemId: string, centavos: string): Promise<{ limite: { centavos: string } }> {
+    return requisitar(`/viagens/${viagemId}/orcamento/limite`, { metodo: "PUT", corpo: { centavos } });
+  },
+
+  async definirLimiteIndividual(viagemId: string, usuarioId: string, centavos: string): Promise<{ limite: { centavos: string } }> {
+    return requisitar(`/viagens/${viagemId}/orcamento/limites/${usuarioId}`, { metodo: "PUT", corpo: { centavos } });
+  },
+
+  async fechamento(viagemId: string): Promise<FechamentoApi> {
+    return requisitar<FechamentoApi>(`/viagens/${viagemId}/fechamento`);
+  },
+
+  async checklist(viagemId: string): Promise<{ itens: ItemChecklistApi[]; categorias: { categoria: string; rotulo: string }[]; permissoes: Record<string, boolean> }> {
+    return requisitar(`/viagens/${viagemId}/checklist`);
+  },
+
+  async criarItemChecklist(
+    viagemId: string,
+    corpo: { titulo: string; categoria?: string; responsavelId?: string | null; prazo?: string | null; observacao?: string | null },
+    idempotencia: string,
+  ): Promise<{ item: ItemChecklistApi }> {
+    return requisitar(`/viagens/${viagemId}/checklist`, { metodo: "POST", corpo, idempotencia });
+  },
+
+  async concluirItemChecklist(viagemId: string, itemId: string, versao?: number): Promise<{ item: ItemChecklistApi }> {
+    return requisitar(`/viagens/${viagemId}/checklist/${itemId}/concluir`, { metodo: "POST", corpo: versao === undefined ? {} : { versao } });
+  },
+
+  async reabrirItemChecklist(viagemId: string, itemId: string, motivo: string, versao?: number): Promise<{ item: ItemChecklistApi }> {
+    return requisitar(`/viagens/${viagemId}/checklist/${itemId}/reabrir`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { motivo } : { motivo, versao },
+    });
+  },
+
+  async documentos(viagemId: string): Promise<{ documentos: DocumentoApi[]; tipos: { tipo: string; rotulo: string }[]; avisoDePrivacidade: string }> {
+    return requisitar(`/viagens/${viagemId}/documentos`);
+  },
+
+  async criarDocumento(
+    viagemId: string,
+    corpo: { tipo: string; nome: string; descricao?: string | null; link?: string | null },
+    idempotencia: string,
+  ): Promise<{ documento: DocumentoApi }> {
+    return requisitar(`/viagens/${viagemId}/documentos`, { metodo: "POST", corpo, idempotencia });
+  },
+
+  async impactoDocumento(viagemId: string, documentoId: string, acao: "compartilhar" | "remover"): Promise<{ impacto: { itens: string[]; atencao: string[] } }> {
+    return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/impacto?acao=${acao}`);
+  },
+
+  async compartilharDocumento(viagemId: string, documentoId: string, com: "viagem" | string[], versao?: number): Promise<{ documento: DocumentoApi }> {
+    return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/compartilhar`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { com } : { com, versao },
+    });
+  },
+
+  async revogarDocumento(viagemId: string, documentoId: string, com: "viagem" | string[], versao?: number): Promise<{ documento: DocumentoApi }> {
+    return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/revogar`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { com } : { com, versao },
+    });
+  },
+
+  async removerDocumento(viagemId: string, documentoId: string, motivo: string, versao?: number): Promise<{ documento: DocumentoApi }> {
+    return requisitar(`/viagens/${viagemId}/documentos/${documentoId}/remover`, {
       metodo: "POST",
       corpo: versao === undefined ? { motivo } : { motivo, versao },
     });

@@ -30,6 +30,11 @@ export function formatarData(iso: string | null): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** Hora local do aparelho no formato HH:MM (mesma lógica do dia: quem lê é a pessoa). */
+export function horaDoAparelho(agora = new Date()): string {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false }).format(agora);
+}
+
 export function hojeIso(): string {
   const agora = new Date();
   const fuso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
