@@ -40,9 +40,14 @@ export interface LinhaDeContexto {
 export function linhasDeContexto(atividade: {
   local: string | null;
   duracaoMinutos: number | null;
-  custo: CustoNaApi;
+  custo?: CustoNaApi | null;
+  /** Forma do domínio (`Atividade`): a tela do roteiro trabalha com ela, e as duas formas convivem. */
+  custoCentavos?: bigint | null;
+  custoNatureza?: CustoNaApi["natureza"];
+  custoAVerificar?: boolean;
 }): LinhaDeContexto[] {
   const linhas: LinhaDeContexto[] = [];
+  const custoBruto = custoDoCartao(atividade);
 
   if (atividade.local) linhas.push({ texto: atividade.local, tipo: "local" });
 
@@ -50,9 +55,9 @@ export function linhasDeContexto(atividade: {
   if (duracao) linhas.push({ texto: duracao, tipo: "duracao" });
 
   const custo = descreverCusto({
-    centavos: atividade.custo.centavos === null ? null : BigInt(atividade.custo.centavos),
-    rotulo: rotuloDoCusto(atividade.custo),
-    natureza: atividade.custo.natureza,
+    centavos: custoBruto.centavos,
+    rotulo: rotuloDoCusto(custoBruto),
+    natureza: custoBruto.natureza,
   });
 
   if (custo.rotulo === "Custo a verificar") linhas.push({ texto: custo.rotulo, tipo: "a-verificar" });
@@ -64,8 +69,33 @@ export function linhasDeContexto(atividade: {
   return linhas;
 }
 
+/**
+ * Custo do cartão em `bigint`, aceitando as duas formas que circulam no app: a do servidor
+ * (`custo.centavos`, string) e a do domínio (`custoCentavos`). Faltando tudo, é **desconhecido** —
+ * nunca zero — e a tela não quebra por dado incompleto.
+ */
+export function custoDoCartao(atividade: {
+  custo?: CustoNaApi | null;
+  custoCentavos?: bigint | null;
+  custoNatureza?: CustoNaApi["natureza"];
+  custoAVerificar?: boolean;
+}): { centavos: bigint | null; natureza: CustoNaApi["natureza"]; aVerificar: boolean } {
+  if (atividade.custo) {
+    return {
+      centavos: atividade.custo.centavos === null || atividade.custo.centavos === undefined ? null : BigInt(atividade.custo.centavos),
+      natureza: atividade.custo.natureza ?? null,
+      aVerificar: Boolean(atividade.custo.aVerificar),
+    };
+  }
+  return {
+    centavos: atividade.custoCentavos ?? null,
+    natureza: atividade.custoNatureza ?? null,
+    aVerificar: Boolean(atividade.custoAVerificar),
+  };
+}
+
 /** Rótulo de natureza do custo, quando o valor existe. Desconhecido não recebe rótulo nenhum. */
-export function rotuloDoCusto(custo: CustoNaApi): string | null {
+export function rotuloDoCusto(custo: { centavos: bigint | string | null; natureza: CustoNaApi["natureza"]; aVerificar: boolean }): string | null {
   if (custo.centavos === null) return custo.aVerificar ? "Custo a verificar" : null;
   if (custo.natureza === "compromisso") return "valor já combinado";
   if (custo.natureza === "gratuito") return "Sem custo";

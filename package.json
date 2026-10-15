@@ -11,6 +11,9 @@
     "packages/*",
     "apps/*"
   ],
+  "devDependencies": {
+    "rolldown": "^1.2.13"
+  },
   "scripts": {
     "test": "npm run test:tools && npm run test:domain && npm run test:sync && npm run test:app && npm run test:api",
     "test:domain": "npm run test --workspace @lia-go/domain",

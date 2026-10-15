@@ -6,7 +6,7 @@ import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { agruparPorDia, conflitosDoDia, resumirDia, resumirOrcamentoDoRoteiro } from "@lia-go/domain";
+import { agruparPorDia, conflitosDoDia, resumirDia, resumirOrcamentoDoRoteiro, revisarImpacto } from "@lia-go/domain";
 import { cargaVazia, compararParaDecisao, descartar, enfileirar, filaVazia, mesclarCarga, resumoFila, retentar, sincronizar, trocarViagemAberta } from "@lia-go/sync";
 //#region tests/ui/ambiente.ts
 /**
@@ -1146,6 +1146,7 @@ function textoDoHorario(hora) {
 }
 function linhasDeContexto(atividade) {
 	const linhas = [];
+	const custoBruto = custoDoCartao(atividade);
 	if (atividade.local) linhas.push({
 		texto: atividade.local,
 		tipo: "local"
@@ -1156,9 +1157,9 @@ function linhasDeContexto(atividade) {
 		tipo: "duracao"
 	});
 	const custo = descreverCusto({
-		centavos: atividade.custo.centavos === null ? null : BigInt(atividade.custo.centavos),
-		rotulo: rotuloDoCusto(atividade.custo),
-		natureza: atividade.custo.natureza
+		centavos: custoBruto.centavos,
+		rotulo: rotuloDoCusto(custoBruto),
+		natureza: custoBruto.natureza
 	});
 	if (custo.rotulo === "Custo a verificar") linhas.push({
 		texto: custo.rotulo,
@@ -1172,6 +1173,23 @@ function linhasDeContexto(atividade) {
 		});
 	}
 	return linhas;
+}
+/**
+* Custo do cartão em `bigint`, aceitando as duas formas que circulam no app: a do servidor
+* (`custo.centavos`, string) e a do domínio (`custoCentavos`). Faltando tudo, é **desconhecido** —
+* nunca zero — e a tela não quebra por dado incompleto.
+*/
+function custoDoCartao(atividade) {
+	if (atividade.custo) return {
+		centavos: atividade.custo.centavos === null || atividade.custo.centavos === void 0 ? null : BigInt(atividade.custo.centavos),
+		natureza: atividade.custo.natureza ?? null,
+		aVerificar: Boolean(atividade.custo.aVerificar)
+	};
+	return {
+		centavos: atividade.custoCentavos ?? null,
+		natureza: atividade.custoNatureza ?? null,
+		aVerificar: Boolean(atividade.custoAVerificar)
+	};
 }
 /** Rótulo de natureza do custo, quando o valor existe. Desconhecido não recebe rótulo nenhum. */
 function rotuloDoCusto(custo) {
@@ -2635,6 +2653,21 @@ const ROTULO_HISTORICO = {
 	"atividade:cancelar": "Cancelada",
 	"atividade:corrigir": "Corrigida"
 };
+/** Revisão de impacto (decisões V1 §13): o que muda aparece **antes** do botão que muda. */
+function ImpactoDaAcao({ atividade, acao }) {
+	const impacto = revisarImpacto(atividade, acao);
+	return /* @__PURE__ */ jsxs("div", {
+		className: "impacto",
+		children: [
+			/* @__PURE__ */ jsx("h3", { children: "Antes de continuar: o que isso muda" }),
+			/* @__PURE__ */ jsx("ul", { children: impacto.itens.map((item) => /* @__PURE__ */ jsx("li", { children: item }, item)) }),
+			impacto.atencao.length > 0 ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("h4", { children: "Atenção" }), /* @__PURE__ */ jsx("ul", {
+				className: "impacto-atencao",
+				children: impacto.atencao.map((item) => /* @__PURE__ */ jsx("li", { children: item }, item))
+			})] }) : null
+		]
+	});
+}
 function Atividade({ viagemId, atividadeId, sincronizador, voltar }) {
 	const [estado, setEstado] = useState(sincronizador.obter());
 	const [historico, setHistorico] = useState(null);
@@ -2652,8 +2685,9 @@ function Atividade({ viagemId, atividadeId, sincronizador, voltar }) {
 	const [erro, setErro] = useState(null);
 	const [aviso, setAviso] = useState(null);
 	useEffect(() => sincronizador.assinar(setEstado), [sincronizador]);
+	const brutaDoCache = useMemo(() => estado.carga.atividades.find((item) => item["id"] === atividadeId) ?? null, [estado.carga.atividades, atividadeId]);
 	const atividade = useMemo(() => {
-		const bruta = estado.carga.atividades.find((item) => item["id"] === atividadeId);
+		const bruta = brutaDoCache;
 		if (!bruta) return null;
 		const custo = bruta["custo"] ?? {};
 		return {
@@ -2670,7 +2704,11 @@ function Atividade({ viagemId, atividadeId, sincronizador, voltar }) {
 			custo,
 			deslocamento: bruta["deslocamento"] ?? null
 		};
-	}, [estado.carga.atividades, atividadeId]);
+	}, [brutaDoCache]);
+	const atividadeDominio = useMemo(() => brutaDoCache ? atividadeDoDominio({
+		...brutaDoCache,
+		viagemId
+	}) : null, [brutaDoCache, viagemId]);
 	useEffect(() => {
 		let vivo = true;
 		(async () => {
@@ -2888,6 +2926,10 @@ function Atividade({ viagemId, atividadeId, sincronizador, voltar }) {
 						onChange: (evento) => setObservacao(evento.target.value),
 						placeholder: "Chegamos 10 min atrasados"
 					}),
+					atividadeDominio ? /* @__PURE__ */ jsx(ImpactoDaAcao, {
+						atividade: atividadeDominio,
+						acao: "concluir"
+					}) : null,
 					/* @__PURE__ */ jsx("div", {
 						className: "acoes",
 						children: /* @__PURE__ */ jsx("button", {
@@ -3054,6 +3096,10 @@ function Atividade({ viagemId, atividadeId, sincronizador, voltar }) {
 						onChange: (evento) => setMotivo(evento.target.value),
 						placeholder: "Chuva forte; vamos remarcar"
 					}),
+					atividadeDominio ? /* @__PURE__ */ jsx(ImpactoDaAcao, {
+						atividade: atividadeDominio,
+						acao: "cancelar"
+					}) : null,
 					/* @__PURE__ */ jsx("div", {
 						className: "acoes",
 						children: /* @__PURE__ */ jsx("button", {
@@ -4201,7 +4247,7 @@ test("criar viagem já abre a viagem criada (rascunho precisa dos próximos pass
 	assert.ok(campoNome, "o formulário de nova viagem precisa aparecer");
 	await digitar(campoNome, "Chapada");
 	clicar(botaoCom("Salvar rascunho"));
-	await esperarPor(() => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"), "a viagem criada abrir", 4e3);
+	await esperarPor(() => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"), "a viagem criada abrir", 8e3);
 	assert.match(textoDaTela(), /Chapada/);
 	assert.ok(servidor.viagens.some((viagem) => viagem.nome === "Chapada"), "a viagem chegou ao servidor");
 });

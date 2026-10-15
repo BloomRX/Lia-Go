@@ -18,6 +18,8 @@ import {
   ROTULO_ATIVIDADE,
 } from "../services/formato.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
+import { revisarImpacto, type Atividade as AtividadeDominio } from "@lia-go/domain";
+import { atividadeDoDominio } from "../services/viagem-local.ts";
 
 interface Props {
   viagemId: string;
@@ -40,6 +42,31 @@ const ROTULO_HISTORICO: Record<string, string> = {
   "atividade:corrigir": "Corrigida",
 };
 
+/** Revisão de impacto (decisões V1 §13): o que muda aparece **antes** do botão que muda. */
+function ImpactoDaAcao({ atividade, acao }: { atividade: AtividadeDominio; acao: "concluir" | "cancelar" }): React.ReactElement {
+  const impacto = revisarImpacto(atividade, acao);
+  return (
+    <div className="impacto">
+      <h3>Antes de continuar: o que isso muda</h3>
+      <ul>
+        {impacto.itens.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      {impacto.atencao.length > 0 ? (
+        <>
+          <h4>Atenção</h4>
+          <ul className="impacto-atencao">
+            {impacto.atencao.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Props): React.ReactElement {
   const [estado, setEstado] = useState(sincronizador.obter());
   const [historico, setHistorico] = useState<EventoHistorico[] | null>(null);
@@ -52,8 +79,13 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
 
   useEffect(() => sincronizador.assinar(setEstado), [sincronizador]);
 
+  const brutaDoCache = useMemo(
+    () => estado.carga.atividades.find((item) => item["id"] === atividadeId) ?? null,
+    [estado.carga.atividades, atividadeId],
+  );
+
   const atividade = useMemo(() => {
-    const bruta = estado.carga.atividades.find((item) => item["id"] === atividadeId);
+    const bruta = brutaDoCache;
     if (!bruta) return null;
     const custo = (bruta["custo"] ?? {}) as { centavos?: string | null; natureza?: string | null; aVerificar?: boolean };
     return {
@@ -70,7 +102,13 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
       custo,
       deslocamento: (bruta["deslocamento"] as AtividadeApi["deslocamento"]) ?? null,
     };
-  }, [estado.carga.atividades, atividadeId]);
+  }, [brutaDoCache]);
+
+  // Mesma forma que o domínio usa (e que a fila envia), para a revisão de impacto não divergir da tela.
+  const atividadeDominio = useMemo(
+    () => (brutaDoCache ? atividadeDoDominio({ ...brutaDoCache, viagemId }) : null),
+    [brutaDoCache, viagemId],
+  );
 
   // Histórico completo vem do servidor quando há rede; offline, a tela continua útil sem ele.
   useEffect(() => {
@@ -274,6 +312,7 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
             onChange={(evento) => setObservacao(evento.target.value)}
             placeholder="Chegamos 10 min atrasados"
           />
+          {atividadeDominio ? <ImpactoDaAcao atividade={atividadeDominio} acao="concluir" /> : null}
           <div className="acoes">
             <button className="principal" onClick={() => void concluir()}>
               Marcar como concluída
@@ -354,6 +393,7 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
                 onChange={(evento) => setMotivo(evento.target.value)}
                 placeholder="Chuva forte; vamos remarcar"
               />
+              {atividadeDominio ? <ImpactoDaAcao atividade={atividadeDominio} acao="cancelar" /> : null}
               <div className="acoes">
                 <button className="perigo" onClick={() => void cancelar()}>
                   Cancelar atividade

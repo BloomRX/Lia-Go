@@ -143,7 +143,9 @@ test("criar viagem já abre a viagem criada (rascunho precisa dos próximos pass
   await digitar(campoNome, "Chapada");
   clicar(botaoCom("Salvar rascunho"));
 
-  await esperarPor(() => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"), "a viagem criada abrir", 4000);
+  // 8 s: o app espera o servidor confirmar por até 4 s e abre mesmo assim (nada de travar offline).
+  // O prazo do teste é maior que o do app para o caso "servidor lento" não virar teste instável.
+  await esperarPor(() => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"), "a viagem criada abrir", 8000);
   assert.match(textoDaTela(), /Chapada/);
   assert.ok(servidor.viagens.some((viagem) => viagem.nome === "Chapada"), "a viagem chegou ao servidor");
 });

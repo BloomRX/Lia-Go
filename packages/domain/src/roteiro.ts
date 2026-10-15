@@ -468,3 +468,67 @@ function emReais(centavos: bigint): string {
   const reais = texto.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${negativo ? "-" : ""}R$ ${reais},${texto.slice(-2)}`;
 }
+
+/** Ações que mudam uma atividade planejada (e por isso precisam de impacto antes de acontecer). */
+export type AcaoComImpacto = "concluir" | "cancelar";
+
+/**
+ * Revisão de impacto: o que muda **antes** de a pessoa tocar no botão.
+ *
+ * Diretriz visual §2 e decisões V1 §13: mudança relevante mostra o impacto conhecido antes de
+ * acontecer, e a interface nunca insinua que algo externo (reserva, pagamento) foi feito. Aqui só
+ * entra o que o Lia Go sabe com certeza; o que ele não sabe é dito como desconhecido.
+ */
+export interface ImpactoDaAtividade {
+  acao: AcaoComImpacto;
+  /** Quanto o **previsto do roteiro** muda com esta ação. Concluir não muda: planejado ≠ gasto. */
+  efeitoNoPrevistoCentavos: bigint;
+  /** O que vai acontecer, em frases curtas (mostradas antes do botão). */
+  itens: string[];
+  /** O que merece cuidado ou continua indefinido depois da ação. */
+  atencao: string[];
+}
+
+export function revisarImpacto(atividade: Atividade, acao: AcaoComImpacto): ImpactoDaAtividade {
+  const ganho = 0n; // nada entra no previsto por concluir ou cancelar
+  const valorConhecido = atividade.custoCentavos !== null && atividade.custoNatureza !== "gratuito";
+
+  if (acao === "concluir") {
+    return {
+      acao,
+      efeitoNoPrevistoCentavos: ganho,
+      itens: [
+        "Registra quem concluiu, com data e hora — o relógio sozinho nunca conclui nada.",
+        "O previsto do roteiro não muda: planejado não é gasto.",
+        "O saldo oficial não se altera aqui. Gasto de verdade entra como despesa registrada e confirmada no servidor.",
+      ],
+      atencao: [
+        ...(atividade.custoAVerificar ? ["O custo desta atividade ainda está a verificar: o previsto continua sendo o mínimo."] : []),
+        ...(atividade.hora === null ? ["Sem horário: ela mantém o lugar na sequência do dia."] : []),
+      ],
+    };
+  }
+
+  const efeito = valorConhecido ? -(atividade.custoCentavos as bigint) : 0n;
+  return {
+    acao,
+    efeitoNoPrevistoCentavos: efeito,
+    itens: [
+      valorConhecido
+        ? `Sai do previsto do roteiro: ${emReais(atividade.custoCentavos as bigint)} deixam de ser contados.`
+        : "Custo desconhecido: não havia valor no previsto para sair.",
+      "O motivo do cancelamento fica registrado no histórico e não pode ser apagado.",
+      "O saldo oficial e as despesas já registradas continuam iguais.",
+      "Quem participa vê a mudança na próxima sincronização do aparelho.",
+    ],
+    atencao: [
+      ...(atividade.custoNatureza === "compromisso"
+        ? ["Este valor estava marcado como já combinado: cancelar aqui tira do previsto, mas não desfaz um compromisso assumido fora do app."]
+        : []),
+      ...(atividade.custoAVerificar
+        ? ["Era uma atividade com custo a verificar: cancelar não confirma nada sobre esse custo."]
+        : []),
+      ...(atividade.estado === "cancelada" ? ["Esta atividade já está cancelada."] : []),
+    ],
+  };
+}

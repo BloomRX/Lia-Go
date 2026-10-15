@@ -248,3 +248,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:fo
   .pulso { animation: none; }
   * { transition: none !important; }
 }
+
+/* Revisão de impacto (decisões V1 §13): informa antes de mudar, com texto — cor não é o recado. */
+.impacto {
+  margin: var(--e3) 0;
+  padding: var(--e3);
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--roxo);
+  border-radius: var(--raio-medio);
+  background: rgba(168, 85, 247, 0.06);
+}
+.impacto h3 { margin: 0 0 var(--e2); font-size: 0.95rem; }
+.impacto h4 { margin: var(--e2) 0 var(--e1); font-size: 0.85rem; color: var(--atencao); }
+.impacto ul { margin: 0; padding-left: 1.1rem; }
+.impacto li { margin-bottom: var(--e1); font-size: 0.85rem; line-height: 1.45; }
+.impacto-atencao li::marker { color: var(--atencao); }

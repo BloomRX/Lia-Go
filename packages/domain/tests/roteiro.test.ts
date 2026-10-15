@@ -17,6 +17,7 @@ import {
   proximaOrdem,
   resumirDia,
   resumirOrcamentoDoRoteiro,
+  revisarImpacto,
   situacaoPorHorario,
   type Atividade,
 } from "../src/roteiro.ts";
@@ -246,4 +247,43 @@ test("roteiro sem custo nenhum diz isso em vez de mostrar zero", () => {
 
   assert.equal(orcamento.previstoCentavos, 0n);
   assert.match(orcamento.resumo, /Nenhum custo previsto/);
+});
+
+test("concluir mostra o impacto antes: previsto não muda e o saldo oficial não é calculado na tela", () => {
+  const impacto = revisarImpacto(atividade({ id: "a1", custoCentavos: 3500n, custoNatureza: "estimativa" }), "concluir");
+
+  assert.equal(impacto.efeitoNoPrevistoCentavos, 0n, "planejado não é gasto: concluir não mexe no previsto");
+  assert.ok(impacto.itens.some((item) => /quem concluiu/.test(item)), "diz quem fica registrado");
+  assert.ok(impacto.itens.some((item) => /saldo oficial/.test(item)), "deixa claro que dinheiro oficial não muda aqui");
+  assert.deepEqual(impacto.atencao, []);
+});
+
+test("concluir avisa o que continua indefinido: custo a verificar e atividade sem horário", () => {
+  const impacto = revisarImpacto(
+    atividade({ id: "a1", hora: null, custoCentavos: null, custoNatureza: null, custoAVerificar: true }),
+    "concluir",
+  );
+
+  assert.equal(impacto.atencao.length, 2);
+  assert.ok(impacto.atencao.some((item) => /a verificar/.test(item)));
+  assert.ok(impacto.atencao.some((item) => /Sem horário/.test(item)));
+});
+
+test("cancelar diz exatamente quanto sai do previsto e que o histórico não some", () => {
+  const impacto = revisarImpacto(atividade({ id: "a1", custoCentavos: 12000n, custoNatureza: "estimativa" }), "cancelar");
+
+  assert.equal(impacto.efeitoNoPrevistoCentavos, -12000n);
+  assert.ok(impacto.itens.some((item) => item.includes("R$ 120,00")), "o valor aparece na revisão");
+  assert.ok(impacto.itens.some((item) => /não pode ser apagado/.test(item)));
+  assert.ok(impacto.itens.some((item) => /saldo oficial/.test(item)));
+});
+
+test("cancelar custo desconhecido não inventa número nem some com o que faltava verificar", () => {
+  const desconhecido = revisarImpacto(atividade({ id: "a1", custoCentavos: null, custoNatureza: null, custoAVerificar: true }), "cancelar");
+  assert.equal(desconhecido.efeitoNoPrevistoCentavos, 0n);
+  assert.ok(desconhecido.itens.some((item) => /Custo desconhecido/.test(item)));
+  assert.ok(desconhecido.atencao.some((item) => /a verificar/.test(item)));
+
+  const combinado = revisarImpacto(atividade({ id: "a2", custoCentavos: 9000n, custoNatureza: "compromisso" }), "cancelar");
+  assert.ok(combinado.atencao.some((item) => /compromisso assumido fora do app/.test(item)), "não finge que desfez um compromisso");
 });

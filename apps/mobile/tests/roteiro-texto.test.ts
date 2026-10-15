@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   avaliarTrecho,
+  custoDoCartao,
   linhasDeContexto,
   linhasDoResumoDoDia,
   rotuloDoCusto,
@@ -138,4 +139,26 @@ test("resumo do dia com uma atividade não usa plural torto", () => {
     conflitos: 0,
   });
   assert.deepEqual(um, [{ texto: "1 atividade", tipo: "normal" }]);
+});
+
+test("cartão aceita a atividade na forma do servidor e na forma do domínio (a tela não fica em branco)", () => {
+  const doServidor = linhasDeContexto({ local: "Estação", duracaoMinutos: 90, custo: { centavos: "12000", natureza: "compromisso", aVerificar: false } });
+  const doDominio = linhasDeContexto({ local: "Estação", duracaoMinutos: 90, custoCentavos: 12000n, custoNatureza: "compromisso", custoAVerificar: false });
+
+  assert.deepEqual(doDominio, doServidor);
+  assert.ok(doServidor.some((linha) => linha.texto === "valor já combinado: R$ 120,00"));
+});
+
+test("atividade sem campo de custo nenhum não vira R$ 0,00 nem derruba o cartão", () => {
+  const linhas = linhasDeContexto({ local: null, duracaoMinutos: null, custo: undefined });
+
+  assert.deepEqual(linhas, [], "desconhecido fica omitido");
+  const verificando = linhasDeContexto({ local: null, duracaoMinutos: null, custoAVerificar: true });
+  assert.deepEqual(verificando, [{ texto: "Custo a verificar", tipo: "a-verificar" }]);
+});
+
+test("custoDoCartao: forma do servidor, forma do domínio e nada — sem inventar zero", () => {
+  assert.deepEqual(custoDoCartao({ custo: { centavos: "350", natureza: "estimativa", aVerificar: false } }), { centavos: 350n, natureza: "estimativa", aVerificar: false });
+  assert.deepEqual(custoDoCartao({ custoCentavos: null, custoNatureza: null, custoAVerificar: true }), { centavos: null, natureza: null, aVerificar: true });
+  assert.deepEqual(custoDoCartao({}), { centavos: null, natureza: null, aVerificar: false });
 });
