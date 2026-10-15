@@ -68,11 +68,9 @@ Implementar primeiro o fluxo que já está suficientemente definido (✅ = no ap
 8. atividade concluída suavizada e recolhível sem apagar histórico; ✅
 9. conflito no resumo e nos cartões afetados; ✅
 10. abertura de detalhes em **tela própria**; ✅
-11. ações autorizadas e revisão de impacto antes de mudanças relevantes. 🟡 (concluir e cancelar
-    revisam o impacto; a prévia para **substituir o roteiro vigente** ainda falta)
+11. ações autorizadas e revisão de impacto antes de mudanças relevantes. 🟡 (concluir e cancelar revisam o impacto; a prévia para **substituir o roteiro vigente** ainda falta)
 
-Depois da lista: **orçamento do roteiro** (item 8 de `UX_SCREENS.md`) entrou como planejamento separado
-do dinheiro oficial — `resumirOrcamentoDoRoteiro`, mostrado na aba Gastos (`§7` e `§8` acima).
+Depois da lista: **orçamento do roteiro** (item 8 de `UX_SCREENS.md`) entrou como planejamento separado do dinheiro oficial — `resumirOrcamentoDoRoteiro`, mostrado na aba Gastos (`§7` e `§8` acima).
 
 O cartão deve mostrar apenas horário, título, estado, custo essencial e contexto relevante. A tela de detalhes concentra o restante.
 
@@ -167,9 +165,42 @@ Não esperar novos concepts para iniciar os componentes básicos. Ajustes visuai
 
 As referências fornecidas pelo planejamento devem orientar a identidade Lia Go: composição mobile-first, dark UI, magenta/roxo, glow moderado, cards arredondados, timeline, presença da Lia e continuidade de marca.
 
-**Atualização (2026-10-15):** as referências foram versionadas pelo responsável em `assets/references/`
-(commits `c53c11c` e `be91721`) — caminhos oficiais registrados em `UI_VISUAL_GUIDELINES.md` §7.
-A implementação seguiu sem bloquear: os tokens já estavam corretos e as referências guiaram a décima
-rodada — hero da viagem com a Lia, orçamento com barra/limite, "próximo compromisso" em destaque,
-checklist, documentos privados por padrão e fechamento com exportação. Falta apenas a navegação lateral
-da web e a aba Documentos própria na barra inferior (hoje na aba Mais).
+**Atualização (2026-10-15):** as referências foram versionadas pelo responsável em `assets/references/` (commits `c53c11c` e `be91721`) — caminhos oficiais registrados em `UI_VISUAL_GUIDELINES.md` §7. A implementação seguiu sem bloquear: os tokens já estavam corretos e as referências guiaram a décima rodada — hero da viagem com a Lia, orçamento com barra/limite, "próximo compromisso" em destaque, checklist, documentos privados por padrão e fechamento com exportação. Falta apenas a navegação lateral da web e a aba Documentos própria na barra inferior (hoje na aba Mais).
+
+## 16. Próxima rodada de implementação — handoff ao agent
+
+A partir deste ponto, **não bloquear o desenvolvimento por novas decisões cosméticas**. O agent deve usar os conceitos e documentos existentes para entregar uma primeira versão visual navegável e consistente.
+
+### 16.1 Escopo prioritário
+
+1. Implementar a primeira versão visual completa do **Roteiro**: timeline vertical, resumo diário adaptativo, `ActivityCard` equilibrado, estados híbridos, custos contextuais, atividades flexíveis, deslocamentos adaptativos, atividades concluídas recolhíveis e conflitos com explicação/ação.
+2. Completar a **tela própria de detalhes da atividade**, seguindo as decisões já registradas: horário/duração, local, deslocamento, custo e natureza do valor, reserva/evidência, acessibilidade/observações, documentos/links, histórico e ações autorizadas.
+3. Aplicar a **identidade visual Lia Go** usando os assets oficiais de `assets/references/`, sem criar uma identidade paralela. Glow deve ser moderado e não prejudicar leitura.
+4. Garantir **mobile-first e responsividade**: Android como prioridade; tablet/web reutilizando os mesmos componentes; áreas de toque, safe areas, teclado e acessibilidade tratados desde a primeira versão.
+5. Preservar as regras de negócio já estabilizadas, especialmente **permissões, confirmações financeiras, offline/outbox, conflitos de sincronização e histórico**. A UI não deve duplicar ou enfraquecer essas regras.
+
+### 16.2 Critérios de execução
+
+- Não criar telas, abstrações ou efeitos apenas por estética.
+- Reutilizar componentes existentes sempre que possível.
+- Se um detalhe visual menor não estiver definido, escolher a alternativa mais simples, acessível e consistente com `UI_VISUAL_GUIDELINES.md`.
+- Não inventar dados, estados ou confirmações para preencher o mockup.
+- Não considerar uma tarefa concluída apenas porque a tela renderiza: fluxo, permissões, estados de erro/offline e ações precisam continuar coerentes.
+
+### 16.3 Validação obrigatória
+
+Ao terminar cada fatia:
+
+- executar a suíte de testes existente;
+- executar os testes de interface aplicáveis;
+- corrigir regressões causadas pela implementação;
+- registrar separadamente qualquer teste que precise mudar por alteração legítima de comportamento/UI;
+- verificar pelo menos celular estreito e uma largura maior antes de considerar a fatia pronta.
+
+O agent deve reportar de forma objetiva: **o que implementou, o que ficou pendente, testes executados/resultados e qualquer decisão nova que altere arquitetura ou regra de negócio**.
+
+### 16.4 Ordem de entrega
+
+**Roteiro → detalhes da atividade → integração visual da identidade → responsividade/acessibilidade → refinamento das telas financeiras.**
+
+Depois da primeira versão navegável, fazer uma auditoria visual/funcional contra este documento e os concepts antes de ampliar o escopo.
