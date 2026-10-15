@@ -31,8 +31,15 @@ import {
 import { comoReserva } from "../services/reserva-cache.ts";
 import { formatarDiaCurto, hojeIso as hojeDoAparelho } from "../services/formato.ts";
 
-/** Imagem oficial da Lia (referência `assets/references/lia-character-hero.png`, comprimida). */
-import heroLia from "../assets/lia-hero.jpg";
+/**
+ * Imagem oficial da Lia: referência `assets/references/lia-character-hero.png`, comprimida e servida
+ * de `apps/mobile/public/lia-hero.jpg`.
+ *
+ * Fica em `public/` de propósito: o Vite (e o Capacitor) entregam esse arquivo como está, sem passar
+ * pelo empacotador. Assim a imagem não vira import de módulo — que exigia um plugin só nos testes de
+ * interface e era justamente o ponto frágil entre Windows e Linux.
+ */
+const HERO_DA_LIA = "/lia-hero.jpg";
 
 interface Props {
   viagemId: string;
@@ -237,7 +244,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
         <>
           <section className="hero-viagem cartao">
             <div className="hero-viagem-imagem">
-              <img src={heroLia} alt="" aria-hidden="true" />
+              <img src={HERO_DA_LIA} alt="" aria-hidden="true" />
             </div>
             <div className="hero-viagem-texto">
               <p className="suave pequeno">Viagem ativa</p>

@@ -239,7 +239,7 @@ a Lia** na Visão geral, **orçamento com barra e limite** (coletivo do organiza
 pessoa, atenção a partir de 80%, estado sempre em texto), **"próximo compromisso" em destaque** (só o
 que ainda vai acontecer) e as telas de **checklist**, **documentos** (privados por padrão) e
 **fechamento/exportação** na aba Mais. A imagem do hero é uma cópia comprimida em
-`apps/mobile/src/assets/lia-hero.jpg` (900 px, 58 KB) — a referência original continua aqui em
+`apps/mobile/public/lia-hero.jpg` (900 px, 58 KB) — a referência original continua aqui em
 `assets/references/`.
 
 O que as referências **pedem e ainda não existe**: a barra de navegação da web com seletor lateral

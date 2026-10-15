@@ -162,10 +162,10 @@ Fatia entregue de ponta a ponta — domínio, API, app e testes — sem nova per
 - **Referências oficiais aplicadas** (`assets/references/`): hero da viagem com a Lia na Visão geral,
   cartão **"Próximo compromisso"** (só o que ainda vai acontecer; compromisso do dia sem hora continua
   valendo; nada à frente = a tela diz que não há) e o cartão de orçamento com barra do `concept-03`.
-  A imagem usada pelo app é uma cópia comprimida em `apps/mobile/src/assets/lia-hero.jpg` (900 px, 58 KB);
+  A imagem usada pelo app é uma cópia comprimida em `apps/mobile/public/lia-hero.jpg` (900 px, 58 KB);
   a referência original continua em `assets/references/`.
 - **Placar de testes desta rodada** (tudo verde, `npm test` na raiz): ferramentas 39 · domínio 109 ·
-  sincronização 48 · app 46 (unitário) + 28 (interface, jsdom) · API 86 = **356**. A suíte de interface
+  sincronização 48 · app 46 (unitário) + 28 (interface, jsdom) · API 86 = **361**. A suíte de interface
   agora cobre orçamento, checklist, documentos, fechamento e a Visão geral.
 
 ### Reservas e revisão de impacto (2026-10-15, nona rodada)
@@ -263,6 +263,25 @@ Fatia entregue de ponta a ponta — domínio, API, app e testes — sem nova per
   no fim — o passo do banco ficava minutos em silêncio); o download do banco tem **barra com percentual e
   velocidade** e é cancelado com explicação se ficar 30s sem avançar; passos sem saída avisam
   `⏳ ainda trabalhando` a cada 15s e terminam com o tempo gasto (`criado em 23s`).
+
+### Rodada do duplo clique no Windows: falha tem de vir com motivo (2026-10-15)
+- **O que aconteceu**: a rodada do PC (`LiaGo.bat`, 20:52) terminou **242 passaram · 8 falharam** e o
+  relatório não explicava nada — os 8 arquivos de teste de interface apareciam só como `'test failed'`.
+  O `node --test` faz isso quando um **arquivo inteiro não carrega**: ele conta o arquivo como um teste
+  reprovado e não imprime a causa. Além disso, o relatório guardava apenas as **60 últimas linhas** da
+  saída, e o corte levava junto a explicação.
+- **Correção (nada de "rodar de novo para ver")**: `reports/saida-dos-testes.md` passou a guardar a saída
+  **completa** da rodada (nome fixo, teto de 200 KB), o relatório lista os arquivos que **nem chegaram a
+  rodar** e `tools/teste-ui.mjs` roda cada um deles **direto com `node`**, gravando o erro de verdade em
+  `reports/interface-diagnostico.md`. Verificado com um arquivo quebrado de propósito: a rodada imprimiu
+  `POR QUE NÃO CARREGOU` e a mensagem exata.
+- **Causa provável das 8 falhas**: o bundle de teste importava a imagem do hero e o empacotador não tem o
+  plugin de assets do Vite. A imagem foi para `apps/mobile/public/lia-hero.jpg` (referenciada por caminho,
+  `/lia-hero.jpg`) e os plugins de imagem saíram do empacotador: agora nenhum arquivo de imagem entra no
+  bundle. A próxima rodada do PC confirma — e, se a causa for outra, o motivo vem escrito.
+- **Aviso do fim da rodada**: com o **GitHub CLI** (`gh`) instalado e autenticado, o relatório é publicado
+  como comentário no pull request da branch. Sem `gh`, nada falha: o relatório continua subindo no commit,
+  que é por onde o responsável lê a rodada.
 
 ### Ambiente de desenvolvimento no Windows (2026-10-12, terceira rodada) — hipóteses reversíveis
 - **PostgreSQL do dia a dia continua sendo o Docker Compose** (decisão confirmada). O que mudou foi a

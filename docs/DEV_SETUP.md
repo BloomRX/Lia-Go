@@ -155,7 +155,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 48 testes.
 - App (armazenamento local, sincronizador e telas em jsdom com IndexedDB simulado): `npm run test:app` — 74 testes (46 de unidade + 28 de interface).
 - API (integração com PostgreSQL real): `npm run test:api` — 86 testes.
-- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 39 testes.
+- Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 44 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).
 - A automação (`LiaGo.bat`, opções 1 e 2) roda **`npm run typecheck` antes dos testes**: erro de tipo
@@ -163,6 +163,13 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Relatórios de execução: `reports/relatorio-*.md` (segredos são ocultados). Os **20 mais recentes ficam
   versionados**, então o resultado da sua execução aparece no GitHub depois do envio — é o "voltar" do
   `LiaGo.bat`. Relatórios antigos são apagados automaticamente para o repositório não inchar.
+- **Quando algo falha, o motivo vem junto** (dois arquivos de nome fixo, sempre sobrescritos):
+  `reports/saida-dos-testes.md` guarda a saída **completa** da rodada e `reports/interface-diagnostico.md`
+  explica por que um teste de interface não carregou (o `node --test` sozinho só diz "test failed").
+  Basta ler esses dois para corrigir sem adivinhar.
+- Com o **GitHub CLI (`gh`) instalado e autenticado**, a rodada ainda publica o relatório como comentário
+  no pull request da branch — é o aviso de que a rodada terminou. Sem `gh`, nada quebra: o relatório sobe
+  no commit, como sempre.
 
 ## 7. Problemas comuns
 

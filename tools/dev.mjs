@@ -25,6 +25,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   abriuPromptDoWindows,
+  arquivosQueFalharam,
+  extrairFalhas,
   candidatosDePython,
   classificarAlteracoesLocais,
   decidirAtualizacao,
@@ -136,12 +138,23 @@ const LIMITE_INSTALL_MS = Number(process.env.LIA_LIMITE_INSTALL_MS ?? 0) || 10 *
 const LIMITE_TESTES_MS = Number(process.env.LIA_LIMITE_TESTES_MS ?? 0) || 15 * 60 * 1000;
 
 const PACOTES_OBRIGATORIOS = ["fastify", "@fastify/cookie", "pg", "zod", "vite", "react", "@capacitor/core"];
+/**
+ * Pacotes que só os **testes de interface** usam (empacotador, navegador simulado e IndexedDB).
+ * Ficam em lista separada porque são instalados dentro de `apps/mobile` pelo npm workspaces: se
+ * algum faltar, a suíte de interface falha inteira sem que a tela mostre o motivo.
+ */
+const PACOTES_DE_TESTE = ["rolldown", "jsdom", "fake-indexeddb"];
 
 function dependenciasInstaladas() {
   // O npm escreve `node_modules/.package-lock.json` ao terminar uma instalação. Sem esse marcador,
   // a pasta pode estar pela metade — foi o que aconteceu quando o npm nem chegava a rodar no Windows.
   if (!existsSync(path.join(RAIZ, "node_modules", ".package-lock.json"))) return false;
-  return PACOTES_OBRIGATORIOS.every((nome) => existsSync(path.join(RAIZ, "node_modules", ...nome.split("/"))));
+  const noRaiz = (nome) => existsSync(path.join(RAIZ, "node_modules", ...nome.split("/")));
+  if (!PACOTES_OBRIGATORIOS.every(noRaiz)) return false;
+  // Os pacotes de teste podem estar no node_modules do app (workspace) em vez da raiz: vale nos dois.
+  const noApp = (nome) =>
+    noRaiz(nome) || existsSync(path.join(RAIZ, "apps", "mobile", "node_modules", ...nome.split("/")));
+  return PACOTES_DE_TESTE.every(noApp);
 }
 
 /** Versão do npm (também serve de teste de vida: se o npm não roda, isso aparece no banner). */
@@ -418,6 +431,11 @@ function gravarRelatorio(resultadoTestes) {
     process.env.DATABASE_URL ?? env.DATABASE_URL ?? "(não definida — os testes de integração serão pulados)";
   const arquivosNaoRastreados = git.status ? git.status.split("\n").length : 0;
 
+  // Falhas com contexto: é o que permite corrigir sem adivinhar (o `node --test` só diz
+  // "test failed" quando um arquivo não carrega).
+  const falhas = resultadoTestes.falhou > 0 || resultadoTestes.status !== 0 ? extrairFalhas(resultadoTestes.saida) : [];
+  const naoCarregaram = arquivosQueFalharam(resultadoTestes.saida);
+  const saiuComProblema = resultadoTestes.falhou > 0 || resultadoTestes.status !== 0;
   const conteudo = [
     `# Relatório de execução — Lia Go`,
     ``,
@@ -451,7 +469,27 @@ function gravarRelatorio(resultadoTestes) {
         ]
       : []),
     `> Os testes de integração são pulados (com aviso, nunca em silêncio) quando o banco não responde.`,
-    `> Banco local: \`LiaGo.bat\` opção 4, ou \`npm run db:up\` com o Docker aberto.`,
+    `> Banco local: o próprio \`LiaGo.bat\` (duplo clique) sobe o PostgreSQL do projeto; \`npm run db:up\` faz o mesmo pelo terminal.`,
+    ``,
+    ...(saiuComProblema
+      ? [
+          `## O que falhou (com o contexto de cada erro)`,
+          ``,
+          ...(falhas.length > 0
+            ? falhas.flatMap((bloco, indice) => [`### Falha ${indice + 1}`, "```", bloco, "```", ""])
+            : [`> Não consegui isolar um bloco de erro na saída — o fim dela está guardado abaixo e em \`reports/saida-dos-testes.md\`.`, ``]),
+          ...(naoCarregaram.length > 0
+            ? [
+                `> **${naoCarregaram.length} arquivo(s) de teste nem chegaram a rodar:** ${naoCarregaram.map((nome) => `\`${nome}\``).join(", ")}.`,
+                `> O \`node --test\` não explica esse caso; o erro de verdade de cada um (import que falta,` ,
+                `> pacote ausente, erro de sintaxe) está em \`reports/interface-diagnostico.md\`.`,
+                ``,
+              ]
+            : []),
+          `> A saída **completa** desta rodada fica em \`reports/saida-dos-testes.md\`.`,
+          ``,
+        ]
+      : []),
     ``,
     `## Alterações em andamento`,
     ``,
@@ -477,6 +515,8 @@ function gravarRelatorio(resultadoTestes) {
 
   writeFileSync(caminho, conteudo, "utf8");
 
+  gravarSaidaCompleta(resultadoTestes, falhas);
+
   // Mantém os 20 relatórios mais recentes: histórico suficiente sem acumular arquivos no Git.
   const todos = readdirSync(DIR_RELATORIOS)
     .filter((nome) => /^relatorio-.*\.md$/.test(nome))
@@ -485,6 +525,42 @@ function gravarRelatorio(resultadoTestes) {
 
   console.log(`Relatório gravado em ${path.relative(RAIZ, caminho)}`);
   return caminho;
+}
+
+/**
+ * Guarda a saída **completa** dos testes num arquivo de nome fixo (`reports/saida-dos-testes.md`).
+ *
+ * Nome fixo de propósito: quem for corrigir (pessoa ou agente) sabe onde olhar sem abrir vinte
+ * relatórios com carimbo de hora. O teto de tamanho evita levar megabytes para o Git quando uma
+ * suíte falha em laço — nesse caso o começo é cortado, não o fim (o fim é onde o erro costuma estar).
+ */
+function gravarSaidaCompleta(resultadoTestes, falhas) {
+  const LIMITE = 200_000;
+  const completo = resultadoTestes.saida ?? "";
+  const cortado = completo.length > LIMITE;
+  const corpo = cortado ? completo.slice(-LIMITE) : completo;
+  const conteudo = [
+    `# Saída dos testes (rodada mais recente)`,
+    ``,
+    `- **Quando:** ${new Date().toISOString()} (local ${new Date().toLocaleString("pt-BR")})`,
+    `- **Node:** ${versaoNode()} · **npm:** ${versaoNpm()} · **Sistema:** ${process.platform} ${process.arch}`,
+    `- **Placar:** ${descreverPlacarDeTestes(resultadoTestes)} · **Código de saída:** ${resultadoTestes.status}`,
+    `- **Tipos:** ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"}`,
+    `- **Arquivos de teste que não carregaram:** ${arquivosQueFalharam(corpo).join(", ") || "nenhum"}`,
+    cortado ? `- **Observação:** a saída tinha ${completo.length} caracteres; está aqui o fim dela (${LIMITE}).` : "",
+    ``,
+    ...(falhas.length > 0 ? ["## Erros destacados", "", ...falhas.flatMap((bloco) => ["```", bloco, "```", ""])] : []),
+    `## Saída completa`,
+    ``,
+    "```",
+    corpo,
+    "```",
+    ``,
+  ].filter(Boolean).join("\n");
+  const destino = path.join(DIR_RELATORIOS, "saida-dos-testes.md");
+  mkdirSync(DIR_RELATORIOS, { recursive: true });
+  writeFileSync(destino, conteudo, "utf8");
+  console.log(`Saída dos testes guardada em ${path.relative(RAIZ, destino)}`);
 }
 
 /** Arquivos com alterações locais (inclui novos), no formato de caminho puro. */
@@ -792,6 +868,8 @@ async function comandoTudo() {
   definirEtapa(6, TOTAL_DE_ETAPAS);
   const enviado = enviarParaOGitHub();
 
+  if (enviado) comentarNoPullRequest(caminhoRelatorio);
+
   definirEtapa(7, TOTAL_DE_ETAPAS);
   titulo("Resumo da rodada e subida do app");
   resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio });
@@ -940,6 +1018,43 @@ function atualizarDoGitHub() {
 }
 
 
+/**
+ * Publica o relatório como comentário no pull request da branch — quando existe `gh` instalado e
+ * autenticado nesta máquina.
+ *
+ * É o "aviso" da rodada: o relatório já sobe para o Git dentro do repositório (é de lá que o agente
+ * lê), e o comentário só deixa isso visível no lugar onde a conversa acontece. Se o `gh` não existir
+ * ou não estiver autenticado, a rodada segue normalmente: nada aqui pode fazê-la falhar.
+ */
+function comentarNoPullRequest(caminhoRelatorio) {
+  const gh = rodar("gh", ["--version"], { capturar: true });
+  if (gh.status !== 0) {
+    console.log("(Sem o GitHub CLI nesta máquina: o relatório vai pelo próprio repositório, que é como o agente lê.)");
+    return false;
+  }
+  const ramo = branchAtual();
+  if (!ramo) return false;
+  try {
+    const lista = rodar("gh", ["pr", "list", "--head", ramo, "--state", "open", "--json", "number", "--limit", "1"], { capturar: true });
+    const numeros = JSON.parse(lista.saida || "[]");
+    const numero = Array.isArray(numeros) && numeros[0] ? numeros[0].number : null;
+    if (!numero) {
+      console.log("(Não há pull request aberto para esta branch: o relatório já está no repositório.)");
+      return false;
+    }
+    const comentario = rodar("gh", ["pr", "comment", String(numero), "--body-file", caminhoRelatorio], { capturar: true });
+    if (comentario.status !== 0) {
+      console.warn("Não consegui comentar no pull request (o relatório continua no repositório).");
+      return false;
+    }
+    console.log(`Relatório publicado como comentário no pull request #${numero}.`);
+    return true;
+  } catch (erro) {
+    console.warn(`Não consegui publicar o comentário no pull request: ${erro instanceof Error ? erro.message : erro}`);
+    return false;
+  }
+}
+
 /** Envia o que a rodada produziu (relatórios e diagnóstico) para o GitHub. */
 function enviarParaOGitHub() {
   titulo("Enviando o resultado para o GitHub");
@@ -1046,10 +1161,11 @@ function resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio }) {
   console.log(`Testes ............... ${descreverPlacarDeTestes(testes)}`);
   console.log(`Relatório ............ ${path.relative(RAIZ, caminhoRelatorio)}`);
   console.log(`Diagnóstico do PC .... reports/estado-do-computador.md`);
+  console.log(`Saída dos testes ..... reports/saida-dos-testes.md`);
   console.log(`Enviado ao GitHub .... ${enviado ? "sim" : "não (tentará de novo na próxima)"}`);
   console.log(`Tempo total .......... ${segundos}s`);
   console.log("O app está subindo nas próximas linhas. Ctrl+C encerra.");
-  console.log("Para opções avançadas: LiaGo.bat menu");
+  console.log("Só isso: nada a escolher. Para opções avançadas existe `LiaGo.bat menu`.");
   console.log("==========================================================");
 }
 

@@ -75,7 +75,7 @@ test("a Visão geral traz o hero com a Lia e o próximo compromisso que ainda va
 
   const imagem = raizDoDocumento.querySelector<HTMLImageElement>(".hero-viagem-imagem img");
   assert.ok(imagem, "o hero com a Lia precisa estar na Visão geral");
-  assert.ok((imagem.getAttribute("src") ?? "").length > 0, "a imagem precisa resolver para um endereço de verdade");
+  assert.equal(imagem.getAttribute("src"), "/lia-hero.jpg", "a imagem vem de public/, servida como está (sem empacotador no meio)");
   assert.equal(imagem.getAttribute("alt"), "", "imagem decorativa: quem usa leitor de tela não precisa dela");
 });
 

@@ -226,7 +226,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Checklist (prazo não conclui; reabrir com motivo) | ✅ **6 testes** de domínio + **8** de API + 3 de interface | `packages/domain/src/checklist.ts`, `apps/api/src/routes/checklist.ts`, `telas/Checklist.tsx` |
 | Documentos privados por padrão (compartilhar, revogar, remover com motivo, lavagem da cópia local de quem perdeu acesso) | ✅ **7 testes** de domínio + **14** de API + 3 de interface | `packages/domain/src/documento.ts`, `apps/api/src/routes/documentos.ts`, `telas/Documentos.tsx` |
 | Fechamento/exportação (números do servidor, acertos sugeridos, `.txt`/`.csv`) | ✅ **6 testes** de domínio + **2** de API + 3 de interface | `packages/domain/src/fechamento.ts`, `apps/api/src/routes/orcamento.ts`, `telas/Fechamento.tsx` |
-| Referências visuais oficiais aplicadas (hero com a Lia, próximo compromisso, cartões do `concept-03`) | ✅ 2 testes de interface | `apps/mobile/src/assets/lia-hero.jpg`, `telas/Viagem.tsx`, `styles.css` |
+| Referências visuais oficiais aplicadas (hero com a Lia, próximo compromisso, cartões do `concept-03`) | ✅ 2 testes de interface | `apps/mobile/public/lia-hero.jpg`, `telas/Viagem.tsx`, `styles.css` |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
 mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere

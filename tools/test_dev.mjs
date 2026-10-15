@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  arquivosQueFalharam,
+  extrairFalhas,
   caminhoDoLogDoNpm,
   diagnosticarComLog,
   diagnosticarFalhaNpm,
@@ -547,4 +549,51 @@ test("as funções principais do orquestrador continuam existindo (nenhuma remo�
   const daCasa = [...new Set(chamadas)].filter((nome) => /^(atualizar|caminhos|conferir|enviar|gravar|instalar|rodar|subir|tem|tratar)/.test(nome));
   const faltando = daCasa.filter((nome) => !definidas.has(nome));
   assert.deepEqual(faltando, [], "chamadas sem definição quebram a rodada no meio do caminho");
+});
+
+// --- Falhas no relatório: sem o contexto, o relatório do PC chega sem motivo (caso real) ---
+
+test("arquivo de teste que não carregou é reconhecido nos dois formatos do Node", () => {
+  const doConsole = ["✖ apps/mobile/.ui-testes/viagens.test.mjs (60.0335ms)", "  'test failed'"].join("\n");
+  const doTAP = ["not ok 1 - /home/user/Lia-Go/apps/mobile/.ui-testes/viagens.test.mjs", "  ---", "  error: 'test failed'"].join("\n");
+  const doConsoleWindows = "✖ J:\\Lia-Go\\apps\\mobile\\.ui-testes\\viagens.test.mjs (60.0335ms)";
+
+  assert.deepEqual(arquivosQueFalharam(doConsole), ["viagens.test.mjs"]);
+  assert.deepEqual(arquivosQueFalharam(doTAP), ["viagens.test.mjs"]);
+  assert.deepEqual(arquivosQueFalharam(doConsoleWindows), ["viagens.test.mjs"]);
+});
+
+test("teste comum que falhou NÃO é confundido com arquivo que não carregou", () => {
+  const saida = ["not ok 3 - item criado sem rede fica na fila do aparelho", "ok 4 - outro teste"].join("\n");
+  assert.deepEqual(arquivosQueFalharam(saida), [], "só nome terminado em .mjs conta como arquivo");
+});
+
+test("o relatório leva o erro com contexto, não só o placar", () => {
+  const saida = [
+    "ℹ tests 8",
+    "ℹ pass 6",
+    "ℹ fail 2",
+    "not ok 1 - orcamento.test.ts",
+    "  error: |",
+    "    Expected values to be strictly equal:",
+    "    actual: '0'",
+    "    expected: '300000'",
+  ].join("\n");
+
+  const falhas = extrairFalhas(saida);
+
+  assert.equal(falhas.length, 1);
+  assert.match(falhas[0].split("\n")[0], /^not ok 1 - orcamento\.test\.ts$/);
+  assert.match(falhas[0], /expected: '300000'/, "o valor esperado vai junto: é o que explica a falha");
+});
+
+test("erro de TypeScript também entra no relatório como falha", () => {
+  const falhas = extrairFalhas("src/telas/Viagem.tsx(35,21): error TS2307: Cannot find module '../assets/lia-hero.jpg'.");
+  assert.equal(falhas.length, 1);
+  assert.match(falhas[0], /error TS2307/);
+});
+
+test("saída sem falha não inventa bloco de erro (relatório verde fica limpo)", () => {
+  const saida = ["ℹ tests 39", "ℹ pass 39", "ℹ fail 0", "ok 1 - tudo certo"].join("\n");
+  assert.deepEqual(extrairFalhas(saida), []);
 });

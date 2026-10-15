@@ -82,6 +82,50 @@ export function descreverPlacarDeTestes(testes) {
 }
 
 /**
+ * Blocos de falha de uma saída de testes, prontos para o relatório.
+ *
+ * O relatório antigo guardava só as últimas 60 linhas: quando um arquivo de teste não carrega, o
+ * motivo aparece **antes** e o relatório chegava mutilado (foi o que aconteceu na rodada do Windows
+ * em 2026-10-15 — 8 arquivos falhando e nenhuma pista). Aqui cada falha vem com o contexto em volta.
+ */
+export function extrairFalhas(saida, { contexto = 8, maximo = 6 } = {}) {
+  const linhas = String(saida ?? "").split(/\r?\n/);
+  const comecaFalha = (linha) =>
+    /^\s*(?:not ok\b|[✖×]\s)/.test(linha) || /^\s*(?:Error|TypeError|RangeError|ReferenceError|SyntaxError)\b/.test(linha) || /\berror TS\d+/.test(linha);
+  const blocos = [];
+  const jaVistos = new Set();
+  for (let i = 0; i < linhas.length && blocos.length < maximo; i += 1) {
+    if (!comecaFalha(linhas[i])) continue;
+    const trecho = linhas.slice(i, Math.min(linhas.length, i + contexto)).join("\n").trimEnd();
+    if (trecho === "" || jaVistos.has(trecho)) continue;
+    jaVistos.add(trecho);
+    blocos.push(trecho);
+  }
+  return blocos;
+}
+
+/**
+ * Nomes dos arquivos de teste que o `node --test` marcou como falha.
+ *
+ * Dois formatos, porque o Node muda o relatório conforme a saída:
+ *  - console de verdade (TTY): `✖ caminho/arquivo.mjs (60ms)` — o formato `spec`;
+ *  - saída por cano/arquivo (é o caso quando a ferramenta captura a saída para o relatório): TAP,
+ *    `not ok 1 - caminho/arquivo.mjs`.
+ * Só nomes terminados em `.mjs` entram: no TAP, um teste comum também aparece como `not ok`, e ele
+ * não pode ser confundido com arquivo que não carregou.
+ */
+export function arquivosQueFalharam(saida) {
+  const nomes = new Set();
+  for (const linha of String(saida ?? "").split(/\r?\n/)) {
+    const spec = linha.match(/^\s*[✖×]\s+(.+?\.mjs)\b/);
+    const tap = linha.match(/^\s*not ok\s+\d+\s+-\s+(.+?\.mjs)\b/);
+    const caminho = spec?.[1] ?? tap?.[1];
+    if (caminho) nomes.add(caminho.trim().split(/[\\/]/).pop());
+  }
+  return [...nomes];
+}
+
+/**
  * Junta pedaços da saída de um servidor e devolve **linhas inteiras**, guardando o resto para o
  * próximo pedaço. Duas razões:
  *  1. duas linhas nunca colam uma na outra (antes, a saída de dois servidores juntos virava um
