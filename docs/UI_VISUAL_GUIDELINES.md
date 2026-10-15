@@ -238,21 +238,22 @@ Esses pontos podem ser definidos incrementalmente, sem contrariar as decisões a
 
 ### 8.1 O que já foi resolvido na implementação (hipóteses reversíveis)
 
-As telas do roteiro foram construídas em 2026-10-15 usando **somente os tokens que já existiam** em
-`apps/mobile/src/styles.css` — nenhuma cor, fonte ou espaçamento novo foi inventado. Onde este documento
-não fechava um valor, foi aplicada a opção mais simples e reversível, para não travar a fatia:
+Os tokens de marca foram **fechados** em `docs/UI_V1_DECISIONS.md` §1 e já estão aplicados em
+`apps/mobile/src/styles.css` (bloco `:root`): magenta `#FF3EDC`, roxo `#A855F7`, lilás `#D884FE`,
+fundo `#0B0A12`, sucesso `#22D3A3`, âmbar de atenção. Fundo de cartão, borda e texto suave são derivados
+do fundo neutro — mexer na identidade é mexer nessas linhas, e nada mais.
 
 | Ponto em aberto | O que está valendo agora | Trocar depois exige mexer em… |
 |---|---|---|
-| Tokens de cor | variáveis já existentes (`--roxo`, `--magenta`, `--bom`, `--atencao`, `--fundo-cartao`, `--borda`, `--texto-suave`) | `styles.css` (bloco `:root`) |
-| Tipografia | pilha do sistema, já herdada; hierarquia por tamanho/peso | `styles.css` |
-| Espaçamento | múltiplos de 2 px já usados (6/8/10/12/14/16) | `styles.css` |
-| Breakpoints | um só: **480 px** (colunas do roteiro empilham no celular) | `styles.css` |
-| Ícones | **texto/etiqueta** em vez de biblioteca (nenhum ícone novo instalado) — também é o caminho mais acessível | componentes das telas |
-| Animação | nenhuma além do pulso já existente; `prefers-reduced-motion` desliga animação e transição | `styles.css` |
+| Tokens de cor | **valores aprovados** em `UI_V1_DECISIONS.md` §1, como variáveis CSS (`--roxo`, `--magenta`, `--lilas`, `--bom`, `--atencao`, `--fundo`, `--fundo-cartao`, `--borda`, `--texto-suave`) | `styles.css` (bloco `:root`) |
+| Tipografia | pilha do sistema, já herdada; hierarquia por tamanho/peso (§2 das decisões) | `styles.css` |
+| Espaçamento | escala em variáveis (`--e1` 4 px, `--e2` 8 px, `--e3` 12 px, `--e4` 16 px, `--e6` 24 px), composição em 8 px (§3) | `styles.css` |
+| Breakpoints | um só: **480 px** (colunas do roteiro empilham no celular; celular é uma coluna, web/tablet aproveita largura) | `styles.css` |
+| Ícones | **texto/etiqueta** por enquanto: nenhuma biblioteca de ícones foi instalada nesta fatia — preferir uma só (Lucide ou equivalente) quando o visual for refinado, nunca misturar estilos | componentes das telas |
+| Animação | nenhuma além do pulso já existente; transições curtas, e `prefers-reduced-motion` desliga animação e transição (§11) | `styles.css` |
 | Densidade financeira | custo em linha dentro do contexto do cartão; ficha com rótulo + valor | `CartaoAtividade.tsx`, `Atividade.tsx` |
 | Mapas | fora desta fatia (deslocamento é texto: minutos, km e alerta) | próxima fatia |
-| Acessibilidade | alvos ≥ 44 px, foco visível (`:focus-visible` com 3 px), **estado nunca só por cor** (todo marcador tem etiqueta textual) | `styles.css` |
+| Acessibilidade | alvos ≥ 44 px, foco visível (`:focus-visible` com 3 px), rótulos em todos os campos, seleção de dia com `aria-pressed` + `aria-label` (sem `role="tab"` sem painel), **estado nunca só por cor** | `styles.css`, telas |
 
 O item de **estado nunca só por cor** merece destaque porque é o mais fácil de quebrar sem perceber: o
 marcador da timeline é decorativo; quem informa o estado é a etiqueta (`planejada`, `concluída`,

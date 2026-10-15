@@ -214,7 +214,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **41 testes** no pacote + 20 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **41 testes** no pacote + 30 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
@@ -270,6 +270,11 @@ código, não só no documento:
 | Concluir/cancelar/corrigir exigem **motivo** (≥5 caracteres na correção/cancelamento) | rota + domínio | Histórico serve para aprender, não para apagar |
 | Depois do cancelamento da viagem, **registrar o que houve com o que já existia** continua permitido | `PERMITIDAS_APOS_CANCELAMENTO` (`atividade:concluir/cancelar/corrigir`) | Viagem cancelada não recebe plano novo, mas o passado aconteceu — mesma lógica das despesas |
 | Viagem concluída bloqueia `atividade:criar` | `packages/domain/src/permissions.ts` | Não se planeja o que já terminou |
+
+**Texto da tela separado do JSX.** As regras de exibição do roteiro (horário flexível, custo
+desconhecido × a verificar × sem custo, trecho compacto × aberto, manchete do conflito, resumo do dia)
+vivem em `apps/mobile/src/services/roteiro-texto.ts` — funções puras, testadas sem navegador. Motivo
+prático: regra de dinheiro dentro de `.tsx` não tem teste; fora, tem 10.
 
 Rotas: `GET /viagens/:id/roteiro`, `GET /viagens/:id/atividades/:atividadeId`,
 `POST /viagens/:id/atividades`, `POST /viagens/:id/atividades/:atividadeId/{concluir,cancelar,corrigir}`.

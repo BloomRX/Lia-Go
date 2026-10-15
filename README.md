@@ -24,10 +24,12 @@ Celular é a plataforma principal; a versão web é complementar.
 3. `docs/ARCHITECTURE.md` — arquitetura, viabilidade medida, riscos e decisões pendentes.
 4. `docs/PRODUCT_OVERVIEW.md` — proposta de produto e escopo.
 5. `docs/BUSINESS_RULES.md` — regras de negócio.
-6. `docs/UX_SCREENS.md` — navegação e comportamento das telas.
-7. `docs/TECHNICAL_GUIDELINES.md` — princípios técnicos e segurança.
-8. `docs/IMPLEMENTATION_BACKLOG.md` — ordem de implementação.
-9. `docs/DECISIONS_AND_OPEN_QUESTIONS.md` — decisões confirmadas e pendências.
+6. `docs/UX_SCREENS.md` — navegação e comportamento das telas (+ estado real do que já existe no app).
+7. `docs/UI_VISUAL_GUIDELINES.md` — identidade visual e regras do roteiro.
+8. `docs/UI_V1_DECISIONS.md` — decisões visuais V1 fechadas (tokens, tipografia, espaçamento, acessibilidade).
+9. `docs/TECHNICAL_GUIDELINES.md` — princípios técnicos e segurança.
+10. `docs/IMPLEMENTATION_BACKLOG.md` — ordem de implementação.
+11. `docs/DECISIONS_AND_OPEN_QUESTIONS.md` — decisões confirmadas e pendências.
 10. `tools/README.md` — DevKit: git seguro, validação e PR.
 
 ## Como rodar

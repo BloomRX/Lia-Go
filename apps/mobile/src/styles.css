@@ -1,26 +1,39 @@
 /* Identidade do Lia Go: base escura, roxo/magenta, cartões arredondados,
-   contraste e alvos de toque pensados primeiro para celular. */
+   contraste e alvos de toque pensados primeiro para celular.
+
+   Os tokens de marca abaixo são os **valores iniciais aprovados** em
+   `docs/UI_V1_DECISIONS.md` §1 (magenta #FF3EDC, roxo #A855F7, lilás #D884FE,
+   fundo #0B0A12, sucesso #22D3A3). Fundo de cartão, borda e texto suave são
+   derivados do fundo neutro para manter a leitura confortável no celular.
+   Trocar a identidade = trocar estas linhas, nada mais. */
 :root {
   color-scheme: dark;
-  --fundo: #120a1c;
-  --fundo-cartao: #1d1230;
-  --fundo-cartao-alto: #261640;
-  --borda: #38235c;
+  --fundo: #0b0a12;
+  --fundo-cartao: #170f27;
+  --fundo-cartao-alto: #211435;
+  --borda: #33224f;
   --roxo: #a855f7;
-  --magenta: #e879f9;
-  --texto: #f5f1ff;
-  --texto-suave: #c4b5d9;
-  --bom: #34d399;
+  --magenta: #ff3edc;
+  --lilas: #d884fe;
+  --texto: #f6f2ff;
+  --texto-suave: #c6b6dd;
+  --bom: #22d3a3;
   --atencao: #fbbf24;
-  --erro: #f87171;
+  --erro: #fb7185;
   --raio: 18px;
+  /* Escala de espaçamento (§3): múltiplos de 4, composição em 8. */
+  --e1: 4px;
+  --e2: 8px;
+  --e3: 12px;
+  --e4: 16px;
+  --e6: 24px;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 600px at 50% -200px, #2b1747 0%, var(--fundo) 60%);
+  background: radial-gradient(1200px 600px at 50% -200px, #1d1030 0%, var(--fundo) 60%);
   color: var(--texto);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   min-height: 100vh;
@@ -57,11 +70,11 @@ p { margin: 4px 0; color: var(--texto-suave); line-height: 1.45; }
   padding: 4px 10px; border-radius: 999px; background: #2f1c4d; color: var(--texto-suave);
   white-space: nowrap;
 }
-.etiqueta.estado-em_andamento { background: #14382c; color: var(--bom); }
-.etiqueta.estado-concluida { background: #1f2a44; color: #93c5fd; }
+.etiqueta.estado-em_andamento { background: #2a1843; color: var(--lilas); }
+.etiqueta.estado-concluida { background: #10352c; color: var(--bom); }
 .etiqueta.estado-cancelada { background: #3b1622; color: var(--erro); }
 .etiqueta.estado-pendente { background: #3a2f12; color: var(--atencao); }
-.etiqueta.estado-confirmada { background: #14382c; color: var(--bom); }
+.etiqueta.estado-confirmada { background: #10352c; color: var(--bom); }
 .etiqueta.estado-contestada { background: #3a2f12; color: var(--atencao); }
 
 .saldo-positivo { color: var(--bom); font-weight: 600; }
@@ -147,7 +160,7 @@ small.suave { color: var(--texto-suave); }
    Regra de acessibilidade da diretriz §4: **nenhum estado é só cor** —
    todo marcador colorido vem acompanhado de texto ou ícone.
    --------------------------------------------------------------- */
-.dias { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; }
+.dias { display: flex; gap: var(--e2); overflow-x: auto; padding: var(--e2) 0; }
 .dia-chip {
   display: flex; flex-direction: column; gap: 2px; min-height: 44px;
   background: var(--fundo-cartao); border: 1px solid var(--borda); color: var(--texto-suave);
@@ -160,7 +173,7 @@ small.suave { color: var(--texto-suave); }
 .dia-titulo { text-transform: capitalize; }
 
 .resumo-dia {
-  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
+  display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); align-items: baseline;
   color: var(--texto-suave); font-size: 0.86rem; padding: 6px 2px 2px;
 }
 .resumo-dia.expandido { color: var(--texto); }
@@ -168,8 +181,8 @@ small.suave { color: var(--texto-suave); }
 .resumo-dia .custo-a-verificar { color: var(--atencao); }
 
 .linha-tempo { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
-.atividade { position: relative; padding-left: 26px; }
-.atividade + .atividade { margin-top: 6px; }
+.atividade { position: relative; padding-left: 24px; }
+.atividade + .atividade { margin-top: var(--e1); }
 /* A linha vertical da timeline: discreta, só orienta a leitura. */
 .atividade::before {
   content: ""; position: absolute; left: 7px; top: 26px; bottom: -8px;
@@ -190,36 +203,36 @@ small.suave { color: var(--texto-suave); }
   width: 100%; text-align: left; color: var(--texto); font: inherit; cursor: pointer;
   min-height: 44px;
 }
-.atividade-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.atividade-topo { display: flex; justify-content: space-between; align-items: center; gap: var(--e2); }
 .atividade-hora { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--magenta); }
 .atividade-titulo { margin: 6px 0 4px; }
-.atividade-contexto { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.84rem; color: var(--texto-suave); }
+.atividade-contexto { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); font-size: 0.84rem; color: var(--texto-suave); }
 .atividade-contexto .custo { color: var(--texto); }
 .atividade-contexto .custo-a-verificar { color: var(--atencao); }
 
 .alerta-conflito {
   margin-top: 10px; border-left: 3px solid var(--atencao); padding: 6px 10px;
-  background: rgba(251, 191, 36, 0.08); border-radius: 8px;
+  background: rgba(251, 191, 36, 0.08); border-radius: var(--e2);
 }
 .alerta-conflito p { margin: 2px 0; color: var(--texto); font-size: 0.84rem; }
-.trecho { display: flex; flex-wrap: wrap; gap: 8px; color: var(--texto-suave); font-size: 0.8rem; padding: 4px 0 6px; }
+.trecho { display: flex; flex-wrap: wrap; gap: var(--e2); color: var(--texto-suave); font-size: 0.8rem; padding: 4px 0 6px; }
 .trecho.aberto { color: var(--texto); }
 .trecho-alerta { color: var(--atencao); font-style: normal; }
 
-.etiqueta.estado-planejada { background: #2f1c4d; color: var(--texto-suave); }
-.etiqueta.estado-concluida { background: #14382c; color: var(--bom); }
+.etiqueta.estado-planejada { background: #2a1843; color: var(--lilas); }
+.etiqueta.estado-concluida { background: #10352c; color: var(--bom); }
 .etiqueta.estado-cancelada { background: #3a2222; color: #f0a0a0; text-decoration: line-through; }
 
-.ficha { display: grid; gap: 8px; }
+.ficha { display: grid; gap: var(--e2); }
 .ficha > div { display: flex; flex-direction: column; gap: 2px; }
 .ficha .rotulo { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--texto-suave); }
-.historico { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.historico { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--e2); }
 
-.duas-colunas { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
-.caixa-marcacao { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 0.9rem; }
+.duas-colunas { display: grid; gap: var(--e3); grid-template-columns: 1fr 1fr; }
+.caixa-marcacao { display: flex; align-items: center; gap: var(--e2); margin: var(--e3) 0; font-size: 0.9rem; }
 .caixa-marcacao input { width: 20px; height: 20px; }
 button.compacto { padding: 8px 14px; font-size: 0.86rem; }
-button.perigo { background: #7f1d1d; border-color: #b91c1c; color: #ffe4e4; }
+button.perigo { background: #4a1220; border-color: #9f1239; color: #ffe4e4; }
 button.sutil.pequeno { font-size: 0.78rem; }
 .suave.pequeno { font-size: 0.8rem; }
 

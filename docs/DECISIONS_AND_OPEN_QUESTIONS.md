@@ -111,11 +111,15 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **Estado real das telas** documentado em `docs/UX_SCREENS.md` ("Estado real de implementação") — inclusive
   o que **não** existe (documentos, reservas, orçamento, notificações, configurações) e o fato de a **Lia
   ainda não falar no app**: nenhuma sugestão é exibida enquanto não houver IA de verdade.
+- **Tokens visuais V1 aplicados**: `docs/UI_V1_DECISIONS.md` (magenta `#FF3EDC`, roxo `#A855F7`, lilás
+  `#D884FE`, fundo `#0B0A12`, sucesso `#22D3A3`) virou o bloco `:root` de `apps/mobile/src/styles.css`, com
+  escala de espaçamento em variáveis (`--e1`…`--e6`) e `prefers-reduced-motion` respeitado. Ícone continua
+  sendo **texto/etiqueta** nesta fatia: instalar biblioteca de ícones é ajuste incremental, não bloqueio.
 - **Sem imagens de referência no repositório**: `UI_VISUAL_GUIDELINES.md` §7 pede para não inventar caminhos;
   a pasta `docs/ui-references/` continua vazia e as telas seguem os **tokens que já existiam** em
   `apps/mobile/src/styles.css` (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível,
   estado **nunca só por cor**).
-- **Placar da rodada**: 212 testes verdes (ferramentas 39 · domínio 63 · sincronização 41 · app 20 · API 49).
+- **Placar da rodada**: 222 testes verdes (ferramentas 39 · domínio 63 · sincronização 41 · app 30 · API 49).
 
 ### Nunca descartar trabalho local e nunca deixar a rodada presa (2026-10-13, quinta rodada)
 - **Dois defeitos encontrados em uso real, ambos corrigidos:**

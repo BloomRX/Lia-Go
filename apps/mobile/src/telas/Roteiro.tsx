@@ -14,7 +14,8 @@
 import { useMemo, useState } from "react";
 import { agruparPorDia, conflitosDoDia, resumirDia, type Atividade } from "@lia-go/domain";
 import { api, ErroApi, type AtividadeApi, type ConflitoApi } from "../services/api.ts";
-import { formatarBRL, formatarDiaCurto, formatarDiaLongo, hojeIso, paraCentavos, ROTULO_ESTADO } from "../services/formato.ts";
+import { formatarDiaCurto, formatarDiaLongo, hojeIso, paraCentavos, ROTULO_ESTADO } from "../services/formato.ts";
+import { linhasDoResumoDoDia } from "../services/roteiro-texto.ts";
 import { CartaoAtividade } from "../componentes/CartaoAtividade.tsx";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 
@@ -330,20 +331,24 @@ export function Roteiro({
         </div>
       ) : null}
 
+      {/* Seleção de dia com `aria-pressed` (e não `role="tab"`): são botões de escolha, sem painel
+          associado nem teclas de seta — a semântica declarada precisa ser a real. */}
       {dias.length > 1 ? (
-        <div className="dias" role="tablist" aria-label="Dias do roteiro">
+        <div className="dias" role="group" aria-label="Dias do roteiro">
           {dias.map(({ dia, atividades: doDia }) => {
             const resumoDoDia = resumirDia(doDia);
+            const conflitos = resumoDoDia.conflitos > 0 ? `, ${resumoDoDia.conflitos} conflito(s)` : "";
             return (
               <button
                 key={dia}
-                role="tab"
-                aria-selected={dia === diaAtual}
+                aria-pressed={dia === diaAtual}
+                aria-label={`${formatarDiaLongo(dia)}: ${resumoDoDia.total} atividade(s)${conflitos}`}
                 className={`dia-chip${dia === diaAtual ? " ativo" : ""}${resumoDoDia.conflitos > 0 ? " com-conflito" : ""}`}
                 onClick={() => setDiaEscolhido(dia)}
+                type="button"
               >
-                <span>{formatarDiaCurto(dia)}</span>
-                <small>
+                <span aria-hidden="true">{formatarDiaCurto(dia)}</span>
+                <small aria-hidden="true">
                   {resumoDoDia.total} {resumoDoDia.total === 1 ? "atividade" : "atividades"}
                   {resumoDoDia.conflitos > 0 ? ` · ${resumoDoDia.conflitos} conflito(s)` : ""}
                 </small>
@@ -366,16 +371,18 @@ export function Roteiro({
 
           {/* Resumo adaptável (§2.9): compacto no dia normal, expandido quando há o que decidir. */}
           <div className={`resumo-dia${resumo.conflitos > 0 || resumo.temCustoAVerificar ? " expandido" : ""}`}>
-            <span>
-              {resumo.total} {resumo.total === 1 ? "atividade" : "atividades"}
-            </span>
-            {resumo.flexiveis > 0 ? <span>{resumo.flexiveis} sem horário fixo</span> : null}
-            {resumo.concluidas > 0 ? <span>{resumo.concluidas} concluída(s)</span> : null}
-            {resumo.custoConhecidoCentavos > 0n ? <span>Previsto: {formatarBRL(resumo.custoConhecidoCentavos)}</span> : null}
-            {resumo.temCustoAVerificar ? <span className="custo-a-verificar">Custo a verificar</span> : null}
-            {resumo.conflitos > 0 ? (
-              <span className="conflito-aviso">{resumo.conflitos} conflito(s) de horário para resolver</span>
-            ) : null}
+            {linhasDoResumoDoDia({
+              total: resumo.total,
+              concluidas: resumo.concluidas,
+              flexiveis: resumo.flexiveis,
+              custoConhecidoCentavos: resumo.custoConhecidoCentavos,
+              temCustoAVerificar: resumo.temCustoAVerificar,
+              conflitos: resumo.conflitos,
+            }).map((linha) => (
+              <span key={linha.texto} className={linha.tipo === "atencao" ? "conflito-aviso" : undefined}>
+                {linha.texto}
+              </span>
+            ))}
           </div>
 
           {resumo.conflitos > 0 ? (
