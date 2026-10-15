@@ -99,7 +99,7 @@ test("online com fila vazia: só busca o que mudou e guarda o cursor", async () 
   const relatorio = await sincronizar(armazem, servidor.porta, {
     agora: () => T0,
     online: () => true,
-    viagemAtiva: "v1",
+    viagemAtiva: () => "v1",
   });
 
   assert.equal(relatorio.parada, "fila_vazia");
@@ -117,7 +117,7 @@ test("envia na ordem de criação e busca de novo depois para a carga refletir o
   const { armazem, estado } = criarArmazem({ fila, carga: cargaVazia(), cursor: "seq-1" });
   const servidor = criarServidor(() => ({ ok: true, resposta: { id: "criado-1" } }));
 
-  const relatorio = await sincronizar(armazem, servidor.porta, { agora: () => T0, online: () => true, viagemAtiva: "v1" });
+  const relatorio = await sincronizar(armazem, servidor.porta, { agora: () => T0, online: () => true, viagemAtiva: () => "v1" });
 
   assert.equal(relatorio.enviados, 2);
   assert.deepEqual(servidor.chamadas.map((c) => c.operacao.tipo), ["criar_viagem", "criar_despesa"]);
@@ -216,7 +216,7 @@ test("conflito de versão para o envio e vira decisão da pessoa, sem sobrescrev
     erro: { codigo: "conflito_versao", mensagem: "mudou desde a sua última atualização", status: 409, detalhes: { versaoAtual: 3 } },
   }));
 
-  const relatorio = await sincronizar(armazem, servidor.porta, { agora: () => T0, online: () => true, viagemAtiva: "v1" });
+  const relatorio = await sincronizar(armazem, servidor.porta, { agora: () => T0, online: () => true, viagemAtiva: () => "v1" });
 
   assert.equal(relatorio.conflitos, 1);
   assert.equal(estado.fila.operacoes[0]!.estado, "conflito");
@@ -240,7 +240,7 @@ test("se a busca falha, o envio ainda é tentado e o relatório não mente", asy
     },
   };
 
-  const relatorio = await sincronizar(armazem, porta, { agora: () => T0, online: () => true, viagemAtiva: "v1" });
+  const relatorio = await sincronizar(armazem, porta, { agora: () => T0, online: () => true, viagemAtiva: () => "v1" });
 
   assert.equal(relatorio.enviados, 1, "sem a busca, o envio da fila continua valendo");
   assert.equal(relatorio.buscadasMudancas, false, "e o relatório diz que não trouxe mudanças");

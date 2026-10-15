@@ -162,7 +162,21 @@ export function escolherArmazenamento(ehNativo: boolean): ArmazenamentoLocal {
  * O que está no disco é tratado como não confiável: JSON estragado vira "fila vazia",
  * nunca um app que não abre.
  */
-export function criarArmazenamentoDeSync(armazem: ArmazenamentoLocal): ArmazenamentoSync {
+export interface OpcoesArmazenamentoSync {
+  /**
+   * Diz se ainda vale gravar. Serve para o caso de alguém sair da conta **durante** uma
+   * sincronização: a passada em andamento não pode ressuscitar dado de viagem no aparelho depois
+   * da limpeza. Sem isso, "apagar os dados deste aparelho" seria só uma promessa.
+   */
+  aceitarEscrita?: () => boolean;
+}
+
+export function criarArmazenamentoDeSync(
+  armazem: ArmazenamentoLocal,
+  opcoes: OpcoesArmazenamentoSync = {},
+): ArmazenamentoSync {
+  const podeGravar = opcoes.aceitarEscrita ?? (() => true);
+
   return {
     async lerFila(): Promise<Fila> {
       const bruto = await armazem.ler<Fila>(CHAVE_FILA);
@@ -170,6 +184,7 @@ export function criarArmazenamentoDeSync(armazem: ArmazenamentoLocal): Armazenam
       return { ...filaVazia(), ...bruto };
     },
     async gravarFila(fila) {
+      if (!podeGravar()) return;
       await armazem.gravar(CHAVE_FILA, fila);
     },
     async lerCarga(): Promise<{ cursor: string | null; carga: CargaLocal }> {
@@ -180,6 +195,7 @@ export function criarArmazenamentoDeSync(armazem: ArmazenamentoLocal): Armazenam
       return { cursor: typeof cursor === "string" ? cursor : null, carga: mesclarCarga(cargaVazia(), cargaBruta ?? {}) };
     },
     async gravarCarga(cursor, carga) {
+      if (!podeGravar()) return;
       await armazem.gravar(CHAVE_CARGA, carga);
       if (cursor === null) await armazem.remover(CHAVE_CURSOR);
       else await armazem.gravar(CHAVE_CURSOR, cursor);

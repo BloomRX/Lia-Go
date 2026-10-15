@@ -16,6 +16,7 @@ import { agruparPorDia, conflitosDoDia, resumirDia, type Atividade } from "@lia-
 import { api, ErroApi, type AtividadeApi, type ConflitoApi } from "../services/api.ts";
 import { formatarDiaCurto, formatarDiaLongo, hojeIso, paraCentavos, ROTULO_ESTADO } from "../services/formato.ts";
 import { linhasDoResumoDoDia } from "../services/roteiro-texto.ts";
+import { atividadesDoDominio } from "../services/viagem-local.ts";
 import { CartaoAtividade } from "../componentes/CartaoAtividade.tsx";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 
@@ -27,32 +28,6 @@ interface Props {
   dataInicioViagem: string | null;
   dataFimViagem: string | null;
   estadoViagem: string;
-}
-
-/** Tipagem local do que o aparelho guarda (mesmo objeto que o servidor devolve). */
-function comoAtividade(item: Record<string, unknown>): Atividade | null {
-  if (typeof item["id"] !== "string" || typeof item["dia"] !== "string") return null;
-  const custo = (item["custo"] ?? {}) as { centavos?: string | null; natureza?: Atividade["custoNatureza"] };
-  return {
-    id: item["id"] as string,
-    viagemId: String(item["viagemId"] ?? ""),
-    autorId: String(item["autorId"] ?? ""),
-    dia: item["dia"] as string,
-    ordem: Number(item["ordem"] ?? 1),
-    titulo: String(item["titulo"] ?? ""),
-    hora: (item["hora"] as string | null) ?? null,
-    duracaoMinutos: (item["duracaoMinutos"] as number | null) ?? null,
-    local: (item["local"] as string | null) ?? null,
-    custoCentavos: custo.centavos ? BigInt(custo.centavos) : null,
-    custoNatureza: custo.natureza ?? null,
-    custoAVerificar: Boolean((item["custo"] as { aVerificar?: boolean })?.aVerificar),
-    estado: (item["estado"] as Atividade["estado"]) ?? "planejada",
-    concluidaPor: (item["concluidaPor"] as string | null) ?? null,
-    concluidaEm: (item["concluidaEm"] as string | null) ?? null,
-    observacao: (item["observacao"] as string | null) ?? null,
-    deslocamento: (item["deslocamento"] as Atividade["deslocamento"]) ?? null,
-    versao: Number(item["versao"] ?? 1),
-  };
 }
 
 export function Roteiro({
@@ -88,13 +63,7 @@ export function Roteiro({
   // O roteiro é assinatura do sincronizador: qualquer mudança (minha ou de outra pessoa) redesenha.
   useMemo(() => sincronizador.assinar(setEstado), [sincronizador]);
 
-  const atividades = useMemo(
-    () =>
-      estado.carga.atividades
-        .map(comoAtividade)
-        .filter((atividade): atividade is Atividade => atividade !== null),
-    [estado.carga.atividades],
-  );
+  const atividades = useMemo(() => atividadesDoDominio(estado, viagemId), [estado, viagemId]);
 
   const dias = useMemo(() => agruparPorDia(atividades), [atividades]);
   const diaAtual = diaEscolhido && dias.some((dia) => dia.dia === diaEscolhido) ? diaEscolhido : (dias[0]?.dia ?? nova.dia);

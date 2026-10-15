@@ -16,6 +16,7 @@ import {
   ordenarAtividades,
   proximaOrdem,
   resumirDia,
+  resumirOrcamentoDoRoteiro,
   situacaoPorHorario,
   type Atividade,
 } from "../src/roteiro.ts";
@@ -201,4 +202,48 @@ test("dias e sequência: agrupa por dia, mantém a ordem e sugere a próxima pos
   assert.deepEqual(dias[1]!.atividades.map((item) => item.id), ["d2a", "d2b"]);
   assert.equal(proximaOrdem(atividades, "2026-11-20"), 2);
   assert.equal(proximaOrdem(atividades, "2026-11-22"), 1);
+});
+
+/**
+ * Orçamento do roteiro: planejamento, **nunca** saldo oficial (decisões visuais V1 §7).
+ * O que não pode acontecer: custo desconhecido virar zero, gratuito entrar na soma e cancelada
+ * continuar contando.
+ */
+test("orçamento soma estimativas e compromissos, separados, e ignora cancelada", () => {
+  const atividades = [
+    atividade({ id: "a1", custoCentavos: 3500n, custoNatureza: "estimativa", estado: "planejada" }),
+    atividade({ id: "a2", custoCentavos: 12000n, custoNatureza: "compromisso", estado: "planejada" }),
+    atividade({ id: "a3", custoCentavos: 9900n, custoNatureza: "estimativa", estado: "cancelada" }),
+  ];
+
+  const orcamento = resumirOrcamentoDoRoteiro(atividades);
+
+  assert.equal(orcamento.estimativaCentavos, 3500n);
+  assert.equal(orcamento.compromissoCentavos, 12000n);
+  assert.equal(orcamento.previstoCentavos, 15500n, "o previsto junta as duas naturezas, mas elas continuam separadas acima");
+  assert.match(orcamento.resumo, /previsto R\$ 155,00/);
+});
+
+test("orçamento não trata desconhecido como zero nem gratuito como gasto", () => {
+  const atividades = [
+    atividade({ id: "a1", custoCentavos: null, custoNatureza: null, custoAVerificar: true }),
+    atividade({ id: "a2", custoCentavos: null, custoNatureza: null, custoAVerificar: false }),
+    atividade({ id: "a3", custoCentavos: 0n, custoNatureza: "gratuito" }),
+  ];
+
+  const orcamento = resumirOrcamentoDoRoteiro(atividades);
+
+  assert.equal(orcamento.previstoCentavos, 0n);
+  assert.equal(orcamento.aVerificar, 1, "o que precisa ser verificado é contado, não somado");
+  assert.equal(orcamento.semCustoInformado, 1);
+  assert.equal(orcamento.gratuitas, 1);
+  assert.match(orcamento.resumo, /1 custo a verificar/);
+  assert.ok(!orcamento.resumo.includes("R$ 0,00"), "desconhecido nunca aparece como zero");
+});
+
+test("roteiro sem custo nenhum diz isso em vez de mostrar zero", () => {
+  const orcamento = resumirOrcamentoDoRoteiro([atividade({ custoCentavos: null, custoNatureza: null, custoAVerificar: false })]);
+
+  assert.equal(orcamento.previstoCentavos, 0n);
+  assert.match(orcamento.resumo, /Nenhum custo previsto/);
 });

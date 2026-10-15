@@ -178,7 +178,7 @@ small.suave { color: var(--texto-suave); }
 }
 .resumo-dia.expandido { color: var(--texto); }
 .resumo-dia .conflito-aviso { color: var(--atencao); font-weight: 600; }
-.resumo-dia .custo-a-verificar { color: var(--atencao); }
+.custo-a-verificar { color: var(--atencao); }
 
 .linha-tempo { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
 .atividade { position: relative; padding-left: 24px; }

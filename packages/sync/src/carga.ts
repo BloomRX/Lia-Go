@@ -13,28 +13,71 @@ export function cargaVazia(): CargaLocal {
 /** Listas que sabemos mesclar. A chave é o campo `id`; o desempate é `versao` quando existe. */
 const LISTAS = ["despesas", "movimentos", "convites", "atividades"] as const;
 
-export function mesclarCarga(atual: CargaLocal, delta: CargaRemota): CargaLocal {
+export interface OpcoesMesclagem {
+  /**
+   * Viagem aberta no aparelho. Serve para **não deixar** uma resposta atrasada de outra viagem
+   * contaminar a que está na tela (o defeito relatado em 2026-10-15: ao abrir uma viagem nova, a
+   * tela continuava mostrando os dados da anterior).
+   */
+  viagemAtiva?: string | null;
+}
+
+export function mesclarCarga(atual: CargaLocal, delta: CargaRemota, opcoes: OpcoesMesclagem = {}): CargaLocal {
   const resultado: CargaLocal = { ...atual };
 
   // Listas que o servidor manda completas: são o retrato da conta naquele instante.
   if (delta.viagens) resultado.viagens = delta.viagens;
   if (delta.convitesParaMim) resultado.convitesParaMim = delta.convitesParaMim;
 
+  const viagemAtiva = opcoes.viagemAtiva ?? null;
+  const donoDoDelta = delta.viagem?.viagem?.id ?? null;
+  // Chegou o detalhe de uma viagem que não é a aberta (resposta de uma passada anterior): ignora
+  // tudo o que é daquela viagem, sem tocar no que está na tela.
+  const deOutraViagem = donoDoDelta !== null && viagemAtiva !== null && donoDoDelta !== viagemAtiva;
+  if (deOutraViagem) return resultado;
+
+  // Troca de viagem aberta: o que era da viagem anterior **não** serve de base para a nova — as
+  // listas da viagem começam vazias e são preenchidas com o que vier.
+  const trocandoDeViagem =
+    donoDoDelta !== null && viagemAtiva !== null && donoDoDelta === viagemAtiva && atual.viagem?.viagem?.id !== viagemAtiva;
+  if (trocandoDeViagem) {
+    resultado.viagem = null;
+    for (const nome of LISTAS) resultado[nome] = [];
+  }
+
   for (const nome of LISTAS) {
     const enviados = delta[nome];
-    if (enviados) resultado[nome] = mesclarLista(atual[nome], enviados);
+    if (enviados) resultado[nome] = mesclarLista(resultado[nome], enviados);
   }
 
   if (delta.viagem) {
-    const versaoAtual = versaoDe(atual.viagem?.viagem ?? null);
-    const versaoNova = versaoDe(delta.viagem.viagem ?? null);
-    const mesmoId = atual.viagem == null || atual.viagem.viagem?.id === delta.viagem.viagem?.id;
-    if (mesmoId && (versaoAtual === null || versaoNova === null || versaoNova >= versaoAtual)) {
+    const mesmaViagem = atual.viagem == null || atual.viagem.viagem?.id === donoDoDelta;
+    const ehATrocaDaViagemAberta = viagemAtiva !== null && donoDoDelta === viagemAtiva;
+
+    if (ehATrocaDaViagemAberta && !mesmaViagem) {
+      // Viagem diferente da guardada, e é a que está aberta: entra (a versão de outra viagem não
+      // diz nada sobre esta, então não há o que comparar).
       resultado.viagem = delta.viagem;
+    } else if (mesmaViagem) {
+      // Mesma viagem: a resposta atrasada não rebaixa dado mais novo que já está no aparelho.
+      const versaoAtual = versaoDe(atual.viagem?.viagem ?? null);
+      const versaoNova = versaoDe(delta.viagem.viagem ?? null);
+      if (versaoAtual === null || versaoNova === null || versaoNova >= versaoAtual) {
+        resultado.viagem = delta.viagem;
+      }
     }
   }
 
   return resultado;
+}
+
+/**
+ * O aparelho guarda **uma viagem por vez**: a aberta. Ao trocar de viagem, o que era da outra é
+ * descartado (o servidor continua sendo a verdade — nada se perde lá). A lista de viagens da conta
+ * e os convites pendentes **não** são tocados: não pertencem a nenhuma viagem.
+ */
+export function trocarViagemAberta(carga: CargaLocal): CargaLocal {
+  return { ...carga, viagem: null, despesas: [], movimentos: [], convites: [], atividades: [] };
 }
 
 /** Junta itens por `id`: entram os novos, atualizam-se os mais antigos, saem os marcados como removidos. */

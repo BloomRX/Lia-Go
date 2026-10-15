@@ -38,22 +38,71 @@ export function Inicio({ abrirViagem, aceitarConvite, sincronizador }: Props): R
   async function criar(evento: React.FormEvent): Promise<void> {
     evento.preventDefault();
     setErro(null);
+    setAviso(null);
+
+    const nomeCriado = nome.trim();
+    // O que já existia antes: depois do envio, a viagem nova é a que **não** estava aqui e tem o
+    // nome que a pessoa acabou de digitar (a lista pode ter chegado vazia, então o nome é o que
+    // identifica a viagem sem risco de abrir a errada).
+    const antes = new Set(idsDasViagens());
     const operacao = {
       tipo: "criar_viagem" as const,
-      corpo: { nome, destino, dataInicio: inicio || null, dataFim: fim || null },
-      descricao: `Viagem: ${nome}`,
+      corpo: { nome: nomeCriado, destino, dataInicio: inicio || null, dataFim: fim || null },
+      descricao: `Viagem: ${nomeCriado}`,
     };
-    await sincronizador.enfileirar(operacao);
+
+    try {
+      await sincronizador.enfileirar(operacao);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não foi possível guardar a viagem neste aparelho.");
+      return;
+    }
+
     setCriando(false);
     setNome("");
     setDestino("");
     setInicio("");
     setFim("");
-    setAviso(
-      estado.online
-        ? "Viagem criada. Ela aparece na lista assim que o servidor confirmar."
-        : "Viagem guardada no aparelho. Ela vai para o servidor quando o sinal voltar.",
-    );
+
+    if (!sincronizador.obter().online) {
+      setAviso("Viagem guardada no aparelho. Ela vai para o servidor quando o sinal voltar.");
+      return;
+    }
+
+    // O envio da fila já tenta sozinho; esperamos a confirmação para poder **abrir** a viagem criada.
+    setAviso("Confirmando a viagem com o servidor…");
+    await sincronizador.sincronizarAgora().catch(() => undefined);
+    const nova = await esperarViagemCriada(nomeCriado, antes);
+    setAviso(null);
+    if (nova) {
+      // Criar e cair dentro da viagem é o que a pessoa espera: o rascunho precisa dos próximos passos.
+      abrirViagem(nova.id);
+      return;
+    }
+    setAviso("A viagem ficou guardada neste aparelho. Ela abre assim que o servidor confirmar — o estado aparece na barra de sincronização acima.");
+  }
+
+  /**
+   * Procura a viagem recém-criada no que o servidor confirmou: mesma identificação (nome digitado)
+   * e que **não** existia antes. Espera um pouco porque o servidor pode levar alguns instantes —
+   * e, se não vier, a tela diz a verdade em vez de abrir a viagem errada.
+   */
+  async function esperarViagemCriada(nome: string, antes: Set<string>, limiteMs = 4000): Promise<ViagemResumo | undefined> {
+    const inicio = Date.now();
+    for (;;) {
+      const novas = viagensDoAparelho().filter((viagem) => !antes.has(viagem.id) && viagem.nome === nome);
+      if (novas.length > 0) return novas[novas.length - 1];
+      if (Date.now() - inicio >= limiteMs) return undefined;
+      await new Promise((resolver) => setTimeout(resolver, 100));
+    }
+  }
+
+  function viagensDoAparelho(): ViagemResumo[] {
+    return sincronizador.obter().carga.viagens as unknown as ViagemResumo[];
+  }
+
+  function idsDasViagens(): string[] {
+    return viagensDoAparelho().map((viagem) => viagem.id);
   }
 
   async function aceitar(): Promise<void> {

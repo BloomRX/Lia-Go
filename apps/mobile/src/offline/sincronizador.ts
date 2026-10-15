@@ -14,6 +14,7 @@ import {
   resumoFila,
   retentar,
   sincronizar as passarSincronizacao,
+  trocarViagemAberta,
   type CargaLocal,
   type Fila,
   type Operacao,
@@ -50,16 +51,18 @@ const CHAVE_SALDOS = "saldos";
 
 export class Sincronizador {
   private readonly armazemLocal: ArmazenamentoLocal;
-  private readonly armazem;
+  private readonly armazem: ReturnType<typeof criarArmazenamentoDeSync>;
   private readonly porta: PortaServidor;
   private estado: EstadoSincronizacao;
   private ouvintes = new Set<Ouvinte>();
   private passadaEmAndamento: Promise<RelatorioSincronizacao> | null = null;
+  /** Depois de sair da conta o sincronizador para de escrever: nada volta para o aparelho. */
+  private desligado = false;
 
   private constructor(armazemLocal: ArmazenamentoLocal, porta: PortaServidor) {
     this.armazemLocal = armazemLocal;
     this.porta = porta;
-    this.armazem = criarArmazenamentoDeSync(armazemLocal);
+    this.armazem = criarArmazenamentoDeSync(armazemLocal, { aceitarEscrita: () => !this.desligado });
     this.estado = {
       resumo: resumoFila(filaVazia()),
       carga: cargaVazia(),
@@ -113,11 +116,30 @@ export class Sincronizador {
     if (online) void this.sincronizarAgora();
   }
 
-  /** Chamado quando a pessoa abre uma viagem: é dela que buscamos as mudanças. */
+  /**
+   * Chamado quando a pessoa abre uma viagem: é dela que buscamos as mudanças.
+   *
+   * O aparelho guarda **uma viagem por vez**. Ao abrir outra, o que era da anterior sai da carga
+   * (inclusive o cursor, que é por viagem) — sem isso, a tela de uma viagem nova mostrava os dados
+   * da viagem antiga (defeito relatado em 2026-10-15). Fechar a viagem (`null`) **não** apaga nada:
+   * o que já está baixado continua útil, e o cursor continua válido se a mesma viagem voltar.
+   */
   async abrirViagem(viagemId: string | null): Promise<void> {
-    if (this.estado.viagemAtiva === viagemId) return;
+    const anterior = this.estado.viagemAtiva;
+    if (anterior === viagemId) return;
     await this.armazemLocal.gravar(CHAVE_VIAGEM_ATIVA, viagemId);
-    this.publicar({ viagemAtiva: viagemId });
+
+    // O cache guarda uma viagem por vez: se o que está guardado é de **outra** viagem, sai agora —
+    // é isso que impede a tela de abrir mostrando dados da viagem anterior.
+    const cacheDeOutra = this.estado.carga.viagem !== null && this.estado.carga.viagem.viagem.id !== viagemId;
+    if (viagemId !== null && cacheDeOutra) {
+      const carga = trocarViagemAberta(this.estado.carga);
+      await this.armazem.gravarCarga(null, carga);
+      this.publicar({ viagemAtiva: viagemId, carga });
+    } else {
+      this.publicar({ viagemAtiva: viagemId });
+    }
+    void this.sincronizarAgora().catch(() => undefined);
   }
 
   /**
@@ -149,7 +171,15 @@ export class Sincronizador {
 
   /** Uma passada por vez: duas em paralelo confundiriam a ordem da fila. */
   sincronizarAgora(): Promise<RelatorioSincronizacao> {
-    if (this.passadaEmAndamento) return this.passadaEmAndamento;
+    if (this.passadaEmAndamento) {
+      // Pedido durante uma passada (ex.: acabei de criar uma viagem): a passada em andamento não
+      // conhece o pedido, então esperamos a **próxima** — quem chamou recebe o resultado que já
+      // inclui o que ele acabou de fazer, em vez de olhar para trás.
+      return this.passadaEmAndamento.then(
+        () => this.sincronizarAgora(),
+        () => this.sincronizarAgora(),
+      );
+    }
     this.publicar({ sincronizando: true });
     this.passadaEmAndamento = this.executarPassada().finally(() => {
       this.passadaEmAndamento = null;
@@ -159,11 +189,13 @@ export class Sincronizador {
   }
 
   private async executarPassada(): Promise<RelatorioSincronizacao> {
+    if (this.desligado) return relatorioVazio();
     try {
       const relatorio = await passarSincronizacao(this.armazem, this.porta, {
         agora: () => new Date().toISOString(),
         online: () => this.estado.online,
-        viagemAtiva: this.estado.viagemAtiva,
+        // Função, não valor: a viagem aberta pode mudar no meio da passada.
+        viagemAtiva: () => this.estado.viagemAtiva,
       });
       const { fila, carga } = await this.armazem.lerFila().then(async (filaLida) => ({
         fila: filaLida,
@@ -235,6 +267,7 @@ export class Sincronizador {
    * botão "limpar dados deste aparelho": aparelho perdido não deve continuar com dado de viagem.
    */
   async limparDadosLocais(): Promise<void> {
+    this.desligado = true;
     await this.armazemLocal.limpar();
     this.publicar({
       fila: filaVazia(),
@@ -249,6 +282,20 @@ export class Sincronizador {
     this.estado = { ...this.estado, ...mudanca };
     for (const ouvinte of this.ouvintes) ouvinte(this.estado);
   }
+}
+
+/** Relatório de uma passada que não fez nada (usado depois de sair da conta). */
+function relatorioVazio(): RelatorioSincronizacao {
+  return {
+    enviados: 0,
+    falharam: 0,
+    conflitos: 0,
+    aguardando: 0,
+    cursor: null,
+    buscadasMudancas: false,
+    atualizadoEm: new Date().toISOString(),
+    parada: "nada_a_fazer",
+  };
 }
 
 /** A versão que o servidor informou no conflito (`detalhes.versaoAtual`). */

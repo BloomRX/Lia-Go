@@ -11,6 +11,8 @@ import {
 } from "../services/formato.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 import { Platform } from "../services/plataforma.ts";
+import { atividadesDoDominio, dadosDaViagemAberta, pode } from "../services/viagem-local.ts";
+import { resumirOrcamentoDoRoteiro } from "@lia-go/domain";
 import { rotuloDeArmazenamento } from "../services/tokens.ts";
 
 interface Props {
@@ -95,7 +97,9 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
     };
   }, [sincronizador, viagemId, estado.ultimaSincronizacao, estado.resumo.total]);
 
-  const detalhe = estado.carga.viagem;
+  // Só os dados **desta** viagem: enquanto a troca de viagem não termina, o cache pode ser o da
+  // viagem anterior e mostrar isso seria mentir sobre a viagem aberta.
+  const { detalhe, despesas, movimentos } = dadosDaViagemAberta(estado, viagemId);
   const viagem = detalhe?.viagem ?? null;
   const participantes = (detalhe?.participantes ?? []) as unknown as Participante[];
   const permissoes = detalhe?.permissoes as
@@ -109,13 +113,14 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
     | undefined;
   const sugestao = detalhe?.sugestao as { sugestao: string; motivo: string } | null | undefined;
   const pendencias = detalhe?.pendencias as { despesas: number; convites: number } | undefined;
-  const despesas = estado.carga.despesas as unknown as DespesaApi[];
-  const movimentos = estado.carga.movimentos as unknown as MovimentoApi[];
+
+  // Orçamento do roteiro: mesmo cálculo do domínio, sobre as atividades **desta** viagem.
+  const orcamento = resumirOrcamentoDoRoteiro(atividadesDoDominio(estado, viagemId));
 
   const nomePorId = new Map(participantes.map((pessoa) => [pessoa.usuario_id, pessoa.nome]));
   const ativos = participantes.filter((pessoa) => pessoa.estado === "ativo");
   const eu = participantes.find((pessoa) => pessoa.usuario_id === usuarioId);
-  const podeRegistrar = permissoes?.registrarDespesa.permitido ?? false;
+  const podeRegistrar = pode(permissoes?.registrarDespesa);
   const sou = (despesa: DespesaApi) => despesa.autorId === usuarioId;
   const nome = (id: string) => nomePorId.get(id) ?? "alguém";
 
@@ -232,7 +237,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
                 ))}
               </div>
             ) : (
-              <p><small className="suave">{permissoes?.editar.motivo}</small></p>
+              <p><small className="suave">{permissoes?.editar?.motivo}</small></p>
             )}
           </section>
 
@@ -280,7 +285,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
 
           <section className="cartao">
             <h2>Convidar pessoa</h2>
-            {permissoes?.convidar.permitido ? (
+            {pode(permissoes?.convidar) ? (
               <>
                 <label htmlFor="email-convite">E-mail de quem vai participar</label>
                 <input id="email-convite" type="email" value={conviteEmail} onChange={(e) => setConviteEmail(e.target.value)} />
@@ -312,7 +317,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
                 <p><small className="suave">Gerar convite precisa de internet: o token só existe no servidor.</small></p>
               </>
             ) : (
-              <p><small className="suave">{permissoes?.convidar.motivo}</small></p>
+              <p><small className="suave">{permissoes?.convidar?.motivo}</small></p>
             )}
           </section>
         </>
@@ -334,11 +339,35 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
         <>
           <section className="cartao destaque">
             <h2>Resumo</h2>
-            <div className="linha"><span>Confirmado (oficial)</span><strong>{formatarBRL(saldos?.realizado ?? "0")}</strong></div>
-            <div className="linha"><span>Aguardando confirmação</span><strong>{formatarBRL(saldos?.comprometido ?? "0")}</strong></div>
+            <div className="linha"><span>Gasto confirmado (oficial)</span><strong>{formatarBRL(saldos?.realizado ?? "0")}</strong></div>
+            <div className="linha"><span>Lançado, aguardando confirmação</span><strong>{formatarBRL(saldos?.comprometido ?? "0")}</strong></div>
             <p><small className="suave">
               {saldos?.aviso}
               {saldosEm ? ` · Última atualização do servidor: ${new Date(saldosEm).toLocaleString("pt-BR")}.` : ""}
+            </small></p>
+          </section>
+
+          {/* Orçamento do roteiro x dinheiro oficial (decisões visuais V1 §7 e §8). */}
+          <section className="cartao">
+            <h2>Previsto no roteiro</h2>
+            <div className="linha"><span>Previsto (estimativas + combinado)</span><strong>{formatarBRL(orcamento.previstoCentavos)}</strong></div>
+            {orcamento.compromissoCentavos > 0n ? (
+              <div className="linha"><span>· já combinado</span><span>{formatarBRL(orcamento.compromissoCentavos)}</span></div>
+            ) : null}
+            {orcamento.estimativaCentavos > 0n ? (
+              <div className="linha"><span>· estimativa</span><span>{formatarBRL(orcamento.estimativaCentavos)}</span></div>
+            ) : null}
+            {orcamento.aVerificar > 0 ? (
+              <div className="linha">
+                <span className="custo-a-verificar">
+                  {orcamento.aVerificar === 1 ? "1 atividade com custo a verificar" : `${orcamento.aVerificar} atividades com custo a verificar`}
+                </span>
+              </div>
+            ) : null}
+            <p><small className="suave">
+              O previsto é <strong>planejamento</strong>: vem do roteiro, não entra no saldo oficial e não substitui a despesa
+              registrada. Gastar de verdade é o que aparece em "Gasto confirmado" acima, confirmado no servidor.
+              {orcamento.aVerificar > 0 ? " Enquanto houver custo a verificar, o previsto é o valor mínimo." : ""}
             </small></p>
           </section>
 
@@ -472,7 +501,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
               <p><small className="suave">Funciona sem internet: fica guardada no aparelho e sobe quando o sinal voltar.</small></p>
             </form>
           ) : (
-            <div className="aviso info">{permissoes?.registrarDespesa.motivo}</div>
+            <div className="aviso info">{permissoes?.registrarDespesa?.motivo}</div>
           )}
 
           <section>

@@ -393,3 +393,78 @@ export function criarAtividade(entrada: {
   validarAtividade(atividade);
   return atividade;
 }
+
+/**
+ * Orçamento do roteiro: quanto o **plano** prevê, separado por natureza.
+ *
+ * Regras (diretriz §2.4 e decisões V1 §7):
+ *  - atividade cancelada sai da conta;
+ *  - `gratuito` não soma (é zero de verdade, e continua sendo zero conhecido);
+ *  - custo desconhecido **não** vira zero: só é contado em `aVerificar`;
+ *  - `estimativa` e `compromisso` nunca são somados num número só: quem lê precisa saber o que já
+ *    foi combinado e o que ainda é chute.
+ *
+ * Este número é **planejamento**. Ele não entra no saldo oficial e não substitui despesa registrada
+ * — quem manda em dinheiro é o servidor (ver `saldos`).
+ */
+export interface OrcamentoDoRoteiro {
+  /** Total previsto = estimativas + compromissos (o que tem valor conhecido e não é gratuito). */
+  previstoCentavos: bigint;
+  estimativaCentavos: bigint;
+  compromissoCentavos: bigint;
+  /** Atividades com custo a verificar: o previsto é, no mínimo, `previstoCentavos`. */
+  aVerificar: number;
+  gratuitas: number;
+  /** Atividades sem custo informado e sem marcação de "a verificar". */
+  semCustoInformado: number;
+  /** Frase pronta para a tela, sem prometer precisão que o dado não tem. */
+  resumo: string;
+}
+
+export function resumirOrcamentoDoRoteiro(atividades: Atividade[]): OrcamentoDoRoteiro {
+  const orcamento: OrcamentoDoRoteiro = {
+    previstoCentavos: 0n,
+    estimativaCentavos: 0n,
+    compromissoCentavos: 0n,
+    aVerificar: 0,
+    gratuitas: 0,
+    semCustoInformado: 0,
+    resumo: "",
+  };
+
+  for (const atividade of atividades) {
+    if (atividade.estado === "cancelada") continue;
+
+    if (atividade.custoAVerificar) orcamento.aVerificar += 1;
+
+    if (atividade.custoCentavos === null) {
+      if (!atividade.custoAVerificar) orcamento.semCustoInformado += 1;
+      continue;
+    }
+    if (atividade.custoNatureza === "gratuito") {
+      orcamento.gratuitas += 1;
+      continue;
+    }
+    if (atividade.custoNatureza === "compromisso") orcamento.compromissoCentavos += atividade.custoCentavos;
+    else orcamento.estimativaCentavos += atividade.custoCentavos;
+  }
+
+  orcamento.previstoCentavos = orcamento.estimativaCentavos + orcamento.compromissoCentavos;
+
+  const partes: string[] = [];
+  if (orcamento.previstoCentavos > 0n) partes.push(`previsto ${emReais(orcamento.previstoCentavos)}`);
+  if (orcamento.compromissoCentavos > 0n) partes.push(`já combinado ${emReais(orcamento.compromissoCentavos)}`);
+  if (orcamento.aVerificar > 0) {
+    partes.push(orcamento.aVerificar === 1 ? "1 custo a verificar" : `${orcamento.aVerificar} custos a verificar`);
+  }
+  if (partes.length === 0) return { ...orcamento, resumo: "Nenhum custo previsto no roteiro até agora." };
+  return { ...orcamento, resumo: partes.join(" · ") };
+}
+
+function emReais(centavos: bigint): string {
+  const negativo = centavos < 0n;
+  const absoluto = negativo ? -centavos : centavos;
+  const texto = absoluto.toString().padStart(3, "0");
+  const reais = texto.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${negativo ? "-" : ""}R$ ${reais},${texto.slice(-2)}`;
+}

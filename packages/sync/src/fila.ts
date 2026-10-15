@@ -121,6 +121,38 @@ export function marcarFalha(fila: Fila, id: string, erro: ErroEnvio, agora: stri
   });
 }
 
+/**
+ * Junta a fila que está no aparelho com o resultado de uma passada de sincronização.
+ *
+ * Por que existe (**defeito real de 2026-10-15**): a passada lê a fila no começo e grava no fim. Se,
+ * no meio dela, a pessoa criar uma viagem (que entra na fila), a gravação do fim apagava essa
+ * operação — a viagem criada simplesmente desaparecia, sem erro nenhum na tela.
+ *
+ * Regras:
+ *  - operação que existe nas duas: vale o estado da passada (foi ela que tentou enviar);
+ *  - operação que só existe no aparelho: foi criada **durante** a passada e é preservada;
+ *  - operação que sumiu na passada e já existia no começo dela: foi enviada/descartada, some;
+ *  - a ordem do aparelho é mantida (a ordem causal de quem chegou por último é a dele).
+ */
+export function juntarFilaDaPassada(doAparelho: Fila, passada: { antes: Fila; depois: Fila }): Fila {
+  const jaExistiaNoComeco = new Set(passada.antes.operacoes.map((item) => item.id));
+  const estadoDaPassada = new Map(passada.depois.operacoes.map((item) => [item.id, item]));
+
+  const operacoes: OperacaoPendente[] = [];
+  for (const item of doAparelho.operacoes) {
+    const daPassada = estadoDaPassada.get(item.id);
+    if (daPassada) {
+      operacoes.push(daPassada);
+      continue;
+    }
+    if (jaExistiaNoComeco.has(item.id)) continue; // a passada enviou (ou descartou): sai da fila
+    operacoes.push(item); // entrou na fila durante a passada: nunca se perde
+  }
+
+  const ultimoSucessoEm = passada.depois.ultimoSucessoEm ?? doAparelho.ultimoSucessoEm;
+  return ultimoSucessoEm === undefined ? { operacoes } : { operacoes, ultimoSucessoEm };
+}
+
 /** Descarta uma operação que não faz mais sentido (a pessoa decidiu abandonar). */
 export function descartar(fila: Fila, id: string): Fila {
   return { ...fila, operacoes: fila.operacoes.filter((item) => item.id !== id) };

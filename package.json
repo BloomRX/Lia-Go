@@ -24,6 +24,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:sync": "npm run test --workspace @lia-go/sync",
     "test:app": "npm run test --workspace @lia-go/mobile",
-    "test:tools": "node --test \"tools/test_dev.mjs\""
+    "test:tools": "node --test \"tools/test_dev.mjs\"",
+    "test:ui": "node tools/teste-ui.mjs"
   }
 }

@@ -7,6 +7,7 @@
  */
 import {
   classificarErro,
+  juntarFilaDaPassada,
   marcarEnviada,
   marcarEnviando,
   marcarFalha,
@@ -50,8 +51,14 @@ export interface PortaServidor {
 export interface OpcoesMotor {
   agora(): string;
   online(): boolean;
-  /** Viagem aberta na tela, quando existe: é dela que buscamos as mudanças. */
-  viagemAtiva?: string | null;
+  /**
+   * Viagem aberta na tela, quando existe: é dela que buscamos as mudanças.
+   *
+   * É uma **função** de propósito. A pessoa pode abrir outra viagem no meio de uma passada; o motor
+   * então percebe a troca e descarta o resultado que já não pertence à tela — sem isso, a viagem
+   * antiga reaparecia por cima da nova (defeito relatado em 2026-10-15).
+   */
+  viagemAtiva?: () => string | null;
 }
 
 export async function sincronizar(
@@ -60,7 +67,18 @@ export async function sincronizar(
   opcoes: OpcoesMotor,
 ): Promise<RelatorioSincronizacao> {
   const agora = opcoes.agora();
-  let fila = recuperarInterrompidas(await armazem.lerFila(), agora);
+  const filaInicial = recuperarInterrompidas(await armazem.lerFila(), agora);
+  let fila = filaInicial;
+
+  /**
+   * Toda gravação da fila passa por aqui: o que entrou no aparelho **durante** a passada é
+   * preservado (era o defeito que fazia a viagem recém-criada desaparecer, em 2026-10-15).
+   */
+  const salvarFila = async (): Promise<void> => {
+    const doAparelho = await armazem.lerFila();
+    fila = juntarFilaDaPassada(doAparelho, { antes: filaInicial, depois: fila });
+    await armazem.gravarFila(fila);
+  };
   const relatorio: RelatorioSincronizacao = {
     enviados: 0,
     falharam: 0,
@@ -73,24 +91,34 @@ export async function sincronizar(
   };
 
   if (!opcoes.online()) {
-    await armazem.gravarFila(fila);
+    await salvarFila();
     relatorio.parada = "offline";
     relatorio.aguardando = resumoFila(fila).aguardando;
     return relatorio;
   }
 
   // 1. Trazer o que mudou no servidor (por último, para já incluir o efeito dos nossos envios).
+  const viagemDaPassada = opcoes.viagemAtiva?.() ?? null;
+  const trocouDeViagem = (): boolean => (opcoes.viagemAtiva?.() ?? null) !== viagemDaPassada;
+
   const buscarNoServidor = async (): Promise<void> => {
     const lista = await servidor.buscarViagens();
     let { cursor, carga } = await armazem.lerCarga();
-    if (lista.ok && lista.carga) carga = mesclarCarga(carga, lista.carga);
+    if (lista.ok && lista.carga) carga = mesclarCarga(carga, lista.carga, { viagemAtiva: opcoes.viagemAtiva?.() ?? null });
     // A lista de viagens não define cursor de mudanças: só um cursor de verdade o substitui.
     if (lista.ok && typeof lista.cursor === "string") cursor = lista.cursor;
 
-    if (opcoes.viagemAtiva) {
-      const mudancas = await servidor.buscarMudancas(opcoes.viagemAtiva, cursor);
+    if (viagemDaPassada) {
+      // O cursor é **por viagem**: usar o de outra viagem devolveria mudanças de menos.
+      const cursorDaViagem = viagemDaPassada === (opcoes.viagemAtiva?.() ?? null) ? cursor : null;
+      const mudancas = await servidor.buscarMudancas(viagemDaPassada, cursorDaViagem);
+      if (trocouDeViagem()) {
+        // A pessoa abriu outra viagem enquanto buscávamos: este resultado é de outro contexto.
+        relatorio.parada = "trocou_de_viagem";
+        return;
+      }
       if (mudancas.ok && mudancas.carga) {
-        carga = mesclarCarga(carga, mudancas.carga);
+        carga = mesclarCarga(carga, mudancas.carga, { viagemAtiva: opcoes.viagemAtiva?.() ?? null });
         cursor = mudancas.cursor ?? cursor;
         relatorio.buscadasMudancas = true;
       }
@@ -115,7 +143,7 @@ export async function sincronizar(
     if (!pendente) break;
 
     fila = marcarEnviando(fila, pendente.id);
-    await armazem.gravarFila(fila);
+    await salvarFila();
 
     let resultado: ResultadoEnvio;
     try {
@@ -139,10 +167,10 @@ export async function sincronizar(
         break;
       }
     }
-    await armazem.gravarFila(fila);
+    await salvarFila();
   }
 
-  await armazem.gravarFila(fila);
+  await salvarFila();
   relatorio.aguardando = resumoFila(fila).aguardando;
 
   // 3. Se algo foi enviado, buscar de novo: a carga local passa a refletir o servidor.

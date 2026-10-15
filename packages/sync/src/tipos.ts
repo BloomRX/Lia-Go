@@ -124,5 +124,5 @@ export interface RelatorioSincronizacao {
   buscadasMudancas: boolean;
   atualizadoEm: string;
   /** Por que a passada parou: útil para explicar ao usuário e para os testes. */
-  parada: "fila_vazia" | "offline" | "reenvio_agendado" | "erro_de_rede_na_busca" | "nada_a_fazer";
+  parada: "fila_vazia" | "offline" | "reenvio_agendado" | "erro_de_rede_na_busca" | "nada_a_fazer" | "trocou_de_viagem";
 }

@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buscarPorId, cargaVazia, contarItens, detalheDaViagem, mesclarCarga, mesclarLista, removerDaCarga } from "../src/carga.ts";
+import {
+  buscarPorId,
+  cargaVazia,
+  contarItens,
+  detalheDaViagem,
+  mesclarCarga,
+  mesclarLista,
+  removerDaCarga,
+  trocarViagemAberta,
+} from "../src/carga.ts";
 
 /** Detalhe da viagem como a tela recebe: viagem + participantes + permissões. */
 const viagem = (versao: number, extra: Record<string, unknown> = {}) => ({
@@ -110,4 +119,57 @@ test("roteiro: atividade cancelada sai da carga quando o servidor marca como rem
   const resultado = mesclarCarga(atual, { atividades: [{ id: "a1", removido: true }] });
   assert.deepEqual(resultado.atividades, []);
   assert.deepEqual(removerDaCarga(resultado, "atividades", "a1").atividades, []);
+});
+
+/**
+ * Defeitos reais de 2026-10-15 (relatados em uso): "criei outra viagem e ele volta para a primeira
+ * cancelada". Estes testes travam as duas regras que evitam isso.
+ */
+
+test("trocar a viagem aberta descarta o que era da viagem anterior (menos a lista da conta)", () => {
+  const antes = {
+    ...cargaVazia(),
+    viagens: [{ id: "v1" }, { id: "v2" }],
+    convitesParaMim: [{ id: "c1" }],
+    viagem: { viagem: { id: "v1", versao: 3 } },
+    despesas: [{ id: "d1" }],
+    movimentos: [{ id: "m1" }],
+    atividades: [{ id: "a1" }],
+    convites: [{ id: "cv1" }],
+  };
+
+  const depois = trocarViagemAberta(antes);
+
+  assert.equal(depois.viagem, null, "nenhum detalhe de viagem fica na tela");
+  assert.deepEqual(depois.despesas, []);
+  assert.deepEqual(depois.movimentos, []);
+  assert.deepEqual(depois.atividades, []);
+  assert.deepEqual(depois.convites, []);
+  assert.deepEqual(depois.viagens, antes.viagens, "a lista da conta continua");
+  assert.deepEqual(depois.convitesParaMim, antes.convitesParaMim);
+});
+
+test("detalhe da viagem nova entra mesmo sendo de outra viagem; o da antiga não volta por atraso", () => {
+  const atual = {
+    ...cargaVazia(),
+    viagem: { viagem: { id: "v1", versao: 5 } },
+    atividades: [{ id: "a1", viagemId: "v1" }],
+  };
+
+  // A viagem aberta é a v2: o detalhe dela substitui o da v1.
+  const trocando = mesclarCarga(atual, { viagem: { viagem: { id: "v2", versao: 1 } } }, { viagemAtiva: "v2" });
+  assert.equal(trocando.viagem?.viagem.id, "v2");
+
+  // Resposta atrasada da v1 chegando com a v2 aberta: nada é tocado.
+  const atrasada = mesclarCarga(trocando, { viagem: { viagem: { id: "v1", versao: 9 } } }, { viagemAtiva: "v2" });
+  assert.equal(atrasada.viagem?.viagem.id, "v2", "a viagem atrasada não sobrepõe a viagem aberta");
+
+  // E as listas da viagem v1 que vieram junto também não entram.
+  const contaminada = mesclarCarga(
+    trocando,
+    { viagem: { viagem: { id: "v1", versao: 9 } }, atividades: [{ id: "a1", viagemId: "v1" }], despesas: [{ id: "d1" }] },
+    { viagemAtiva: "v2" },
+  );
+  assert.deepEqual(contaminada.atividades, [], "atividade de outra viagem não aparece");
+  assert.deepEqual(contaminada.despesas, []);
 });

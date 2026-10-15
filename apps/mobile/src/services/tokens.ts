@@ -10,6 +10,9 @@
  * Prática de mercado seguida (ver docs/DECISIONS_AND_OPEN_QUESTIONS.md): token de sessão
  * nunca fica em armazenamento comum quando existe Keychain/Keystore.
  */
+import { Capacitor } from "@capacitor/core";
+import { Platform } from "./plataforma.ts";
+
 const CHAVE_ACESSO = "lia.acesso";
 const CHAVE_REFRESH = "lia.refresh";
 
@@ -30,7 +33,34 @@ interface ArmazenamentoSeguro {
 let pluginSeguro: Promise<ArmazenamentoSeguro | null> | null = null;
 let ultimoModo: ModoArmazenamento = "indisponivel";
 
+/**
+ * Teto de tempo para qualquer chamada ao armazenamento do sistema.
+ *
+ * Motivo (defeito real de 2026-10-15): no navegador, o plugin nativo não existe, mas o objeto
+ * devolvido pelo Capacitor **parece** ter todos os métodos (é um Proxy). `await` nele não resolve
+ * nem rejeita — fica pendurado para sempre. Foi assim que o botão "Sair" ficou sem fazer nada:
+ * a limpeza dos tokens nunca terminava. Aqui, promessa que não responde a tempo é tratada como
+ * indisponível, e o app segue.
+ */
+function comTempoLimite<T>(promessa: Promise<T>, ms = 3000): Promise<T> {
+  void promessa.catch(() => undefined); // rejeição atrasada não vira "promessa não tratada"
+  return Promise.race([
+    promessa,
+    new Promise<T>((_, rejeitar) => setTimeout(() => rejeitar(new Error("armazenamento seguro não respondeu a tempo")), ms)),
+  ]);
+}
+
+/**
+ * O plugin de armazenamento seguro só é usado no app nativo **e** quando ele está de fato instalado
+ * (`isPluginAvailable`). No navegador não existe Keychain/Keystore: a sessão web é cookie HttpOnly,
+ * então aqui não há nada para guardar — e nenhuma chamada a plugin nativo deve acontecer.
+ */
+function armazenamentoSeguroDisponivel(): boolean {
+  return Platform.ehNativo() && Capacitor.isPluginAvailable("SecureStorage");
+}
+
 function carregarSeguro(): Promise<ArmazenamentoSeguro | null> {
+  if (!armazenamentoSeguroDisponivel()) return Promise.resolve(null);
   pluginSeguro ??= import("@aparajita/capacitor-secure-storage")
     .then((modulo) => {
       const candidato = modulo.SecureStorage as unknown as ArmazenamentoSeguro | undefined;
@@ -40,6 +70,9 @@ function carregarSeguro(): Promise<ArmazenamentoSeguro | null> {
   return pluginSeguro;
 }
 
+/** Nome que o teste e a tela usam para explicar onde a sessão está guardada. */
+export const NOME_DO_PLUGIN_SEGURO = "SecureStorage";
+
 async function comArmazenamentoComum(): Promise<typeof import("@capacitor/preferences")> {
   return import("@capacitor/preferences");
 }
@@ -48,8 +81,8 @@ export async function guardarTokens(tokens: TokensNativos): Promise<void> {
   const seguro = await carregarSeguro();
   if (seguro) {
     try {
-      await seguro.set(CHAVE_ACESSO, tokens.acesso);
-      await seguro.set(CHAVE_REFRESH, tokens.refresh);
+      await comTempoLimite(seguro.set(CHAVE_ACESSO, tokens.acesso));
+      await comTempoLimite(seguro.set(CHAVE_REFRESH, tokens.refresh));
       ultimoModo = "seguro";
       return;
     } catch {
@@ -66,8 +99,8 @@ export async function lerTokens(): Promise<TokensNativos | null> {
   const seguro = await carregarSeguro();
   if (seguro) {
     try {
-      const acesso = await seguro.get(CHAVE_ACESSO);
-      const refresh = await seguro.get(CHAVE_REFRESH);
+      const acesso = await comTempoLimite(seguro.get(CHAVE_ACESSO));
+      const refresh = await comTempoLimite(seguro.get(CHAVE_REFRESH));
       if (acesso && refresh) {
         ultimoModo = "seguro";
         return { acesso, refresh };
@@ -87,8 +120,8 @@ export async function lerTokens(): Promise<TokensNativos | null> {
 export async function limparTokens(): Promise<void> {
   const seguro = await carregarSeguro();
   if (seguro) {
-    await seguro.remove(CHAVE_ACESSO).catch(() => undefined);
-    await seguro.remove(CHAVE_REFRESH).catch(() => undefined);
+    await comTempoLimite(seguro.remove(CHAVE_ACESSO)).catch(() => undefined);
+    await comTempoLimite(seguro.remove(CHAVE_REFRESH)).catch(() => undefined);
   }
   const { Preferences } = await comArmazenamentoComum();
   await Preferences.remove({ key: CHAVE_ACESSO });

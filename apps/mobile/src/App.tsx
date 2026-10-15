@@ -5,6 +5,7 @@ import { Viagem } from "./telas/Viagem.tsx";
 import { Atividade } from "./telas/Atividade.tsx";
 import { api, ErroApi, type Usuario } from "./services/api.ts";
 import { Sincronizador, type EstadoSincronizacao } from "./offline/sincronizador.ts";
+import { limparSaidaPendente, marcarSaidaPendente, saidaPendente } from "./services/sessao-local.ts";
 import { BarraSincronizacao } from "./componentes/BarraSincronizacao.tsx";
 
 type Tela =
@@ -62,6 +63,15 @@ export function App(): React.ReactElement {
   useEffect(() => {
     void (async () => {
       try {
+        // Se da última vez alguém pediu para sair e o servidor não confirmou, tentamos de novo
+        // **antes** de perguntar pela sessão: a página não pode voltar conectada sozinha.
+        if (saidaPendente()) {
+          await api.sair().then(limparSaidaPendente).catch(() => undefined);
+          if (saidaPendente()) {
+            setMensagem("Encerramos a sessão neste aparelho, mas o servidor não confirmou. Vamos tentar de novo na próxima vez que você abrir.");
+            return;
+          }
+        }
         const sessao = await api.sessao();
         setUsuario(sessao);
       } catch (erro) {
@@ -100,12 +110,32 @@ export function App(): React.ReactElement {
     });
   }, [usuario, sincronizador]);
 
+  /**
+   * Sair da conta. Regras (defeito relatado em 2026-10-15, botão que não fazia nada):
+   *  1. pedir para sair é **sempre** atendido — a tela muda antes de qualquer limpeza;
+   *  2. nenhuma limpeza pode travar a saída: cada uma tem seu próprio tratamento de erro;
+   *  3. o que falhar é dito na tela, com o que a pessoa precisa saber (a sessão pode continuar
+   *     válida no servidor e ser encerrada na próxima abertura).
+   */
   async function sair(): Promise<void> {
-    await api.sair().catch(() => undefined);
-    // Dado de viagem não fica no aparelho depois de sair da conta.
-    await sincronizador?.limparDadosLocais();
+    marcarSaidaPendente();
     setUsuario(null);
     setTela({ nome: "inicio" });
+    setMensagem(null);
+
+    const problemas: string[] = [];
+    await api
+      .sair()
+      .then(limparSaidaPendente)
+      .catch(() => problemas.push("o servidor não confirmou a saída"));
+    // Dado de viagem não fica no aparelho depois de sair da conta.
+    await Promise.resolve(sincronizador?.limparDadosLocais()).catch(() =>
+      problemas.push("os dados guardados neste aparelho não foram apagados"),
+    );
+
+    if (problemas.length > 0) {
+      setMensagem(`Você saiu neste aparelho, mas ${problemas.join(" e ")}. Vamos tentar de novo quando você abrir o app.`);
+    }
   }
 
   async function aceitarConvite(token: string): Promise<void> {

@@ -6,6 +6,7 @@ import {
   enfileirar,
   esperaDeReenvio,
   filaVazia,
+  juntarFilaDaPassada,
   marcarEnviada,
   marcarEnviando,
   marcarFalha,
@@ -194,4 +195,40 @@ test("roteiro na fila: criar e concluir atividade funcionam offline e preservam 
   const resumo = resumoFila(fila);
   assert.equal(resumo.total, 2);
   assert.equal(resumo.estado, "pendente");
+});
+
+/**
+ * Defeito real de 2026-10-15: a pessoa criava uma viagem enquanto uma sincronização estava
+ * acontecendo, e a gravação do fim da passada apagava a viagem recém-criada da fila — ela
+ * desaparecia sem nenhum aviso. `juntarFilaDaPassada` é a regra que impede isso.
+ */
+test("operação criada durante a passada não é perdida pela gravação do fim", () => {
+  const antes = filaVazia(); // a passada começou com a fila vazia
+  const durante = enfileirar(antes, { id: "op-viagem-nova", operacao: { tipo: "criar_viagem", corpo: {}, descricao: "Viagem: Serra" }, agora: T0 });
+
+  const depois = juntarFilaDaPassada(durante, { antes, depois: filaVazia() });
+
+  assert.equal(depois.operacoes.length, 1, "a viagem criada durante a passada continua na fila");
+  assert.equal(depois.operacoes[0]!.id, "op-viagem-nova");
+  assert.equal(depois.operacoes[0]!.estado, "aguardando");
+});
+
+test("estado mais novo da passada vale, mas o que chegou depois é preservado na ordem", () => {
+  const inicio = enfileirar(filaVazia(), { id: "a", operacao: { tipo: "confirmar_despesa", viagemId: "v1", despesaId: "d1", descricao: "ok" }, agora: T0 });
+  const durante = enfileirar(inicio, { id: "b", operacao: { tipo: "confirmar_despesa", viagemId: "v1", despesaId: "d2", descricao: "ok" }, agora: T0 });
+
+  // A passada enviou "a" (sai da fila) e não conhece "b".
+  const depois = juntarFilaDaPassada(durante, { antes: inicio, depois: filaVazia() });
+
+  assert.deepEqual(depois.operacoes.map((item) => item.id), ["b"], "quem foi enviado sai, quem chegou fica");
+});
+
+test("operação que falhou na passada mantém o erro registrado no aparelho", () => {
+  const inicio = enfileirar(filaVazia(), { id: "a", operacao: { tipo: "confirmar_despesa", viagemId: "v1", despesaId: "d1", descricao: "ok" }, agora: T0 });
+  const daPassada = marcarFalha(inicio, "a", { codigo: "sem_permissao", mensagem: "Você não pode confirmar.", status: 403 }, T0);
+
+  const depois = juntarFilaDaPassada(inicio, { antes: inicio, depois: daPassada });
+
+  assert.equal(depois.operacoes[0]!.estado, "falhou");
+  assert.equal(depois.operacoes[0]!.erro?.mensagem, "Você não pode confirmar.");
 });
