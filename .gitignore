@@ -18,6 +18,9 @@ coverage/
 apps/mobile/src/**/*.js
 apps/mobile/*.config.js
 
+# Testes de interface: os `.mjs` são gerados pelo empacotador a cada execução (nunca versionar)
+apps/mobile/.ui-testes/
+
 # Relatórios de execução antigos (os recentes são versionados para você ver no GitHub)
 reports/*.log
 
