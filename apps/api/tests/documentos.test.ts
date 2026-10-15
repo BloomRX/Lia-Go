@@ -251,6 +251,42 @@ test("remover exige motivo, vira remoção lógica e sai da lista de todo mundo 
   assert.ok((linhas.rows[0] as { removido_em: Date }).removido_em);
 });
 
+test("quem perdeu o acesso recebe aviso para apagar a cópia guardada no aparelho", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const criado = await criar(c, c.participante);
+  await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${c.viagemId}/documentos/${criado.id}/compartilhar`,
+    headers: comSessao(c.participante),
+    payload: { com: [c.organizadora.id] },
+  });
+  const primeira = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/mudancas?desde=0`, headers: comSessao(c.organizadora) });
+  const cursor = (primeira.json() as { cursor: string }).cursor;
+  assert.equal((primeira.json() as { documentos: DocumentoJson[] }).documentos.length, 1, "o documento chegou ao aparelho de quem recebeu");
+
+  await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${c.viagemId}/documentos/${criado.id}/revogar`,
+    headers: comSessao(c.participante),
+    payload: { com: [c.organizadora.id] },
+  });
+
+  const depois = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/mudancas?desde=${cursor}`, headers: comSessao(c.organizadora) });
+  const corpo = depois.json() as { documentos: { id: string; removido?: boolean; nome?: string }[] };
+  assert.deepEqual(corpo.documentos, [{ id: criado.id, removido: true }], "chega só o aviso de apagar: nem nome, nem link, nem tipo");
+});
+
+test("o aviso de apagar não revela documento que a pessoa nunca viu", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const privado = await criar(c, c.participante, { nome: "Documento só meu" });
+  const outro = await adicionarParticipante(ambiente.app, c.organizadora, c.viagemId);
+
+  const resposta = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/mudancas?desde=0`, headers: comSessao(outro) });
+  const corpo = resposta.json() as { documentos: { id: string }[] };
+  assert.deepEqual(corpo.documentos, [], "documento que nunca esteve visível não aparece nem como aviso");
+  assert.ok(!JSON.stringify(corpo).includes(privado.id));
+});
+
 test("impacto é mostrado antes de compartilhar ou remover", { skip: !disponivel }, async () => {
   const c = await cenario();
   const criado = await criar(c, c.participante);

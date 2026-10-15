@@ -73,9 +73,18 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
     const itensChecklist = (await listarItens(pool, viagemId, idsPorEntidade.get("checklist") ?? [])).map((item) => itemParaJson(item));
     // Documento só vai para quem pode vê-lo: o cursor não pode virar caminho para vazar documento privado.
     const ehOrganizador = contexto.contexto.papel === "organizador";
-    const documentos = (await listarDocumentos(pool, viagemId, idsPorEntidade.get("documento") ?? []))
+    const documentosMudados = await listarDocumentos(pool, viagemId, idsPorEntidade.get("documento") ?? []);
+    const documentos = documentosMudados
       .filter((documento) => podeVerDocumento(documento, autenticado.usuarioId, { ehOrganizador }))
       .map((documento) => documentoParaJson(documento));
+    // Quem **deixou** de poder ver não pode continuar com o documento guardado no aparelho: vai um
+    // aviso de remoção (só o id) para o app apagar a cópia local. Nada mais é revelado — nem se o
+    // documento existe, nem o que ele contém.
+    const perderamAcesso = documentosMudados.filter((documento) => !podeVerDocumento(documento, autenticado.usuarioId, { ehOrganizador }));
+    if (perderamAcesso.length > 0) {
+      const apagar = await documentosQuePrecisamSairDoAparelho(pool, perderamAcesso.map((documento) => documento.id), autenticado.usuarioId);
+      for (const id of apagar) documentos.push({ id, removido: true });
+    }
 
     return {
       cursor,
@@ -169,4 +178,30 @@ async function carregarConvitesMudados(
     [viagemId, ids],
   );
   return rows as Record<string, unknown>[];
+}
+
+/**
+ * Documentos que a pessoa via antes e deixou de ver (revogação, remoção ou virada para privado).
+ *
+ * A decisão sai do evento mais recente de cada documento, que guarda o acesso **antes** e **depois**:
+ * se a pessoa estava no acesso de antes, o aparelho dela precisa saber que aquilo saiu da lista —
+ * senão uma cópia já baixada continuaria visível depois de o acesso ser revogado.
+ */
+async function documentosQuePrecisamSairDoAparelho(pool: pg.Pool, documentoIds: string[], usuarioId: string): Promise<string[]> {
+  if (documentoIds.length === 0) return [];
+  const { rows } = await pool.query<{ documento_id: string; antes: { visibilidade?: string; com?: string[] } | null }>(
+    `SELECT DISTINCT ON (documento_id) documento_id, alteracoes -> 'antes' AS antes
+       FROM documento_eventos
+      WHERE documento_id = ANY($1::uuid[])
+      ORDER BY documento_id, id DESC`,
+    [documentoIds],
+  );
+  return rows
+    .filter((linha) => {
+      const antes = linha.antes;
+      if (!antes) return false;
+      if (antes.visibilidade === "viagem") return true;
+      return Array.isArray(antes.com) && antes.com.includes(usuarioId);
+    })
+    .map((linha) => linha.documento_id);
 }

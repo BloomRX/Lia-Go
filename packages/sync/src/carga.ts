@@ -7,7 +7,7 @@
 import type { CargaLocal, CargaRemota, DetalheViagemLocal } from "./tipos.ts";
 
 export function cargaVazia(): CargaLocal {
-  return { viagens: [], viagem: null, despesas: [], movimentos: [], convites: [], convitesParaMim: [], atividades: [], reservas: [] };
+  return { viagens: [], viagem: null, despesas: [], movimentos: [], convites: [], convitesParaMim: [], atividades: [], reservas: [], itensChecklist: [], documentos: [] };
 }
 
 /**
@@ -21,7 +21,7 @@ export function cargaCompleta(carga: Partial<CargaLocal> | null | undefined): Ca
 }
 
 /** Listas que sabemos mesclar. A chave é o campo `id`; o desempate é `versao` quando existe. */
-const LISTAS = ["despesas", "movimentos", "convites", "atividades", "reservas"] as const;
+const LISTAS = ["despesas", "movimentos", "convites", "atividades", "reservas", "itensChecklist", "documentos"] as const;
 
 export interface OpcoesMesclagem {
   /**
@@ -87,7 +87,7 @@ export function mesclarCarga(atual: CargaLocal, delta: CargaRemota, opcoes: Opco
  * e os convites pendentes **não** são tocados: não pertencem a nenhuma viagem.
  */
 export function trocarViagemAberta(carga: CargaLocal): CargaLocal {
-  return { ...carga, viagem: null, despesas: [], movimentos: [], convites: [], atividades: [], reservas: [] };
+  return { ...carga, viagem: null, despesas: [], movimentos: [], convites: [], atividades: [], reservas: [], itensChecklist: [], documentos: [] };
 }
 
 /** Junta itens por `id`: entram os novos, atualizam-se os mais antigos, saem os marcados como removidos. */
@@ -125,7 +125,11 @@ export function mesclarLista(
 }
 
 /** Remove da carga o que o servidor marcou como removido. */
-export function removerDaCarga(carga: CargaLocal, lista: "despesas" | "movimentos" | "convites" | "atividades" | "reservas", id: string): CargaLocal {
+export function removerDaCarga(
+  carga: CargaLocal,
+  lista: "despesas" | "movimentos" | "convites" | "atividades" | "reservas" | "itensChecklist" | "documentos",
+  id: string,
+): CargaLocal {
   return { ...carga, [lista]: carga[lista].filter((item) => item["id"] !== id) };
 }
 
@@ -145,7 +149,9 @@ export function contarItens(carga: CargaLocal): number {
     carga.convites.length +
     carga.convitesParaMim.length +
     carga.atividades.length +
-    carga.reservas.length
+    carga.reservas.length +
+    carga.itensChecklist.length +
+    carga.documentos.length
   );
 }
 

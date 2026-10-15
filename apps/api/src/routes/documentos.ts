@@ -64,7 +64,7 @@ export function rotasDocumentos(app: FastifyInstance, deps: { pool: pg.Pool; con
 
   /** Dentro de uma transação: carrega o documento e aplica a mesma regra acima. */
   async function carregarDocumentoVisivel(
-    cliente: { query: typeof pool.query },
+    cliente: pg.Pool | pg.PoolClient,
     viagemId: string,
     documentoId: string,
     usuarioId: string,
@@ -195,7 +195,11 @@ export function rotasDocumentos(app: FastifyInstance, deps: { pool: pg.Pool; con
         documentoId,
         acao: "documento:compartilhar",
         autorId: autenticado.usuarioId,
-        alteracoes: { visibilidade: compartilhado.visibilidade, com: compartilhado.compartilhadoCom },
+        // `antes`/`depois` ficam no evento: é assim que quem perdeu acesso é avisado na sincronização.
+        alteracoes: {
+          antes: { visibilidade: atual.visibilidade, com: atual.compartilhadoCom },
+          depois: { visibilidade: compartilhado.visibilidade, com: compartilhado.compartilhadoCom },
+        },
       });
       await registrarAuditoria(cliente, {
         viagemId,
@@ -232,7 +236,10 @@ export function rotasDocumentos(app: FastifyInstance, deps: { pool: pg.Pool; con
         documentoId,
         acao: "documento:revogar",
         autorId: autenticado.usuarioId,
-        alteracoes: { visibilidade: revogado.visibilidade, com: revogado.compartilhadoCom },
+        alteracoes: {
+          antes: { visibilidade: atual.visibilidade, com: atual.compartilhadoCom },
+          depois: { visibilidade: revogado.visibilidade, com: revogado.compartilhadoCom },
+        },
       });
       await registrarAuditoria(cliente, { viagemId, atorId: autenticado.usuarioId, acao: "documento:revogar", entidade: "documento", entidadeId: documentoId });
       return { documento: documentoParaJson({ ...revogado, versao: atual.versao + 1 }) };
@@ -270,6 +277,10 @@ export function rotasDocumentos(app: FastifyInstance, deps: { pool: pg.Pool; con
         acao: "documento:remover",
         autorId: autenticado.usuarioId,
         motivo: removido.motivoRemocao,
+        alteracoes: {
+          antes: { visibilidade: atual.visibilidade, com: atual.compartilhadoCom },
+          depois: { visibilidade: "privado", com: [] },
+        },
       });
       await registrarAuditoria(cliente, {
         viagemId,
