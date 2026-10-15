@@ -208,6 +208,8 @@ export interface AtividadeApi {
   concluidaPor: string | null;
   concluidaEm: string | null;
   observacao: string | null;
+  /** Reserva da viagem que cobre esta atividade (tela 7). `null` = nenhuma. */
+  reservaId: string | null;
   deslocamento: { minutos: number | null; km: number | null; custoCentavos: string | null; alerta: string | null } | null;
   versao: number;
 }
@@ -507,6 +509,7 @@ export const api = {
       custoNatureza: "estimativa" | "compromisso" | "gratuito" | null;
       custoAVerificar: boolean;
       observacao: string | null;
+      reservaId: string | null;
       deslocamento: { minutos: number | null; km: number | null; custoCentavos: string | null; alerta: string | null } | null;
     },
     idempotencia: string = crypto.randomUUID(),

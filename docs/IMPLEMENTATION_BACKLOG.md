@@ -1,6 +1,6 @@
 # Backlog — Lia Go
 
-Atualizado em **2026-10-15** (décima primeira rodada), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Atualizado em **2026-10-15** (décima segunda rodada), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
@@ -16,12 +16,12 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Barra com Visão geral, Roteiro, Gastos e Mais; identidade escura roxo/magenta, referências oficiais
   aplicadas (hero da viagem com a Lia, próximo compromisso em destaque, orçamento com barra) e estados
   carregando/vazio/erro/sem permissão. Documentos e checklist vivem na aba Mais por ora.
-- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 151 · sincronização 48 · app 46+37 (jsdom) · API 86 = **412**.
+- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 157 · sincronização 48 · app 46+42 (jsdom) · API 92 = **429**.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
-- ✅ `packages/domain` com **151 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
+- ✅ `packages/domain` com **157 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
   convites, roteiro, reservas, orçamento, checklist, documentos, fechamento e a central de notificações.
-- ✅ PostgreSQL central com migrações versionadas (`0001`–`0007`) e SQL explícito via `pg`.
+- ✅ PostgreSQL central com migrações versionadas (`0001`–`0008`) e SQL explícito via `pg`.
 - ✅ Registro/login/logout/sessão/revogação, scrypt, cookie HttpOnly, tokens nativos e limite de tentativas.
 - ✅ Criar/editar/consultar viagem com autorização no servidor e concorrência otimista (409 em conflito).
 - ✅ Papéis, convites com cancelamento, aceite por e-mail, saída e remoção com histórico preservado.
@@ -39,7 +39,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Saldos, transferências sugeridas e acertos (informado → confirmado por quem recebeu) na tela e na API.
   Pagamento parcial e reembolso ligado à despesa ficam para a próxima fatia.
 - ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
-- 🔄 151 testes de domínio + 86 de API cobrem limites, restos, permissões, orçamento, checklist, documentos,
+- 🔄 157 testes de domínio + 92 de API cobrem limites, restos, permissões, orçamento, checklist, documentos,
   fechamento e notificações; câmbio entra com o módulo de moedas.
 
 ## Fase 3 — Roteiro, reservas e documentos
@@ -49,6 +49,11 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Reservas manuais assistidas, checklist (prazo não conclui; reabertura com motivo) e documentos privados
   por padrão com compartilhamento revogável, remoção lógica com motivo e limpeza da cópia local de quem
   perdeu acesso.
+- ✅ A ficha da atividade guarda o que **não é horário**: observações (também usadas para acessibilidade) e
+  o vínculo com a reserva da viagem, mostrando a **evidência** que já existe (localizador) quando ela está
+  confirmada. Vincular não confirma nada nem muda a natureza do dinheiro (§13).
+  ⬜ Documentos/links vinculados à atividade — o vínculo precisa carregar a mesma regra de privacidade do
+  documento (quem perdeu acesso não pode descobrir pelo vínculo); próxima fatia do roteiro.
 - ⬜ Criação por conversa/formulário alternáveis (sem perguntas repetidas) — depende da camada de IA.
 
 ## Fase 4 — Offline, notificações e fechamento

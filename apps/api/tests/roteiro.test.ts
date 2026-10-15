@@ -66,6 +66,33 @@ async function criarAtividade(
   return { status: resposta.statusCode, id: corpo.atividades?.[0]?.id ?? "", corpo: corpo as Record<string, unknown> };
 }
 
+/** Cria uma reserva na viagem do cenário e devolve o id (para vincular à atividade). */
+async function criarReserva(c: Cenario, autor: UsuarioTeste, dados: Record<string, unknown> = {}): Promise<string> {
+  const resposta = await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${c.viagemId}/reservas`,
+    headers: comSessao(autor),
+    payload: { tipo: "hospedagem", titulo: "Pousada da serra", ...dados },
+  });
+  return (resposta.json() as { reserva?: { id: string } }).reserva?.id ?? "";
+}
+
+async function corrigirAtividade(
+  c: Cenario,
+  autor: UsuarioTeste,
+  atividadeId: string,
+  dados: Record<string, unknown>,
+): Promise<{ status: number; mensagem: string | null }> {
+  const resposta = await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${c.viagemId}/atividades/${atividadeId}/corrigir`,
+    headers: comSessao(autor),
+    payload: { motivo: "Ajuste combinado com o grupo", ...dados },
+  });
+  const corpo = resposta.json() as { mensagem?: string };
+  return { status: resposta.statusCode, mensagem: corpo.mensagem ?? null };
+}
+
 test("atividade nasce planejada, flexível quando não tem horário, e o roteiro volta por dia", { skip: !disponivel }, async () => {
   const c = await cenario();
   const comHorario = await criarAtividade(c, c.organizadora, { titulo: "Museu", hora: "10:00", duracaoMinutos: 90 });
@@ -346,4 +373,135 @@ test("reenvio com a mesma chave de idempotência não cria duas atividades", { s
   const roteiro = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/roteiro`, headers: comSessao(c.organizadora) });
   const total = (roteiro.json() as { dias: { atividades: unknown[] }[] }).dias.flatMap((dia) => dia.atividades).length;
   assert.equal(total, 1, "nada foi duplicado");
+});
+
+// ---------------------------------------------------------------------------
+// Observações e reserva vinculada (tela 7: a ficha guarda o que não é horário)
+// ---------------------------------------------------------------------------
+
+test("atividade guarda observação e nasce sem reserva quando ninguém vinculou", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const criada = await criarAtividade(c, c.organizadora, {
+    titulo: "Trilha curta",
+    observacao: "  Precisa de bota e água  ",
+  });
+  assert.equal(criada.status, 201);
+  const atividade = (criada.corpo.atividades as { observacao: string | null; reservaId: string | null }[])[0]!;
+  assert.equal(atividade.observacao, "Precisa de bota e água");
+  assert.equal(atividade.reservaId, null);
+});
+
+test("vincular a atividade à reserva da viagem: o vínculo volta no roteiro, no detalhe e na sincronização", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const reservaId = await criarReserva(c, c.organizadora);
+  assert.ok(reservaId);
+  const criada = await criarAtividade(c, c.organizadora, { titulo: "Check-in na pousada", reservaId });
+  assert.equal(criada.status, 201);
+  assert.equal((criada.corpo.atividades as { reservaId: string | null }[])[0]!.reservaId, reservaId);
+
+  const roteiro = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/roteiro`, headers: comSessao(c.participante) });
+  const doRoteiro = (roteiro.json() as { dias: { atividades: { id: string; reservaId: string | null }[] }[] }).dias[0]!.atividades[0]!;
+  assert.equal(doRoteiro.reservaId, reservaId);
+
+  const detalhe = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${c.viagemId}/atividades/${criada.id}`,
+    headers: comSessao(c.participante),
+  });
+  assert.equal((detalhe.json() as { atividades: { reservaId: string | null }[] }).atividades[0]!.reservaId, reservaId);
+
+  // A sincronização é o caminho que o aparelho usa: o vínculo precisa viajar junto.
+  const mudancas = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${c.viagemId}/mudancas?desde=0`,
+    headers: comSessao(c.participante),
+  });
+  const atividades = (mudancas.json() as { atividades: { id: string; reservaId: string | null }[] }).atividades;
+  assert.equal(atividades.find((atividade) => atividade.id === criada.id)?.reservaId, reservaId);
+});
+
+test("reserva de outra viagem é recusada e a atividade não é criada com vínculo cruzado", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  // Outra viagem, do mesmo organizador, com a sua própria reserva.
+  const outraViagem = await criarViagem(ambiente.app, c.organizadora, { dataInicio: "2027-01-10", dataFim: "2027-01-15" });
+  const reservaDeOutra = await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${outraViagem}/reservas`,
+    headers: comSessao(c.organizadora),
+    payload: { tipo: "transporte", titulo: "Passagem da outra viagem" },
+  });
+  const reservaId = (reservaDeOutra.json() as { reserva: { id: string } }).reserva.id;
+
+  const criada = await criarAtividade(c, c.organizadora, { titulo: "Tentativa", reservaId });
+  assert.equal(criada.status, 400, "vínculo com reserva de outra viagem não pode passar");
+  assert.match(JSON.stringify(criada.corpo), /desta viagem/);
+
+  const roteiro = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/roteiro`, headers: comSessao(c.organizadora) });
+  assert.equal((roteiro.json() as { dias: unknown[] }).dias.length, 0, "nada foi gravado");
+});
+
+test("reserva cancelada não vira vínculo de atividade", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const reservaId = await criarReserva(c, c.organizadora);
+  await ambiente.app.inject({
+    method: "POST",
+    url: `/viagens/${c.viagemId}/reservas/${reservaId}/cancelar`,
+    headers: comSessao(c.organizadora),
+    payload: { motivo: "O hotel não tinha mais vaga" },
+  });
+
+  const criada = await criarAtividade(c, c.organizadora, { titulo: "Check-in", reservaId });
+  assert.equal(criada.status, 400);
+  assert.match(JSON.stringify(criada.corpo), /cancelada/);
+});
+
+test("corrigir vincula e desvincula a reserva com motivo, sem mexer na reserva em si", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const reservaId = await criarReserva(c, c.organizadora, { custoCentavos: "90000" });
+  const criada = await criarAtividade(c, c.organizadora, { titulo: "Passeio de trem" });
+
+  const vinculado = await corrigirAtividade(c, c.organizadora, criada.id, { reservaId });
+  assert.equal(vinculado.status, 200);
+  const comVinculo = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${c.viagemId}/atividades/${criada.id}`,
+    headers: comSessao(c.organizadora),
+  });
+  assert.equal((comVinculo.json() as { atividades: { reservaId: string | null }[] }).atividades[0]!.reservaId, reservaId);
+
+  // A reserva continua prevista: vincular não confirma, nem muda valor ou natureza do dinheiro.
+  const reservas = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/reservas`, headers: comSessao(c.organizadora) });
+  const reserva = (reservas.json() as { reservas: { id: string; estado: string; custoCentavos: string | null }[] }).reservas.find((item) => item.id === reservaId)!;
+  assert.equal(reserva.estado, "prevista");
+  assert.equal(reserva.custoCentavos, "90000");
+
+  const desvinculado = await corrigirAtividade(c, c.organizadora, criada.id, { reservaId: null, versao: 2 });
+  assert.equal(desvinculado.status, 200);
+  const semVinculo = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${c.viagemId}/atividades/${criada.id}`,
+    headers: comSessao(c.organizadora),
+  });
+  assert.equal((semVinculo.json() as { atividades: { reservaId: string | null }[] }).atividades[0]!.reservaId, null);
+
+  // A reserva continua existindo: o vínculo era da atividade, não da reserva.
+  const depois = await ambiente.app.inject({ method: "GET", url: `/viagens/${c.viagemId}/reservas/${reservaId}`, headers: comSessao(c.organizadora) });
+  assert.equal((depois.json() as { reserva: { id: string } }).reserva.id, reservaId);
+});
+
+test("corrigir a observação não apaga a reserva vinculada", { skip: !disponivel }, async () => {
+  const c = await cenario();
+  const reservaId = await criarReserva(c, c.organizadora);
+  const criada = await criarAtividade(c, c.organizadora, { titulo: "Trilha", reservaId, observacao: "levar água" });
+
+  const corrigido = await corrigirAtividade(c, c.organizadora, criada.id, { observacao: "levar água e protetor solar" });
+  assert.equal(corrigido.status, 200);
+  const detalhe = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${c.viagemId}/atividades/${criada.id}`,
+    headers: comSessao(c.organizadora),
+  });
+  const atividade = (detalhe.json() as { atividades: { observacao: string | null; reservaId: string | null }[] }).atividades[0]!;
+  assert.equal(atividade.observacao, "levar água e protetor solar");
+  assert.equal(atividade.reservaId, reservaId, "quem mexeu na observação não pediu para desvincular");
 });

@@ -18,8 +18,8 @@ import {
   ROTULO_ATIVIDADE,
 } from "../services/formato.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
-import { revisarImpacto, type Atividade as AtividadeDominio } from "@lia-go/domain";
-import { atividadeDoDominio } from "../services/viagem-local.ts";
+import { ROTULO_ESTADO_RESERVA, ROTULO_TIPO_RESERVA, revisarImpacto, type Atividade as AtividadeDominio } from "@lia-go/domain";
+import { atividadeDoDominio, reservasDaViagem } from "../services/viagem-local.ts";
 
 interface Props {
   viagemId: string;
@@ -73,7 +73,18 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
   const [motivo, setMotivo] = useState("");
   const [observacao, setObservacao] = useState("");
   const [corrigindo, setCorrigindo] = useState(false);
-  const [ajustes, setAjustes] = useState({ titulo: "", hora: "", duracao: "", local: "", custo: "", natureza: "estimativa" as "estimativa" | "compromisso" | "gratuito" });
+  const [ajustes, setAjustes] = useState({
+    titulo: "",
+    hora: "",
+    duracao: "",
+    local: "",
+    custo: "",
+    natureza: "estimativa" as "estimativa" | "compromisso" | "gratuito",
+    // Observação e reserva entram na correção já com o valor atual: a ficha mostra o que existe hoje,
+    // e o que a pessoa salvar é exatamente o que ela viu na tela.
+    observacao: "",
+    reservaId: "",
+  });
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -97,6 +108,7 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
       local: (bruta["local"] as string | null) ?? null,
       estado: String(bruta["estado"]),
       observacao: (bruta["observacao"] as string | null) ?? null,
+      reservaId: (bruta["reservaId"] as string | null) ?? null,
       concluidaEm: (bruta["concluidaEm"] as string | null) ?? null,
       versao: Number(bruta["versao"] ?? 1),
       custo,
@@ -108,6 +120,13 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
   const atividadeDominio = useMemo(
     () => (brutaDoCache ? atividadeDoDominio({ ...brutaDoCache, viagemId }) : null),
     [brutaDoCache, viagemId],
+  );
+
+  /** Reservas da viagem: a vinculada é mostrada com a evidência que já existe (nada é inventado aqui). */
+  const reservas = useMemo(() => reservasDaViagem(estado, viagemId), [estado, viagemId]);
+  const reservaVinculada = useMemo(
+    () => (atividade?.reservaId ? (reservas.find((reserva) => reserva.id === atividade.reservaId) ?? null) : null),
+    [reservas, atividade?.reservaId],
   );
 
   // Histórico completo vem do servidor quando há rede; offline, a tela continua útil sem ele.
@@ -176,6 +195,10 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
         atividadeId,
         corpo: {
           motivo: motivo.trim(),
+          observacao: ajustes.observacao.trim() || null,
+          // `null` aqui **desvincula** de propósito; o formulário abre com a reserva atual, então o
+          // que está na tela é o que vai para o servidor.
+          reservaId: ajustes.reservaId || null,
           ...(ajustes.titulo.trim() ? { titulo: ajustes.titulo.trim() } : {}),
           ...(ajustes.hora.trim() ? { hora: ajustes.hora.trim() } : {}),
           ...(ajustes.duracao.trim() ? { duracaoMinutos: Number(ajustes.duracao) } : {}),
@@ -271,6 +294,69 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
           ) : null}
         </div>
       </section>
+
+      {atividade.reservaId ? (
+        <section className="cartao">
+          <h2>Reserva</h2>
+          {reservaVinculada ? (
+            <>
+              <div className="ficha">
+                <div>
+                  <span className="rotulo">O que é</span>
+                  <span>
+                    {ROTULO_TIPO_RESERVA[reservaVinculada.tipo]}: {reservaVinculada.titulo}
+                  </span>
+                </div>
+                <div>
+                  <span className="rotulo">Estado</span>
+                  <span>{ROTULO_ESTADO_RESERVA[reservaVinculada.estado]}</span>
+                </div>
+                {reservaVinculada.local ? (
+                  <div>
+                    <span className="rotulo">Onde</span>
+                    <span>{reservaVinculada.local}</span>
+                  </div>
+                ) : null}
+                {reservaVinculada.inicio ? (
+                  <div>
+                    <span className="rotulo">Início</span>
+                    <span>{new Date(reservaVinculada.inicio).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
+                  </div>
+                ) : null}
+                <div>
+                  <span className="rotulo">Valor</span>
+                  <span>
+                    {reservaVinculada.custoCentavos === null
+                      ? reservaVinculada.custoAVerificar
+                        ? "A verificar — ainda não informado"
+                        : "Nenhum valor informado"
+                      : formatarBRL(reservaVinculada.custoCentavos)}
+                  </span>
+                </div>
+              </div>
+
+              {reservaVinculada.estado === "confirmada" && reservaVinculada.confirmacao ? (
+                <p className="suave pequeno">
+                  Evidência da confirmação: <strong>{reservaVinculada.confirmacao}</strong>
+                  {reservaVinculada.confirmadaEm
+                    ? ` · registrada em ${new Date(reservaVinculada.confirmadaEm).toLocaleString("pt-BR")}`
+                    : ""}
+                  .
+                </p>
+              ) : reservaVinculada.estado === "prevista" ? (
+                <p className="suave pequeno">
+                  Esta reserva ainda está <strong>prevista</strong>: o código/localizador aparece aqui quando alguém confirmar,
+                  na tela Reservas. O Lia Go não confirma reserva por conta própria.
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="suave pequeno">
+              Esta atividade aponta para uma reserva que ainda não está neste aparelho. Sincronize para ver os dados e a evidência dela.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       <section className="cartao">
         <h2>Custo</h2>
@@ -369,6 +455,36 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
                   </select>
                 </div>
               </div>
+              {reservas.length > 0 ? (
+                <>
+                  <label htmlFor="ajuste-reserva">Reserva desta atividade</label>
+                  <select
+                    id="ajuste-reserva"
+                    value={ajustes.reservaId}
+                    onChange={(evento) => setAjustes({ ...ajustes, reservaId: evento.target.value })}
+                  >
+                    <option value="">Sem reserva vinculada</option>
+                    {reservas
+                      .filter((reserva) => reserva.estado !== "cancelada")
+                      .map((reserva) => (
+                        <option key={reserva.id} value={reserva.id}>
+                          {ROTULO_TIPO_RESERVA[reserva.tipo]}: {reserva.titulo} · {ROTULO_ESTADO_RESERVA[reserva.estado]}
+                        </option>
+                      ))}
+                  </select>
+                </>
+              ) : null}
+
+              <label htmlFor="ajuste-observacao">Observações e acessibilidade</label>
+              <textarea
+                id="ajuste-observacao"
+                value={ajustes.observacao}
+                onChange={(evento) => setAjustes({ ...ajustes, observacao: evento.target.value })}
+                rows={2}
+                maxLength={2000}
+                placeholder="Precisa de rampa de acesso; levar remédio na mochila"
+              />
+
               <label htmlFor="ajuste-motivo">Motivo da correção</label>
               <input id="ajuste-motivo" value={motivo} onChange={(evento) => setMotivo(evento.target.value)} placeholder="O restaurante abre 11h30" required minLength={5} />
               <div className="acoes">
@@ -383,7 +499,23 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
             </form>
           ) : (
             <>
-              <button className="sutil" onClick={() => setCorrigindo(true)}>
+              <button
+                className="sutil"
+                onClick={() => {
+                  setAjustes({
+                    titulo: "",
+                    hora: "",
+                    duracao: "",
+                    local: "",
+                    // O custo atual entra na ficha para a pessoa ver o que está mudando.
+                    custo: centavos === null ? "" : formatarBRL(BigInt(centavos)).replace("R$ ", ""),
+                    natureza: (atividade.custo.natureza ?? "estimativa") as typeof ajustes.natureza,
+                    observacao: atividade.observacao ?? "",
+                    reservaId: atividade.reservaId ?? "",
+                  });
+                  setCorrigindo(true);
+                }}
+              >
                 Corrigir dados
               </button>
               <label htmlFor="cancelar-motivo">Motivo do cancelamento</label>

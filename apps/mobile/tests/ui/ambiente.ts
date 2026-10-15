@@ -127,8 +127,8 @@ async function escreverValor(campo: HTMLElement, valor: string, eventoNativo: "i
   await esperarAtualizacoes(2);
 }
 
-/** Digita num campo de texto. */
-export async function digitar(campo: HTMLInputElement, texto: string): Promise<void> {
+/** Digita num campo de texto (ou numa área de observações). */
+export async function digitar(campo: HTMLInputElement | HTMLTextAreaElement, texto: string): Promise<void> {
   await escreverValor(campo, texto, "input");
 }
 

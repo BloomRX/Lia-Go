@@ -60,6 +60,14 @@ export interface Atividade {
   concluidaPor: string | null;
   concluidaEm: string | null;
   observacao: string | null;
+  /**
+   * Reserva da viagem que cobre esta atividade (a passagem, a hospedagem, o passeio comprado).
+   *
+   * `null` = nenhuma. O vínculo **não** confirma nada e não muda o custo da atividade: quem confirma
+   * uma reserva continua sendo `confirmarReserva`, com evidência (decisões V1 §13). Aqui é só onde a
+   * atividade aponta para a evidência que já existe — a tela mostra o localizador, não o inventa.
+   */
+  reservaId: string | null;
   deslocamento: Deslocamento | null;
   versao: number;
 }
@@ -314,6 +322,7 @@ export function corrigirAtividade(
         | "custoNatureza"
         | "custoAVerificar"
         | "observacao"
+        | "reservaId"
         | "deslocamento"
       >
     >;
@@ -366,6 +375,7 @@ export function criarAtividade(entrada: {
   custoNatureza?: NaturezaCusto | null;
   custoAVerificar?: boolean;
   observacao?: string | null;
+  reservaId?: string | null;
   deslocamento?: Deslocamento | null;
 }): Atividade {
   const decisao = podeNoRoteiro(entrada.contexto, "atividade:criar");
@@ -387,6 +397,7 @@ export function criarAtividade(entrada: {
     concluidaPor: null,
     concluidaEm: null,
     observacao: entrada.observacao?.trim() || null,
+    reservaId: entrada.reservaId ?? null,
     deslocamento: entrada.deslocamento ?? null,
     versao: 1,
   };

@@ -43,6 +43,7 @@ function atividade(parcial: Partial<Atividade> = {}): Atividade {
     concluidaPor: parcial.concluidaPor ?? null,
     concluidaEm: parcial.concluidaEm ?? null,
     observacao: parcial.observacao ?? null,
+    reservaId: parcial.reservaId ?? null,
     deslocamento: parcial.deslocamento ?? null,
     versao: parcial.versao ?? 1,
   };
@@ -286,4 +287,105 @@ test("cancelar custo desconhecido não inventa número nem some com o que faltav
 
   const combinado = revisarImpacto(atividade({ id: "a2", custoCentavos: 9000n, custoNatureza: "compromisso" }), "cancelar");
   assert.ok(combinado.atencao.some((item) => /compromisso assumido fora do app/.test(item)), "não finge que desfez um compromisso");
+});
+
+// ---------------------------------------------------------------------------
+// Observações e reserva vinculada (diretriz §2.1: a ficha guarda o que não é horário)
+// ---------------------------------------------------------------------------
+
+test("atividade nasce sem reserva e sem observação; o que não foi dito fica nulo", () => {
+  const criada = criarAtividade({
+    id: "a9",
+    viagemId: "v1",
+    autorId: "u1",
+    contexto: CONTEXTO,
+    dia: "2026-11-20",
+    ordem: 1,
+    titulo: "Feira livre",
+  });
+  assert.equal(criada.reservaId, null);
+  assert.equal(criada.observacao, null);
+});
+
+test("criar com observação e reserva guarda os dois — e a observação é aparada", () => {
+  const criada = criarAtividade({
+    id: "a9",
+    viagemId: "v1",
+    autorId: "u1",
+    contexto: CONTEXTO,
+    dia: "2026-11-20",
+    ordem: 1,
+    titulo: "Feira livre",
+    observacao: "  precisa de rampa de acesso  ",
+    reservaId: "r1",
+  });
+  assert.equal(criada.observacao, "precisa de rampa de acesso");
+  assert.equal(criada.reservaId, "r1");
+});
+
+test("observação em branco não vira texto: é o mesmo que não ter dito nada", () => {
+  const criada = criarAtividade({
+    id: "a9",
+    viagemId: "v1",
+    autorId: "u1",
+    contexto: CONTEXTO,
+    dia: "2026-11-20",
+    ordem: 1,
+    titulo: "Feira livre",
+    observacao: "   ",
+  });
+  assert.equal(criada.observacao, null);
+});
+
+test("corrigir vincula e desvincula reserva, guardando o motivo e subindo a versão", () => {
+  const antes = atividade();
+  const vinculada = corrigirAtividade(antes, {
+    usuarioId: "u1",
+    contexto: CONTEXTO,
+    motivo: "A passagem comprada cobre este trecho",
+    alteracoes: { reservaId: "r7" },
+  });
+  assert.equal(vinculada.reservaId, "r7");
+  assert.equal(vinculada.versao, antes.versao + 1);
+
+  const desvinculada = corrigirAtividade(vinculada, {
+    usuarioId: "u1",
+    contexto: CONTEXTO,
+    motivo: "A reserva foi cancelada; o trecho agora é por conta",
+    alteracoes: { reservaId: null },
+  });
+  assert.equal(desvinculada.reservaId, null);
+});
+
+test("corrigir só a observação não mexe na reserva (e vice-versa)", () => {
+  const antes = atividade({ reservaId: "r7", observacao: "levar remédio" });
+  const soObservacao = corrigirAtividade(antes, {
+    usuarioId: "u1",
+    contexto: CONTEXTO,
+    motivo: "Combinamos de levar o remédio na mochila",
+    alteracoes: { observacao: "levar remédio e receita" },
+  });
+  assert.equal(soObservacao.reservaId, "r7", "a reserva vinculada continua vinculada");
+
+  const semAlteracao = corrigirAtividade(antes, {
+    usuarioId: "u1",
+    contexto: CONTEXTO,
+    motivo: "Só conferindo o registro",
+    alteracoes: {},
+  });
+  assert.equal(semAlteracao.observacao, "levar remédio");
+  assert.equal(semAlteracao.reservaId, "r7");
+});
+
+test("vincular reserva não confirma nada e não muda o custo da atividade", () => {
+  const antes = atividade({ custoCentavos: 12000n, custoNatureza: "estimativa" });
+  const comReserva = corrigirAtividade(antes, {
+    usuarioId: "u1",
+    contexto: CONTEXTO,
+    motivo: "A reserva da pousada cobre esta diária",
+    alteracoes: { reservaId: "r7" },
+  });
+  assert.equal(comReserva.custoCentavos, 12000n);
+  assert.equal(comReserva.custoNatureza, "estimativa", "quem muda a natureza do valor é a reserva confirmada, não o vínculo");
+  assert.equal(comReserva.estado, "planejada");
 });

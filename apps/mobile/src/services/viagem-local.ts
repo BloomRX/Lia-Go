@@ -12,7 +12,8 @@
 import type { EstadoSincronizacao } from "../offline/sincronizador.ts";
 import type { AtividadeApi, DespesaApi, DocumentoApi, ItemChecklistApi, MovimentoApi } from "./api.ts";
 import type { DetalheViagemLocal } from "@lia-go/sync";
-import type { Atividade, Documento, ItemChecklist } from "@lia-go/domain";
+import type { Atividade, Documento, ItemChecklist, Reserva } from "@lia-go/domain";
+import { comoReserva } from "./reserva-cache.ts";
 
 export interface DadosDaViagemAberta {
   detalhe: DetalheViagemLocal | null;
@@ -96,9 +97,23 @@ export function atividadeDoDominio(item: Record<string, unknown>): Atividade | n
     concluidaPor: (item["concluidaPor"] as string | null) ?? null,
     concluidaEm: (item["concluidaEm"] as string | null) ?? null,
     observacao: (item["observacao"] as string | null) ?? null,
+    reservaId: (item["reservaId"] as string | null) ?? null,
     deslocamento: (item["deslocamento"] as Atividade["deslocamento"]) ?? null,
     versao: Number(item["versao"] ?? 1),
   };
+}
+
+/**
+ * Reservas da viagem aberta como o domínio entende.
+ *
+ * A tela de atividade precisa disto para mostrar **a evidência** que já existe (o localizador da
+ * reserva confirmada): vincular uma atividade a uma reserva não confirma nada — quem confirma é a
+ * tela de Reservas, com evidência (decisões V1 §13).
+ */
+export function reservasDaViagem(estado: EstadoSincronizacao, viagemId: string): Reserva[] {
+  return dadosDaViagemAberta(estado, viagemId)
+    .reservas.map((item) => comoReserva(item))
+    .filter((reserva): reserva is Reserva => reserva !== null);
 }
 
 /** Atividades da viagem, prontas para as funções do domínio (roteiro e orçamento). */

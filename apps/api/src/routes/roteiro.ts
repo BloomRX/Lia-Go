@@ -55,6 +55,8 @@ const esquemaCriarAtividade = z.object({
   custoNatureza: z.enum(["estimativa", "compromisso", "gratuito"]).nullable().default(null),
   custoAVerificar: z.boolean().default(false),
   observacao: z.string().trim().max(2000).nullable().default(null),
+  // Reserva da viagem que cobre esta atividade (opcional). Vincular não confirma reserva nenhuma.
+  reservaId: z.string().uuid().nullable().default(null),
   deslocamento: esquemaDeslocamento.nullable().default(null),
 });
 
@@ -80,9 +82,33 @@ const esquemaCorrigir = z.object({
   custoNatureza: z.enum(["estimativa", "compromisso", "gratuito"]).nullable().optional(),
   custoAVerificar: z.boolean().optional(),
   observacao: z.string().trim().max(2000).nullable().optional(),
+  reservaId: z.string().uuid().nullable().optional(),
   deslocamento: esquemaDeslocamento.nullable().optional(),
   versao: z.number().int().positive().optional(),
 });
+
+/**
+ * A reserva vinculada tem de ser **desta viagem**.
+ *
+ * Um vínculo cruzado mostraria a evidência de outra viagem para quem não participa dela — e uma
+ * reserva cancelada não pode virar "a reserva desta atividade" sem ninguém perceber.
+ */
+async function exigirReservaDaViagem(
+  executor: pg.Pool | pg.PoolClient,
+  viagemId: string,
+  reservaId: string | null | undefined,
+): Promise<void> {
+  if (reservaId === null || reservaId === undefined) return;
+  const { rows } = await executor.query<{ estado: string }>(
+    "SELECT estado FROM reservas WHERE id = $1 AND viagem_id = $2",
+    [reservaId, viagemId],
+  );
+  const reserva = rows[0];
+  if (!reserva) throw new ErroHttp(400, "reserva_invalida", "Essa reserva não é desta viagem.");
+  if (reserva.estado === "cancelada") {
+    throw new ErroHttp(400, "reserva_cancelada", "Essa reserva foi cancelada: escolha outra ou deixe sem reserva.");
+  }
+}
 
 function contextoDominio(contexto: ContextoViagem): ContextoAutorizacao {
   return contexto.contexto;
@@ -166,6 +192,7 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
       { chave, usuarioId: autenticado.usuarioId, rota: `POST /viagens/${viagemId}/atividades` },
       async () =>
         emTransacao(pool, async (cliente) => {
+          await exigirReservaDaViagem(cliente, viagemId, corpo.reservaId);
           // Sem ordem informada, entra no fim do dia (a sequência lógica é de quem planeja).
           const ordem =
             corpo.ordem ??
@@ -190,14 +217,15 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
             custoNatureza: corpo.custoNatureza as NaturezaCusto | null,
             custoAVerificar: corpo.custoAVerificar,
             observacao: corpo.observacao,
+            reservaId: corpo.reservaId,
             deslocamento: paraDeslocamento(corpo.deslocamento),
           });
           const [minutos, km, custoDeslocamento, alerta] = deslocamentoParaColunas(atividade.deslocamento);
           await cliente.query(
             `INSERT INTO atividades (id, viagem_id, autor_id, dia, ordem, titulo, hora, duracao_minutos, local,
-                                     custo_centavos, custo_natureza, custo_a_verificar, estado, observacao,
+                                     custo_centavos, custo_natureza, custo_a_verificar, estado, observacao, reserva_id,
                                      deslocamento_minutos, deslocamento_km, deslocamento_custo_centavos, deslocamento_alerta, versao)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'planejada', $13, $14, $15, $16, $17, 1)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'planejada', $13, $18, $14, $15, $16, $17, 1)`,
             [
               atividade.id,
               viagemId,
@@ -216,6 +244,7 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
               km,
               custoDeslocamento,
               alerta,
+              atividade.reservaId,
             ],
           );
           await gravarEventoDaAtividade(cliente, {
@@ -346,6 +375,10 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
       if (corpo.custoNatureza !== undefined) alteracoes.custoNatureza = corpo.custoNatureza as NaturezaCusto | null;
       if (corpo.custoAVerificar !== undefined) alteracoes.custoAVerificar = corpo.custoAVerificar;
       if (corpo.observacao !== undefined) alteracoes.observacao = corpo.observacao;
+      if (corpo.reservaId !== undefined) {
+        await exigirReservaDaViagem(cliente, viagemId, corpo.reservaId);
+        alteracoes.reservaId = corpo.reservaId;
+      }
       if (corpo.deslocamento !== undefined) alteracoes.deslocamento = paraDeslocamento(corpo.deslocamento);
 
       const corrigida = corrigirAtividade(atual, {
@@ -359,7 +392,7 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
         `UPDATE atividades SET dia = $2, ordem = $3, titulo = $4, hora = $5, duracao_minutos = $6, local = $7,
                                custo_centavos = $8, custo_natureza = $9, custo_a_verificar = $10, observacao = $11,
                                deslocamento_minutos = $12, deslocamento_km = $13, deslocamento_custo_centavos = $14,
-                               deslocamento_alerta = $15, versao = versao + 1, atualizado_em = now()
+                               deslocamento_alerta = $15, reserva_id = $16, versao = versao + 1, atualizado_em = now()
           WHERE id = $1`,
         [
           atividadeId,
@@ -377,6 +410,7 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
           km,
           custoDeslocamento,
           alerta,
+          corrigida.reservaId,
         ],
       );
       await gravarEventoDaAtividade(cliente, {
@@ -392,6 +426,7 @@ export function rotasRoteiro(app: FastifyInstance, deps: { pool: pg.Pool; config
             hora: atual.hora,
             dia: atual.dia,
             custoCentavos: atual.custoCentavos === null ? null : atual.custoCentavos.toString(),
+            reservaId: atual.reservaId,
           },
           depois: {
             titulo: corrigida.titulo,

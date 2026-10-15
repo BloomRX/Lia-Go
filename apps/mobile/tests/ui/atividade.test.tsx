@@ -4,7 +4,7 @@
  *
  * O teste roda o app inteiro (App.tsx) com servidor falso e IndexedDB de verdade.
  */
-import { botaoCom, clicar, esperarPor, esperarAtualizacoes, raizDoDocumento, textoDaTela } from "./ambiente.ts";
+import { botaoCom, clicar, digitar, elemento, escolher, esperarPor, esperarAtualizacoes, raizDoDocumento, textoDaTela } from "./ambiente.ts";
 import { criarServidorFalso } from "./servidor-falso.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,6 +12,29 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../../src/App.tsx";
 import { CHAVE_CARGA, criarArmazenamentoIndexedDB } from "../../src/offline/armazenamento.ts";
+
+/** Reserva da viagem (o mesmo objeto que o servidor devolve, em camelCase). */
+function reserva(parcial: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "r1",
+    viagemId: "v1",
+    autorId: "u1",
+    tipo: "hospedagem",
+    titulo: "Pousada da serra",
+    local: "Centro",
+    inicio: "2026-11-20T14:00:00-03:00",
+    fim: null,
+    custoCentavos: "90000",
+    custoAVerificar: false,
+    confirmacao: null,
+    confirmadaPor: null,
+    confirmadaEm: null,
+    estado: "prevista",
+    motivoCancelamento: null,
+    versao: 1,
+    ...parcial,
+  };
+}
 
 const VIAGEM = {
   id: "v1",
@@ -54,14 +77,24 @@ function montar(): void {
   raizMontada.render(createElement(App));
 }
 
+/**
+ * Limpa o aparelho **depois** que a sincronização do teste anterior terminou.
+ *
+ * Sem essa espera a limpeza acontecia com uma passada ainda em voo: ela terminava depois, gravava a
+ * carga antiga e o teste seguinte via os dados do outro (foi assim que a reserva de um teste apareceu
+ * no lugar da reserva do seguinte). Limpar duas vezes é barato e fecha a janela.
+ */
 async function limparAparelho(): Promise<void> {
+  await esperarAtualizacoes(4);
+  await criarArmazenamentoIndexedDB("lia-go").limpar();
+  await esperarAtualizacoes(2);
   await criarArmazenamentoIndexedDB("lia-go").limpar();
   await esperarAtualizacoes(1);
 }
 
-async function abrirAtividade(): Promise<void> {
+async function abrirViagem(viagem: typeof VIAGEM = VIAGEM): Promise<void> {
   await limparAparelho();
-  const servidor = criarServidorFalso([VIAGEM]);
+  const servidor = criarServidorFalso([viagem]);
   (globalThis as Record<string, unknown>).fetch = servidor.fetch;
 
   montar();
@@ -69,9 +102,27 @@ async function abrirAtividade(): Promise<void> {
   clicar(botaoCom("Serra"));
   await esperarPor(() => textoDaTela().includes("Roteiro"), "a viagem abrir");
   clicar(botaoCom("Roteiro"));
-  await esperarPor(() => textoDaTela().includes("Passeio de trem"), "a linha do tempo carregar");
+  // A aba Roteiro pode estar vazia (o teste pode criar a primeira atividade): o sinal de que ela
+  // abriu é o próprio roteiro, não uma atividade específica.
+  await esperarPor(
+    () => textoDaTela().includes("Nova atividade") || textoDaTela().includes("Passeio de trem"),
+    "a aba Roteiro abrir",
+  );
+}
+
+async function abrirAtividade(viagem: typeof VIAGEM = VIAGEM): Promise<void> {
+  await abrirViagem(viagem);
   clicar(botaoCom("Passeio de trem"));
   await esperarPor(() => textoDaTela().includes("Antes de continuar"), "os detalhes da atividade abrirem");
+}
+
+/** Viagem com a atividade vinculada a uma reserva (e observação registrada). */
+function viagemComAtividade(parcialAtividade: Record<string, unknown>, reservas: Record<string, unknown>[]): typeof VIAGEM {
+  return {
+    ...VIAGEM,
+    reservas,
+    atividades: [{ ...VIAGEM.atividades[0]!, ...parcialAtividade }],
+  } as typeof VIAGEM;
 }
 
 test("concluir mostra a revisão de impacto antes do botão e diz que o saldo oficial não muda aqui", async () => {
@@ -108,4 +159,80 @@ test("sem digitar o motivo, cancelar avisa o que falta e não muda nada", async 
 
   assert.match(textoDaTela(), /Explique o motivo do cancelamento/);
   assert.ok(botaoCom("Cancelar atividade"), "a atividade continua planejada: nenhum cancelamento silencioso");
+});
+
+// ---------------------------------------------------------------------------
+// Reserva vinculada e observações (diretriz §2.1: a ficha guarda o que não é horário)
+// ---------------------------------------------------------------------------
+
+test("atividade vinculada mostra a reserva e avisa que prevista não é confirmada", async () => {
+  await abrirAtividade(
+    viagemComAtividade({ reservaId: "r1", observacao: "Levar água e bota" }, [reserva()]),
+  );
+
+  const tela = textoDaTela();
+  assert.match(tela, /Reserva/);
+  assert.match(tela, /Hospedagem: Pousada da serra/);
+  assert.match(tela, /Prevista/);
+  assert.match(tela, /ainda está prevista/);
+  assert.match(tela, /O Lia Go não confirma reserva por conta própria/, "nada de insinuar reserva confirmada (§13)");
+  assert.match(tela, /Levar água e bota/, "a observação aparece na ficha");
+});
+
+test("reserva confirmada mostra a evidência que existe — sem inventar localizador", async () => {
+  await abrirAtividade(
+    viagemComAtividade({ reservaId: "r1" }, [
+      reserva({ estado: "confirmada", confirmacao: "LOC-88231", confirmadaEm: "2026-11-01T10:00:00Z", confirmadaPor: "u1" }),
+    ]),
+  );
+
+  const tela = textoDaTela();
+  assert.match(tela, /Evidência da confirmação: LOC-88231/);
+  assert.match(tela, /Confirmada/);
+});
+
+test("atividade aponta para reserva que ainda não está no aparelho: a tela diz isso, não inventa", async () => {
+  await abrirAtividade(viagemComAtividade({ reservaId: "r9" }, [reserva()]));
+
+  assert.match(textoDaTela(), /aponta para uma reserva que ainda não está neste aparelho/);
+});
+
+test("corrigir a observação pela ficha: vale na hora e sobe com o motivo", async () => {
+  await abrirAtividade(viagemComAtividade({ reservaId: "r1", observacao: "Levar água" }, [reserva()]));
+
+  clicar(botaoCom("Corrigir dados"));
+  await esperarAtualizacoes(2);
+  const campo = elemento<HTMLTextAreaElement>("#ajuste-observacao");
+  assert.ok(campo, "o campo de observações precisa existir na correção");
+  assert.equal(campo.value, "Levar água", "o formulário abre com o que existe hoje");
+  await digitar(campo, "Levar água e protetor solar");
+  await digitar(elemento<HTMLInputElement>("#ajuste-motivo")!, "Combinamos de levar protetor");
+
+  clicar(botaoCom("Salvar correção"));
+  await esperarPor(() => textoDaTela().includes("Levar água e protetor solar"), "a observação nova aparecer", 5000);
+  assert.match(textoDaTela(), /Hospedagem: Pousada da serra/, "a reserva vinculada continua vinculada");
+});
+
+test("criar atividade com observação e reserva: o cartão do roteiro já diz que a reserva é prevista", async () => {
+  const viagem = { ...VIAGEM, reservas: [reserva()], atividades: [] } as typeof VIAGEM;
+  await abrirViagem(viagem);
+  assert.match(textoDaTela(), /Nenhuma atividade ainda/);
+
+  clicar(botaoCom("Nova atividade"));
+  await esperarPor(() => textoDaTela().includes("O que vai acontecer"), "o formulário abrir");
+  await digitar(elemento<HTMLInputElement>("#atividade-titulo")!, "Check-in na pousada");
+  await digitar(elemento<HTMLTextAreaElement>("#atividade-observacao")!, "Chegar antes das 18h");
+  const seletor = elemento<HTMLSelectElement>("#atividade-reserva");
+  assert.ok(seletor, "o formulário precisa oferecer a reserva da viagem");
+  await escolher(seletor, "r1");
+  assert.match(textoDaTela(), /Vincular não confirma a reserva/);
+
+  clicar(botaoCom("Guardar atividade"));
+  await esperarPor(() => textoDaTela().includes("Check-in na pousada"), "a atividade aparecer no roteiro", 5000);
+  assert.match(textoDaTela(), /Reserva prevista: Pousada da serra/, "a atividade vinculada mostra a reserva no cartão");
+
+  clicar(botaoCom("Check-in na pousada"));
+  await esperarPor(() => textoDaTela().includes("Quando e onde"), "a ficha da atividade abrir", 5000);
+  assert.match(textoDaTela(), /Chegar antes das 18h/, "a observação foi guardada de verdade");
+  assert.match(textoDaTela(), /Hospedagem: Pousada da serra/);
 });

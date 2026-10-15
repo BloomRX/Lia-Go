@@ -437,7 +437,58 @@ export function criarServidorFalso(
     }
 
     if (caminho.endsWith("/atividades") && metodo === "POST") {
-      return json({ dia: "2026-12-20", atividades: [], resumo: {}, conflitos: [] });
+      // A atividade criada fica na viagem: é o que o `/mudancas` devolve em seguida (o mesmo caminho
+      // do servidor de verdade) — sem guardar aqui, o teste não veria nada na tela depois de criar.
+      const corpo = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      const atividade = {
+        id: `a${(viagem.atividades ?? []).length + 1}`,
+        viagemId: viagem.id,
+        autorId: usuarioId,
+        dia: typeof corpo.dia === "string" ? corpo.dia : "2026-12-20",
+        ordem: (viagem.atividades ?? []).length + 1,
+        titulo: typeof corpo.titulo === "string" ? corpo.titulo : "Sem título",
+        hora: (corpo.hora as string | null) ?? null,
+        duracaoMinutos: (corpo.duracaoMinutos as number | null) ?? null,
+        local: (corpo.local as string | null) ?? null,
+        custo: {
+          centavos: (corpo.custoCentavos as string | null) ?? null,
+          natureza: (corpo.custoNatureza as string | null) ?? null,
+          aVerificar: corpo.custoAVerificar === true,
+        },
+        estado: "planejada",
+        concluidaPor: null,
+        concluidaEm: null,
+        observacao: (corpo.observacao as string | null) ?? null,
+        reservaId: (corpo.reservaId as string | null) ?? null,
+        deslocamento: corpo.deslocamento ?? null,
+        versao: 1,
+      };
+      viagem.atividades = [...(viagem.atividades ?? []), atividade];
+      viagem.versao += 1;
+      return json({ dia: atividade.dia, atividades: [atividade], resumo: {}, conflitos: [] }, 201);
+    }
+
+    if (caminho.includes("/atividades/") && caminho.endsWith("/corrigir")) {
+      const id = caminho.split("/").at(-2);
+      const corpo = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      const atividade = (viagem.atividades ?? []).find((item) => item["id"] === id);
+      if (!atividade) return json({ erro: "nao_encontrada", mensagem: "Atividade não encontrada." }, 404);
+      if (typeof corpo.titulo === "string" && corpo.titulo.trim() !== "") atividade["titulo"] = corpo.titulo;
+      if (corpo.hora !== undefined && corpo.hora !== null) atividade["hora"] = corpo.hora;
+      if (typeof corpo.duracaoMinutos === "number") atividade["duracaoMinutos"] = corpo.duracaoMinutos;
+      if (typeof corpo.local === "string" && corpo.local.trim() !== "") atividade["local"] = corpo.local;
+      if (corpo.observacao !== undefined) atividade["observacao"] = corpo.observacao;
+      if (corpo.reservaId !== undefined) atividade["reservaId"] = corpo.reservaId;
+      if (corpo.custoCentavos !== undefined) {
+        atividade["custo"] = {
+          centavos: corpo.custoCentavos,
+          natureza: (corpo.custoNatureza as string | null) ?? null,
+          aVerificar: false,
+        };
+      }
+      atividade["versao"] = Number(atividade["versao"] ?? 1) + 1;
+      viagem.versao += 1;
+      return json({ dia: atividade["dia"], atividades: [atividade], resumo: {}, conflitos: [] });
     }
 
     return json({ erro: "nao_implementado", mensagem: `A rota ${metodo} ${caminho} não existe no servidor falso.` }, 404);

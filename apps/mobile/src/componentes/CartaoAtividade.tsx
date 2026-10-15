@@ -26,12 +26,14 @@ interface Props {
   conflitos: ConflitoApi[];
   /** O deslocamento até esta atividade é mostrado **antes** dela, na linha do tempo. */
   deslocamentoDoTrecho?: AtividadeApi["deslocamento"];
+  /** Reserva vinculada (título e estado), quando existe: o compromisso que sustenta a atividade. */
+  reserva?: { titulo: string; estado: "prevista" | "confirmada" | "cancelada" } | null;
   aoAbrir: (atividadeId: string) => void;
 }
 
 /** Marcador da linha do tempo + trecho de deslocamento + cartão. */
-export function CartaoAtividade({ atividade, conflitos, deslocamentoDoTrecho, aoAbrir }: Props): React.ReactElement {
-  const contexto = linhasDeContexto(atividade);
+export function CartaoAtividade({ atividade, conflitos, deslocamentoDoTrecho, reserva, aoAbrir }: Props): React.ReactElement {
+  const contexto = linhasDeContexto({ ...atividade, reserva });
   const trecho = avaliarTrecho(deslocamentoDoTrecho);
   const temConflito = conflitos.length > 0;
   const concluida = atividade.estado === "concluida";
@@ -56,7 +58,12 @@ export function CartaoAtividade({ atividade, conflitos, deslocamentoDoTrecho, ao
           {contexto.length > 0 ? (
             <div className="atividade-contexto">
               {contexto.map((linha) => (
-                <span key={linha.texto} className={linha.tipo === "a-verificar" ? "custo-a-verificar" : linha.tipo === "custo" ? "custo" : undefined}>
+                <span
+                  key={linha.texto}
+                  className={
+                    linha.tipo === "a-verificar" ? "custo-a-verificar" : linha.tipo === "custo" ? "custo" : linha.tipo === "reserva" ? "reserva-vinculada" : undefined
+                  }
+                >
                   {linha.texto}
                 </span>
               ))}

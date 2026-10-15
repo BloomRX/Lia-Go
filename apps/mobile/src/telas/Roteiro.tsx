@@ -12,11 +12,18 @@
  *  - não mostra custo desconhecido como zero.
  */
 import { useMemo, useState } from "react";
-import { agruparPorDia, conflitosDoDia, resumirDia, type Atividade } from "@lia-go/domain";
+import {
+  ROTULO_ESTADO_RESERVA,
+  ROTULO_TIPO_RESERVA,
+  agruparPorDia,
+  conflitosDoDia,
+  resumirDia,
+  type Atividade,
+} from "@lia-go/domain";
 import { api, ErroApi, type AtividadeApi, type ConflitoApi } from "../services/api.ts";
 import { formatarDiaCurto, formatarDiaLongo, hojeIso, paraCentavos, ROTULO_ESTADO } from "../services/formato.ts";
 import { linhasDoResumoDoDia } from "../services/roteiro-texto.ts";
-import { atividadesDoDominio } from "../services/viagem-local.ts";
+import { atividadesDoDominio, reservasDaViagem } from "../services/viagem-local.ts";
 import { CartaoAtividade } from "../componentes/CartaoAtividade.tsx";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 
@@ -55,6 +62,8 @@ export function Roteiro({
     local: "",
     custo: "",
     natureza: "estimativa" as "estimativa" | "compromisso" | "gratuito",
+    observacao: "",
+    reservaId: "",
     aVerificar: false,
     deslocamentoMinutos: "",
     deslocamentoAlerta: "",
@@ -64,6 +73,15 @@ export function Roteiro({
   useMemo(() => sincronizador.assinar(setEstado), [sincronizador]);
 
   const atividades = useMemo(() => atividadesDoDominio(estado, viagemId), [estado, viagemId]);
+  // Reservas que a pessoa pode vincular: cancelada não entra (não sustenta mais o compromisso).
+  const reservasDisponiveis = useMemo(
+    () => reservasDaViagem(estado, viagemId).filter((reserva) => reserva.estado !== "cancelada"),
+    [estado, viagemId],
+  );
+  const reservaPorId = useMemo(
+    () => new Map(reservasDisponiveis.map((reserva) => [reserva.id, { titulo: reserva.titulo, estado: reserva.estado }])),
+    [reservasDisponiveis],
+  );
 
   const dias = useMemo(() => agruparPorDia(atividades), [atividades]);
   const diaAtual = diaEscolhido && dias.some((dia) => dia.dia === diaEscolhido) ? diaEscolhido : (dias[0]?.dia ?? nova.dia);
@@ -102,7 +120,8 @@ export function Roteiro({
           custoCentavos,
           custoNatureza: custoCentavos === null ? null : nova.natureza,
           custoAVerificar: nova.aVerificar,
-          observacao: null,
+          observacao: nova.observacao.trim() || null,
+          reservaId: nova.reservaId || null,
           deslocamento: nova.deslocamentoMinutos.trim()
             ? { minutos: Number(nova.deslocamentoMinutos), km: null, custoCentavos: null, alerta: nova.deslocamentoAlerta.trim() || null }
             : null,
@@ -112,7 +131,19 @@ export function Roteiro({
       await sincronizador.enfileirar(operacao);
       setFormularioAberto(false);
       setDiaEscolhido(nova.dia);
-      setNova({ ...nova, titulo: "", hora: "", duracao: "", local: "", custo: "", aVerificar: false, deslocamentoMinutos: "", deslocamentoAlerta: "" });
+      setNova({
+        ...nova,
+        titulo: "",
+        hora: "",
+        duracao: "",
+        local: "",
+        custo: "",
+        aVerificar: false,
+        observacao: "",
+        reservaId: "",
+        deslocamentoMinutos: "",
+        deslocamentoAlerta: "",
+      });
       setAviso(
         estado.online
           ? "Atividade guardada. Ela aparece na linha do tempo assim que o servidor confirmar."
@@ -280,6 +311,37 @@ export function Roteiro({
             </div>
           </div>
 
+          {reservasDisponiveis.length > 0 ? (
+            <>
+              <label htmlFor="atividade-reserva">Reserva desta atividade (opcional)</label>
+              <select
+                id="atividade-reserva"
+                value={nova.reservaId}
+                onChange={(evento) => setNova({ ...nova, reservaId: evento.target.value })}
+              >
+                <option value="">Sem reserva vinculada</option>
+                {reservasDisponiveis.map((reserva) => (
+                  <option key={reserva.id} value={reserva.id}>
+                    {ROTULO_TIPO_RESERVA[reserva.tipo]}: {reserva.titulo} · {ROTULO_ESTADO_RESERVA[reserva.estado]}
+                  </option>
+                ))}
+              </select>
+              <p className="suave pequeno">
+                Vincular não confirma a reserva: quem confirma é a tela Reservas, com a evidência (localizador, código).
+              </p>
+            </>
+          ) : null}
+
+          <label htmlFor="atividade-observacao">Observações e acessibilidade (opcional)</label>
+          <textarea
+            id="atividade-observacao"
+            value={nova.observacao}
+            onChange={(evento) => setNova({ ...nova, observacao: evento.target.value })}
+            rows={2}
+            maxLength={2000}
+            placeholder="Precisa de rampa de acesso; levar remédio na mochila"
+          />
+
           <div className="acoes">
             <button className="principal" type="submit" disabled={ocupado}>
               {ocupado ? "Guardando…" : "Guardar atividade"}
@@ -367,6 +429,7 @@ export function Roteiro({
                 atividade={atividade as unknown as AtividadeApi}
                 conflitos={conflitosPorAtividade.get(atividade.id) ?? []}
                 deslocamentoDoTrecho={indice === 0 ? null : ((atividade.deslocamento as AtividadeApi["deslocamento"]) ?? null)}
+                reserva={atividade.reservaId ? (reservaPorId.get(atividade.reservaId) ?? null) : null}
                 aoAbrir={abrirAtividade}
               />
             ))}

@@ -209,6 +209,8 @@ small.suave { color: var(--texto-suave); }
 .atividade-contexto { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); font-size: 0.84rem; color: var(--texto-suave); }
 .atividade-contexto .custo { color: var(--texto); }
 .atividade-contexto .custo-a-verificar { color: var(--atencao); }
+/* Reserva vinculada: informação, não alarme — o estado (prevista/confirmada) vai escrito no texto. */
+.atividade-contexto .reserva-vinculada { color: var(--lilas); }
 
 .alerta-conflito {
   margin-top: 10px; border-left: 3px solid var(--atencao); padding: 6px 10px;

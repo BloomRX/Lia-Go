@@ -34,7 +34,7 @@ export function textoDoHorario(hora: string | null): string {
 export interface LinhaDeContexto {
   texto: string;
   /** `a-verificar` e `custo` têm tratamento visual próprio (atenção / valor). */
-  tipo: "local" | "duracao" | "a-verificar" | "custo";
+  tipo: "local" | "duracao" | "a-verificar" | "custo" | "reserva";
 }
 
 export function linhasDeContexto(atividade: {
@@ -45,9 +45,24 @@ export function linhasDeContexto(atividade: {
   custoCentavos?: bigint | null;
   custoNatureza?: CustoNaApi["natureza"];
   custoAVerificar?: boolean;
+  /**
+   * Reserva vinculada à atividade, quando existe.
+   *
+   * O estado vai no texto de propósito: \"prevista\" e \"confirmada\" são coisas diferentes — a
+   * confirmada tem evidência (localizador), a prevista é plano. A cartela do roteiro não pode
+   * apresentar uma como se fosse a outra (decisões V1 §13).
+   */
+  reserva?: { titulo: string; estado: "prevista" | "confirmada" | "cancelada" } | null;
 }): LinhaDeContexto[] {
   const linhas: LinhaDeContexto[] = [];
   const custoBruto = custoDoCartao(atividade);
+
+  if (atividade.reserva && atividade.reserva.estado !== "cancelada") {
+    linhas.push({
+      texto: `${atividade.reserva.estado === "confirmada" ? "Reserva confirmada" : "Reserva prevista"}: ${atividade.reserva.titulo}`,
+      tipo: "reserva",
+    });
+  }
 
   if (atividade.local) linhas.push({ texto: atividade.local, tipo: "local" });
 

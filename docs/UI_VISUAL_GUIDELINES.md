@@ -34,6 +34,12 @@ A tela própria deve poder acomodar, conforme a atividade:
 - documentos e links;
 - histórico e ações autorizadas.
 
+**Estado em 2026-10-15:** a ficha própria já acomoda informações completas, horário e duração, local e
+deslocamento, custos com natureza do valor, **reserva vinculada com a evidência disponível**,
+observações (usadas também para acessibilidade) e histórico com as ações autorizadas. Falta
+**documentos e links** — o vínculo precisa carregar a mesma regra de privacidade do documento (quem
+perdeu acesso não pode descobrir pelo vínculo), por isso é fatia própria.
+
 ### 2.2 Cartão de atividade
 
 Padrão **equilibrado**. O cartão mostra diretamente:

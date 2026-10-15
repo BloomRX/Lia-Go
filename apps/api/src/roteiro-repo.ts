@@ -25,6 +25,7 @@ interface LinhaAtividade {
   concluida_por: string | null;
   concluida_em: Date | null;
   observacao: string | null;
+  reserva_id: string | null;
   deslocamento_minutos: number | null;
   deslocamento_km: number | null;
   deslocamento_custo_centavos: string | null;
@@ -35,7 +36,7 @@ interface LinhaAtividade {
 const COLUNAS = `id, viagem_id, autor_id, to_char(dia, 'YYYY-MM-DD') AS dia, ordem, titulo,
                  to_char(hora, 'HH24:MI') AS hora, duracao_minutos, local,
                  custo_centavos::text AS custo_centavos, custo_natureza, custo_a_verificar,
-                 estado, concluida_por, concluida_em, observacao,
+                 estado, concluida_por, concluida_em, observacao, reserva_id,
                  deslocamento_minutos, deslocamento_km,
                  deslocamento_custo_centavos::text AS deslocamento_custo_centavos, deslocamento_alerta, versao`;
 
@@ -70,6 +71,7 @@ export function mapearAtividade(linha: LinhaAtividade): Atividade {
     concluidaPor: linha.concluida_por,
     concluidaEm: linha.concluida_em ? linha.concluida_em.toISOString() : null,
     observacao: linha.observacao,
+    reservaId: linha.reserva_id,
     deslocamento,
     versao: linha.versao,
   };
@@ -96,6 +98,8 @@ export function atividadeParaJson(atividade: Atividade): Record<string, unknown>
     concluidaPor: atividade.concluidaPor,
     concluidaEm: atividade.concluidaEm,
     observacao: atividade.observacao,
+    // A atividade aponta para a reserva que a cobre; a tela busca os dados dela (e a evidência) na lista.
+    reservaId: atividade.reservaId,
     deslocamento: atividade.deslocamento
       ? {
           minutos: atividade.deslocamento.minutos,

@@ -206,8 +206,8 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento, notificações) | ✅ **151 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado | ✅ **86 testes** | `npm run test:api` (banco real) |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento, notificações) | ✅ **157 testes** | `npm run test:domain` |
+| API Fastify + PostgreSQL + SQL versionado (migrações `0001`–`0008`) | ✅ **92 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
@@ -218,7 +218,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
-| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero) | ✅ **37 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reserva vinculada e observações da atividade, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero) | ✅ **42 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
 | Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
 | Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
 | Reservas (hospedagem, transporte, passeio, outro) | ✅ **13 testes** de domínio + **8** de API + 4 de interface | `packages/domain/src/reserva.ts`, `apps/api/src/routes/reservas.ts`, `telas/Reservas.tsx` |
@@ -227,6 +227,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Documentos privados por padrão (compartilhar, revogar, remover com motivo, lavagem da cópia local de quem perdeu acesso) | ✅ **7 testes** de domínio + **14** de API + 3 de interface | `packages/domain/src/documento.ts`, `apps/api/src/routes/documentos.ts`, `telas/Documentos.tsx` |
 | Fechamento/exportação (números do servidor, acertos sugeridos, `.txt`/`.csv`) | ✅ **6 testes** de domínio + **2** de API + 3 de interface | `packages/domain/src/fechamento.ts`, `apps/api/src/routes/orcamento.ts`, `telas/Fechamento.tsx` |
 | Referências visuais oficiais aplicadas (hero com a Lia, próximo compromisso, cartões do `concept-03`) | ✅ 2 testes de interface | `apps/mobile/public/lia-hero.jpg`, `telas/Viagem.tsx`, `styles.css` |
+| Reserva vinculada à atividade (uma reserva por atividade, recusa de vínculo cruzado/cancelado) e observações da atividade | ✅ **6 testes** de domínio + **6** de API + 5 de interface | `apps/api/migrations/0008_atividade_reserva.sql`, `packages/domain/src/roteiro.ts`, `telas/Roteiro.tsx`, `telas/Atividade.tsx` |
 | Central de notificações (tela 16): derivada dos dados, filtros, ler ≠ dispensar ≠ resolver, mesmo número no Início | ✅ **42 testes** de domínio + 9 de interface | `packages/domain/src/notificacao.ts`, `apps/mobile/src/services/use-notificacoes.ts`, `telas/Notificacoes.tsx` |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
@@ -282,6 +283,9 @@ código, não só no documento:
 | Custo tem **natureza**: `estimativa`, `compromisso`, `gratuito`, ou **desconhecido** | `custoParaMostrar` + CHECKs na migração `0003` | Desconhecido ≠ zero ≠ gratuito; o resumo mostra `custoConhecidoCentavos` e sinaliza `temCustoAVerificar` |
 | Conflito é **explicado**, nunca resolvido sozinho | `conflitosDoDia` (sobreposição, deslocamento insuficiente) | O app sugere o ajuste e espera a decisão; remarcar sozinho quebra a confiança |
 | Concluir/cancelar/corrigir exigem **motivo** (≥5 caracteres na correção/cancelamento) | rota + domínio | Histórico serve para aprender, não para apagar |
+| A atividade pode apontar para a **reserva** que a cobre, e a ficha mostra a evidência que já existe | `atividades.reserva_id` (migração `0008`), `exigirReservaDaViagem` na rota | Vínculo cruzado mostraria evidência de outra viagem; reserva cancelada não sustenta compromisso — as duas coisas são recusadas com motivo |
+| Anexar reserva **não** confirma reserva nem muda a natureza do dinheiro | `vinculada` (domínio) e teste de API "sem mexer na reserva em si" | Confirmar exige evidência (decisões V1 §13); o vínculo é só um ponteiro para o que já existe |
+| Observação da atividade é texto livre (também usada para acessibilidade) | `atividade.observacao`, campo no formulário e na correção | Um segundo campo livre para acessibilidade seria o mesmo dado com dois lugares para divergir |
 | Antes de concluir/cancelar, a tela mostra o **impacto conhecido** | `revisarImpacto` + bloco "Antes de continuar" | `UI_V1_DECISIONS` §13: a interface não pode insinuar que algo externo aconteceu nem mudar dinheiro oficial por conta própria |
 | Depois do cancelamento da viagem, **registrar o que houve com o que já existia** continua permitido | `PERMITIDAS_APOS_CANCELAMENTO` (`atividade:concluir/cancelar/corrigir`) | Viagem cancelada não recebe plano novo, mas o passado aconteceu — mesma lógica das despesas |
 | Viagem concluída bloqueia `atividade:criar` | `packages/domain/src/permissions.ts` | Não se planeja o que já terminou |
