@@ -1,5 +1,5 @@
 /**
- * Checklist da viagem (tela 15).
+ * Checklist da viagem (tela 14 — reservas e checklist, em `docs/UX_SCREENS.md`).
  *
  * Regras que esta tela respeita (`packages/domain/src/checklist.ts`):
  *  - **prazo não conclui nada**: atraso é rótulo de leitura, quem conclui é uma pessoa;

@@ -234,10 +234,18 @@ O que as referências **confirmam** do que já está no app: fundo escuro, roxo/
 arredondados, etiqueta de estado, timeline por dia, resumo financeiro no topo da viagem, barra
 inferior com quatro destinos e pendências do grupo em lista.
 
-O que as referências **pedem e ainda não existe** (próximas fatias, sem reescrever arquitetura):
-hero da viagem com a Lia, **orçamento com barra e limite** (hoje mostramos previsto × oficial sem
-limite coletivo/individual), "próximo compromisso" em destaque, seletor de abas da web (Início,
-Viagens, Despesas, Participantes, Documentos, Configurações) e a aba **Documentos**.
+O que as referências pediam e **já foi implementado** (2026-10-15, décima rodada): **hero da viagem com
+a Lia** na Visão geral, **orçamento com barra e limite** (coletivo do organizador, individual de cada
+pessoa, atenção a partir de 80%, estado sempre em texto), **"próximo compromisso" em destaque** (só o
+que ainda vai acontecer) e as telas de **checklist**, **documentos** (privados por padrão) e
+**fechamento/exportação** na aba Mais. A imagem do hero é uma cópia comprimida em
+`apps/mobile/src/assets/lia-hero.jpg` (900 px, 58 KB) — a referência original continua aqui em
+`assets/references/`.
+
+O que as referências **pedem e ainda não existe**: a barra de navegação da web com seletor lateral
+(Início, Viagens, Despesas, Participantes, Documentos, Configurações), a aba **Documentos** própria na
+barra inferior do celular (hoje ela vive na aba Mais; cinco destinos exigem teste em tela pequena) e os
+gráficos do painel web (pizza por categoria, linha do tempo). Nada disso muda arquitetura.
 
 ## 8. O que ainda não está decidido
 

@@ -4,21 +4,24 @@ Aplicativo gratuito para organizar viagens em grupo: roteiro, reservas e documen
 despesas compartilhadas, rateios e acertos — com a assistente Lia.
 Celular é a plataforma principal; a versão web é complementar.
 
-## Estado atual (2026-10-12)
+## Estado atual (2026-10-15)
 
 | Área | Situação |
 |---|---|
-| Planejamento de produto e regras | ✅ completo em `docs/` (283 testes verdes no total) |
+| Planejamento de produto e regras | ✅ completo em `docs/` (356 testes verdes no total) |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento e reservas) | ✅ **83 testes** |
-| API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas) | ✅ **57 testes** com PostgreSQL real |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, reservas, checklist, documentos e fechamento) | ✅ **109 testes** |
+| API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas, orçamento, checklist, documentos, fechamento) | ✅ **86 testes** com PostgreSQL real |
 | App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 + 43 testes** (`npm run test:sync`, `npm run test:app`) |
-| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem, revisão de impacto, reservas) | ✅ **13 testes** (`npm run test:ui`) |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 + 46 testes** (`npm run test:sync`, `npm run test:app`) |
+| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem, revisão de impacto, reservas, orçamento, checklist, documentos, fechamento) | ✅ **28 testes** (`npm run test:ui`) |
 | Automação de execução | ✅ `LiaGo.bat` (**duplo clique faz tudo**: atualiza do GitHub, instala dependências, sobe o banco, testa, grava relatórios/diagnóstico, envia ao GitHub e deixa o app no ar) |
 | Roteiro (timeline, concluir/cancelar/corrigir) e orçamento do roteiro | ✅ funcionando (`telas/Roteiro.tsx`, `telas/Atividade.tsx`, `telas/Viagem.tsx`) |
 | Reservas (prevista → confirmada com evidência → cancelada com motivo) | ✅ funcionando (`telas/Reservas.tsx`, aba Mais) |
-| Checklist / documentos | ⬜ próximas fatias |
+| Orçamento com limite + barra (planejamento, nunca saldo oficial) | ✅ funcionando (`telas/Orcamento.tsx`, aba Gastos) |
+| Checklist (prazo não conclui; reabrir exige motivo) e documentos (privados por padrão) | ✅ funcionando (`telas/Checklist.tsx`, `telas/Documentos.tsx`, aba Mais) |
+| Fechamento e exportação `.txt`/`.csv` | ✅ funcionando (`telas/Fechamento.tsx`, aba Mais) |
+| Referências visuais oficiais (`assets/references/`) aplicadas | ✅ hero com a Lia, "próximo compromisso" e cartões do `concept-03` |
 | Ferramentas de git seguro (DevKit) | ✅ funcionando, 39 testes passando |
 
 ## Ordem de leitura
@@ -37,7 +40,7 @@ Celular é a plataforma principal; a versão web é complementar.
 
 ## Como rodar
 ```text
-Windows (duplo clique):  LiaGo.bat          → opção 1 faz tudo (banco, testes, relatório, sync)
+Windows (duplo clique):  LiaGo.bat          → roda tudo sozinho (banco, migrações, testes, relatório, sync)
 Terminal (qualquer SO):  npm install && npm run db:up && npm run migrate && npm test
 Desenvolvimento:         LiaGo.bat (opção 3) → API em :3000 e app web em :5273
 ```

@@ -119,7 +119,54 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível, estado **nunca só por cor**).
   Desde 2026-10-15 as referências estão versionadas em `assets/references/` (caminhos oficiais em
   `UI_VISUAL_GUIDELINES.md` §7) e confirmam esses tokens.
-- **Placar da rodada**: 283 testes verdes (ferramentas 39 · domínio 83 · sincronização 48 · app 56 — 43 de unidade + 13 de interface em jsdom · API 57).
+- **Placar da rodada**: 283 testes verdes (ferramentas 39 · domínio 83 · sincronização 48 · app 56 — 43 de unidade + 13 de interface em jsdom · API 57; o placar da décima rodada está na entrada mais recente).
+
+### Orçamento com limite, checklist, documentos e fechamento (2026-10-15, décima rodada)
+
+Fatia entregue de ponta a ponta — domínio, API, app e testes — sem nova pergunta ao usuário
+(decisão vigente: "faz tudo de uma vez, depois lapidamos os erros que aparecerem").
+
+- **Orçamento com limite (tela 9)** — o limite é **planejamento**, não bloqueio e não saldo: a aba
+  Gastos mostra barra + estado escrito (`Sem limite` / `Dentro do limite` / `Perto do limite` /
+  `Passou do limite`, atenção a partir de 80%), e o número oficial continua sendo só o confirmado.
+  **Quem define o que**: o limite **coletivo** é do organizador (`orcamento:definir`); o **individual**
+  é de cada pessoa (`orcamento:definir-proprio`), e o organizador pode ajustar o combinado de alguém.
+  Limite **0 é um combinado explícito** ("não gastar"), não "sem limite".
+- **Checklist (tela 14 — reservas e checklist)** — prazo **não conclui nada**: atraso é rótulo de leitura (`itemAtrasado`),
+  conclusão grava quem/quando e reabrir exige **motivo ≥ 5 caracteres** (vai para a trilha). A ordem de
+  leitura (atrasado → prazo mais próximo → sem prazo → feito) e o resumo (`3 em aberto · 1 feito ·
+  1 atrasado`) são do domínio, não do JSX.
+- **Documentos (tela 15)** — **privado por padrão**: só quem criou vê; compartilhar é passo separado
+  (com a viagem ou com pessoas, dedup, sem si mesmo) e revogável. Remover exige motivo, é remoção
+  **lógica** (registro e motivo continuam com quem organiza) e revoga o acesso de todos. O app guarda
+  **link e descrição** — não guarda binário (hospedagem/custo ainda não confirmados), e a tela diz isso.
+  Link só `http(s)`; a tela abre em outra aba com aviso "(abre fora do Lia Go)".
+- **Quem não pode ver recebe 404, inclusive o organizador**: a rota de agir (compartilhar/revogar/remover)
+  carrega o documento **com a mesma regra de visibilidade**. Sem isso, quem organiza (ou qualquer pessoa
+  sem acesso) conseguia agir sobre documento privado alheio — e a mensagem de erro confirmava que ele
+  existia. Defeito encontrado por teste, corrigido na API.
+- **Sair da lista também no aparelho**: documento que a pessoa deixou de poder ver chega na
+  sincronização como `{id, removido: true}` — só o identificador, nada de conteúdo — e a cópia local é
+  apagada. O evento de compartilhar/revogar/remover guarda o acesso **antes** e **depois**; quem nunca
+  viu não recebe nada.
+- **Fechamento e exportação (tela 21)** — `montarFechamento` (domínio) usa **o mesmo** resumo financeiro
+  do servidor (`financas.ts` → `calcularResumoFinanceiro`) e as mesmas sugestões de acerto do roteiro
+  (`sugerirTransferencias`): nada de conta paralela. Só o confirmado é oficial; o que aguarda aparece
+  separado e com aviso. Exporta `.txt` legível e `.csv` com ponto e vírgula e vírgula decimal; campo que
+  começa com `=`, `+`, `-` ou `@` ganha apóstrofo (fórmula não executa na planilha de quem abrir).
+  **No app do celular não existe download**: a tela mostra o texto para copiar e diz por quê, em vez de
+  fingir que baixou (§13).
+- **Fila do aparelho cresceu**: `criar_item_checklist`, `concluir_item_checklist`, `reabrir_item_checklist`
+  e `criar_documento` entram na outbox como as demais escritas — valem na hora e sobem quando houver rede.
+  A carga local ganhou `itensChecklist` e `documentos` (cache antigo é completado por `cargaCompleta`).
+- **Referências oficiais aplicadas** (`assets/references/`): hero da viagem com a Lia na Visão geral,
+  cartão **"Próximo compromisso"** (só o que ainda vai acontecer; compromisso do dia sem hora continua
+  valendo; nada à frente = a tela diz que não há) e o cartão de orçamento com barra do `concept-03`.
+  A imagem usada pelo app é uma cópia comprimida em `apps/mobile/src/assets/lia-hero.jpg` (900 px, 58 KB);
+  a referência original continua em `assets/references/`.
+- **Placar de testes desta rodada** (tudo verde, `npm test` na raiz): ferramentas 39 · domínio 109 ·
+  sincronização 48 · app 46 (unitário) + 28 (interface, jsdom) · API 86 = **356**. A suíte de interface
+  agora cobre orçamento, checklist, documentos, fechamento e a Visão geral.
 
 ### Reservas e revisão de impacto (2026-10-15, nona rodada)
 

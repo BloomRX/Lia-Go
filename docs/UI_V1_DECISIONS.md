@@ -169,5 +169,7 @@ As referências fornecidas pelo planejamento devem orientar a identidade Lia Go:
 
 **Atualização (2026-10-15):** as referências foram versionadas pelo responsável em `assets/references/`
 (commits `c53c11c` e `be91721`) — caminhos oficiais registrados em `UI_VISUAL_GUIDELINES.md` §7.
-A implementação segue sem bloquear: os tokens já estavam corretos e as referências agora guiam as
-próximas fatias (hero da viagem, orçamento com barra/limite, aba Documentos).
+A implementação seguiu sem bloquear: os tokens já estavam corretos e as referências guiaram a décima
+rodada — hero da viagem com a Lia, orçamento com barra/limite, "próximo compromisso" em destaque,
+checklist, documentos privados por padrão e fechamento com exportação. Falta apenas a navegação lateral
+da web e a aba Documentos própria na barra inferior (hoje na aba Mais).

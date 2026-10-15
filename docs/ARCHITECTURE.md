@@ -206,22 +206,27 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas) | ✅ **83 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado | ✅ **57 testes** | `npm run test:api` (banco real) |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento) | ✅ **109 testes** | `npm run test:domain` |
+| API Fastify + PostgreSQL + SQL versionado | ✅ **86 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 testes** no pacote + 43 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 testes** no pacote + 46 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
-| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reservas) | ✅ **13 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reservas, orçamento com limite, checklist, documentos, fechamento, Visão geral com o hero) | ✅ **28 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
 | Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
 | Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
 | Reservas (hospedagem, transporte, passeio, outro) | ✅ **13 testes** de domínio + **8** de API + 4 de interface | `packages/domain/src/reserva.ts`, `apps/api/src/routes/reservas.ts`, `telas/Reservas.tsx` |
+| Orçamento com limite coletivo/individual e barra (planejamento; nunca muda o saldo oficial) | ✅ **7 testes** de domínio + **7** de API + 4 de interface | `packages/domain/src/orcamento.ts`, `apps/api/src/routes/orcamento.ts`, `telas/Orcamento.tsx` |
+| Checklist (prazo não conclui; reabrir com motivo) | ✅ **6 testes** de domínio + **8** de API + 3 de interface | `packages/domain/src/checklist.ts`, `apps/api/src/routes/checklist.ts`, `telas/Checklist.tsx` |
+| Documentos privados por padrão (compartilhar, revogar, remover com motivo, lavagem da cópia local de quem perdeu acesso) | ✅ **7 testes** de domínio + **14** de API + 3 de interface | `packages/domain/src/documento.ts`, `apps/api/src/routes/documentos.ts`, `telas/Documentos.tsx` |
+| Fechamento/exportação (números do servidor, acertos sugeridos, `.txt`/`.csv`) | ✅ **6 testes** de domínio + **2** de API + 3 de interface | `packages/domain/src/fechamento.ts`, `apps/api/src/routes/orcamento.ts`, `telas/Fechamento.tsx` |
+| Referências visuais oficiais aplicadas (hero com a Lia, próximo compromisso, cartões do `concept-03`) | ✅ 2 testes de interface | `apps/mobile/src/assets/lia-hero.jpg`, `telas/Viagem.tsx`, `styles.css` |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
 mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere
@@ -312,8 +317,8 @@ Rotas: `GET /viagens/:id/reservas`, `GET /viagens/:id/reservas/:reservaId` (com 
 cursor (mesmo caminho offline do roteiro) e passam pela fila do aparelho.
 
 ### Próxima fatia (proposta)
-1. **Checklist** da viagem (itens por pessoa, prazos) e **documentos** privados com compartilhamento
-   revogável — reusando o padrão de reservas/roteiro.
-2. Exportação/fechamento de contas (tela 21) e configurações (tela 18).
-3. Revisão de impacto para **substituir o roteiro vigente** (prévia de diferenças e versões anteriores) — o impacto de concluir/cancelar já existe.
-4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).
+1. **Configurações** (tela 18) e **central de notificações** (tela 16) — as duas telas V1 que faltam por completo.
+2. **Substituir o roteiro vigente com revisão de impacto** (prévia de diferenças e versões anteriores) — o impacto de concluir/cancelar já existe.
+3. Navegação lateral da web e aba **Documentos** própria na barra inferior do celular (hoje na aba Mais).
+4. Notificações essenciais, tornando o limiar de atenção do orçamento configurável (hoje fixo em 80%).
+5. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).

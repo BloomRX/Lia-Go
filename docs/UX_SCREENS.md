@@ -5,7 +5,8 @@ de código (React + TypeScript). Layout, alvos de toque e área segura devem ser
 telas pequenas.
 
 ## Navegação principal
-Barra inferior: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações. (Hoje: Visão geral, Roteiro, Gastos e **Mais** — as reservas moram na aba Mais.)
+Barra inferior pretendida: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações.
+**Estado em 2026-10-15 (décima rodada):** a barra tem Visão geral, Roteiro, Gastos e **Mais**; na aba Mais já vivem **Participantes**, **Reservas**, **Checklist**, **Documentos** e **Fechamento/exportação**, além de "Este aparelho" (dados locais e sessão). Documentos ganha aba própria quando a barra inferior tiver cinco itens (celular pequeno pede teste antes).
 
 ## Telas V1
 1. **Boas-vindas / autenticação** — entrar, criar conta, recuperação; métodos finais a definir após inspeção técnica.
@@ -16,19 +17,19 @@ Barra inferior: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área
 6. **Roteiro** — timeline vertical por dia; horários, duração, deslocamentos, custos e alertas; distinguir proposta, aprovada, confirmada e a verificar.
 7. **Detalhes da atividade** — tela própria para informações completas da atividade; o cartão do roteiro permanece resumido.
 8. **Revisão de mudanças** — mostrar diferenças, conflitos e impactos antes de substituir roteiro vigente.
-9. **Orçamento** — limite coletivo/individual, realizado versus comprometido, alertas configuráveis.
+9. **Orçamento** — limite coletivo/individual, realizado versus comprometido, alertas configuráveis. ✅ implementada (limite é planejamento; barra + estado em texto; atenção a partir de 80%; limite coletivo do organizador, individual de cada pessoa).
 10. **Nova despesa / detalhe** — campos obrigatórios, participantes e tipo de gasto, comprovante opcional, estado de confirmação e histórico.
 11. **Rateio** — método, participantes, valores, parcelas e soma exata; revisão humana.
 12. **Saldos e acertos** — quem deve a quem, sugestão de transferências, pagamento informado/confirmado/parcial/contestado.
 13. **Moedas** — valores originais e convertidos, taxa e referência temporal, identificação de estimativas.
-14. **Reservas e checklist** — registros manuais, links, prazos e documentos associados; não afirmar confirmação sem evidência.
-15. **Documentos** — privados por padrão, compartilhamento individual, destinatários e revogação.
+14. **Reservas e checklist** — registros manuais, links, prazos e documentos associados; não afirmar confirmação sem evidência. ✅ implementada (reservas na aba Mais; checklist na aba Mais, com prazo que não conclui nada e reabertura com motivo).
+15. **Documentos** — privados por padrão, compartilhamento individual, destinatários e revogação. ✅ implementada (privado por padrão; compartilhar/revogar; remover exige motivo e é remoção lógica; o app guarda link e descrição, não o arquivo).
 16. **Central de notificações** — filtros por viagem, categoria, prioridade e estado; histórico completo.
 17. **Participantes e permissões** — acesso, convites, saída/remoção e funções administrativas.
 18. **Configurações** — preferências, notificações, moedas, privacidade e sessão.
 19. **Cancelar viagem** — prévia de impactos conhecidos e confirmação explícita; após cancelar, lista de pendências restantes.
 20. **Concluir viagem** — confirmação por qualquer participante ativo; resumo previsto versus realizado e pendências financeiras claramente separadas.
-21. **Fechamento / exportação** — resumo de despesas, saldos, moedas, pagamentos e pendências; exportar somente dados autorizados.
+21. **Fechamento / exportação** — resumo de despesas, saldos, moedas, pagamentos e pendências; exportar somente dados autorizados. ✅ implementada (números do servidor, acertos como sugestão, `.txt` e `.csv`; no celular sem download, o texto aparece para copiar).
 
 ## Padrão visual do roteiro — decisões confirmadas
 

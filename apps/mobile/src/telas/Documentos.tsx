@@ -1,5 +1,5 @@
 /**
- * Documentos da viagem (tela 16).
+ * Documentos da viagem (tela 15).
  *
  * Regras que esta tela respeita (decisões V1 §13 e `packages/domain/src/documento.ts`):
  *  - documento **nasce privado**: só quem criou vê, e ninguém — nem quem organiza — vê o conteúdo
