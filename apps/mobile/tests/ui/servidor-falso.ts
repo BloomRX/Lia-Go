@@ -21,6 +21,12 @@ export interface ViagemFalsa {
   /** Gasto confirmado/official que o servidor devolve em `/saldos`. */
   realizado?: string;
   comprometido?: string;
+  /** Despesas pendentes/contestadas: é o número que a central de notificações usa. */
+  pendenciasFinanceiras?: number;
+  /** Acertos registrados (pagamento informado/confirmado). */
+  movimentos?: Record<string, unknown>[];
+  /** Convites que o organizador enviou (a central avisa os que não foram aceitos). */
+  convites?: Record<string, unknown>[];
 }
 
 export interface ServidorFalso {
@@ -32,7 +38,12 @@ export interface ServidorFalso {
 
 const PARTICIPANTE = { usuario_id: "u1", nome: "Ana", papel: "organizador", estado: "ativo" };
 
-export function criarServidorFalso(viagens: ViagemFalsa[], usuarioId = "u1"): ServidorFalso {
+export function criarServidorFalso(
+  viagens: ViagemFalsa[],
+  usuarioId = "u1",
+  /** Convites que **eu** recebi e ainda não aceitei (vêm da lista de viagens). */
+  convitesPendentes: Record<string, unknown>[] = [],
+): ServidorFalso {
   const estado: ServidorFalso = { viagens, chamadas: [], encerrado: false, fetch: () => Promise.reject(new Error("não pronto")) };
 
   function resumo(viagem: ViagemFalsa) {
@@ -47,7 +58,7 @@ export function criarServidorFalso(viagens: ViagemFalsa[], usuarioId = "u1"): Se
       estado: viagem.estado,
       versao: viagem.versao,
       papel: viagem.papel,
-      pendencias_financeiras: 0,
+      pendencias_financeiras: viagem.pendenciasFinanceiras ?? 0,
     };
   }
 
@@ -73,7 +84,7 @@ export function criarServidorFalso(viagens: ViagemFalsa[], usuarioId = "u1"): Se
     }
 
     if (caminho === "/api/viagens" && metodo === "GET") {
-      return json({ viagens: estado.viagens.map(resumo), convitesPendentes: [] });
+      return json({ viagens: estado.viagens.map(resumo), convitesPendentes });
     }
 
     if (caminho === "/api/viagens" && metodo === "POST") {
@@ -122,8 +133,8 @@ export function criarServidorFalso(viagens: ViagemFalsa[], usuarioId = "u1"): Se
           transicoesPermitidas: [],
         },
         despesas: viagem.despesas ?? [],
-        movimentos: [],
-        convites: [],
+        movimentos: viagem.movimentos ?? [],
+        convites: viagem.convites ?? [],
         atividades: viagem.atividades ?? [],
         reservas: viagem.reservas ?? [],
         itensChecklist: viagem.checklist ?? [],

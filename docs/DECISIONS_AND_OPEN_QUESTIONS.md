@@ -164,9 +164,44 @@ Fatia entregue de ponta a ponta — domínio, API, app e testes — sem nova per
   valendo; nada à frente = a tela diz que não há) e o cartão de orçamento com barra do `concept-03`.
   A imagem usada pelo app é uma cópia comprimida em `apps/mobile/public/lia-hero.jpg` (900 px, 58 KB);
   a referência original continua em `assets/references/`.
-- **Placar de testes desta rodada** (tudo verde, `npm test` na raiz): ferramentas 39 · domínio 109 ·
+- **Placar de testes desta rodada** (tudo verde, `npm test` na raiz): ferramentas 44 · domínio 109 ·
   sincronização 48 · app 46 (unitário) + 28 (interface, jsdom) · API 86 = **361**. A suíte de interface
   agora cobre orçamento, checklist, documentos, fechamento e a Visão geral.
+
+### Central de notificações de ponta a ponta (2026-10-15, décima primeira rodada)
+
+- **A central é cálculo, não caixa de mensagens**: `packages/domain/src/notificacao.ts` deriva o que
+  precisa de atenção **na leitura**, a partir do que já existe (pendências financeiras, convites
+  recebidos e enviados, acertos a confirmar ou aguardando, checklist de hoje/atrasado, reserva sem
+  valor, orçamento em atenção ou estourado, viagem em rascunho). Nada de tabela de notificações no
+  servidor: sem "resolvido" inventado e sem cópia que desatualiza.
+- **Ler ≠ dispensar ≠ resolver** (regra da tela 16): `lida` é "eu vi"; `dispensar` é "não me lembre
+  disto agora"; **resolver só acontece quando o fato muda**. Por isso a chave carrega a revisão do
+  fato (`despesa-pendente:<viagem>:<quantidade>`, `acerto-confirmar:<id>:<valor>`,
+  `orcamento-estourado:<viagem>:<percentual>`): dispensar 2 pendências não esconde as 3 que vierem
+  depois — o item antigo passa a aparecer no histórico de resolvidas.
+- **O mesmo número nas duas telas**: Início e central usam o mesmo hook
+  (`apps/mobile/src/services/use-notificacoes.ts`), que assina o sincronizador e guarda as marcas
+  **por usuário** (`notificacoes:<usuarioId>`, teto de 200 marcas). Duas contagens diferentes na mesma
+  tela quebrariam a confiança no aviso.
+- **Marcar enquanto lê não perde a marca** (defeito encontrado pelo teste de tela, não no papel): ler as
+  marcas do aparelho e clicar aconteciam na mesma respiração, e a leitura que chegava depois apagava o
+  clique — o item dispensado voltava sozinho. Agora, com o aparelho já lido, a tela muda na hora e a
+  gravação segue atrás; antes de ler, a marca nova é **somada** ao que já estava guardado.
+- **Voltar para o app busca novidade**: ao voltar para a frente (`visibilitychange`) o app reconferia a
+  rede, mas `definirOnline()` retornava cedo quando o estado não mudava — a central ficava velha até
+  alguém abrir uma viagem. Esse caminho agora sincroniza de verdade, com teste de tela cobrindo. O
+  teste só encontrou o defeito porque passou a mudar `navigator.onLine` de verdade: disparar só o
+  evento, com a rede ainda "online", provava uma reação que não existia.
+- **Nada de ação externa insinuada (§13)**: a notificação leva para a tela certa do app (despesa →
+  Gastos, convite → Participantes, checklist → Mais) e o texto diz o que **não** aconteceu — convite
+  enviado não é aceite, acerto a confirmar não move dinheiro, valor pendente não entra no saldo
+  oficial. Prioridade aparece em **texto** ("Alta prioridade"), nunca só por cor.
+- **Placar desta rodada** (tudo verde, `npm test` na raiz): ferramentas 44 · domínio 151 ·
+  sincronização 48 · app 46 (unitário) + 37 (interface, jsdom) · API 86 = **412**. A suíte de interface
+  ganhou 9 testes da central: contagem igual nas duas telas, ler sem resolver, dispensa que não esconde
+  piora, filtros por situação/viagem/assunto/prioridade, "só o que depende de mim" e a ação levando à
+  aba certa.
 
 ### Reservas e revisão de impacto (2026-10-15, nona rodada)
 

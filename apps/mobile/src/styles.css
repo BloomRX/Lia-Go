@@ -354,3 +354,33 @@ button:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:fo
   border-radius: var(--raio-medio);
   padding: var(--e3);
 }
+
+/* ---------------------------------------------------------------------------
+   Central de notificações (tela 16). Prioridade aparece em texto (etiqueta com
+   palavra), nunca só por cor; alvos de toque continuam ≥ 44 px.
+   --------------------------------------------------------------------------- */
+.botao-central {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  gap: var(--e3); text-align: left; font-weight: 400;
+}
+.botao-central strong { font-size: 1.05rem; }
+
+.filtros { display: grid; gap: var(--e2); margin-top: var(--e3); }
+@media (min-width: 560px) {
+  .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.filtro-minhas { display: flex; align-items: center; gap: var(--e2); margin: var(--e3) 0 0; font-size: 0.9rem; }
+.filtro-minhas input { width: auto; min-height: 24px; }
+
+.lista-notificacoes { list-style: none; margin: var(--e3) 0 0; padding: 0; }
+.lista-notificacoes > li { border-top: 1px solid var(--borda); padding: var(--e3) 0; }
+.lista-notificacoes > li:first-child { border-top: 0; }
+.lista-notificacoes > li.prioridade-alta { border-left: 3px solid var(--magenta); padding-left: var(--e3); }
+.lista-notificacoes > li.item-dispensada { opacity: 0.7; }
+.lista-notificacoes > li.item-resolvida { opacity: 0.8; }
+.lista-notificacoes button { min-height: 44px; }
+.lista-notificacoes p { margin: var(--e2) 0 0; font-size: 0.92rem; }
+
+.etiqueta.prioridade-alta { background: #3b1622; color: #ffd9de; }
+.etiqueta.prioridade-media { background: #3a2f12; color: var(--atencao); }
+.etiqueta.prioridade-baixa { background: #1f2a3d; color: #cfe3ff; }

@@ -1,6 +1,6 @@
 # Backlog — Lia Go
 
-Atualizado em **2026-10-15** (décima rodada), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Atualizado em **2026-10-15** (décima primeira rodada), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
@@ -16,11 +16,11 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Barra com Visão geral, Roteiro, Gastos e Mais; identidade escura roxo/magenta, referências oficiais
   aplicadas (hero da viagem com a Lia, próximo compromisso em destaque, orçamento com barra) e estados
   carregando/vazio/erro/sem permissão. Documentos e checklist vivem na aba Mais por ora.
-- 🔄 Placar de testes da rodada: ferramentas 39 · domínio 109 · sincronização 48 · app 46+28 (jsdom) · API 86.
+- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 151 · sincronização 48 · app 46+37 (jsdom) · API 86 = **412**.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
-- ✅ `packages/domain` com **109 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
-  convites, roteiro, reservas, orçamento, checklist, documentos e fechamento.
+- ✅ `packages/domain` com **151 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
+  convites, roteiro, reservas, orçamento, checklist, documentos, fechamento e a central de notificações.
 - ✅ PostgreSQL central com migrações versionadas (`0001`–`0007`) e SQL explícito via `pg`.
 - ✅ Registro/login/logout/sessão/revogação, scrypt, cookie HttpOnly, tokens nativos e limite de tentativas.
 - ✅ Criar/editar/consultar viagem com autorização no servidor e concorrência otimista (409 em conflito).
@@ -39,8 +39,8 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Saldos, transferências sugeridas e acertos (informado → confirmado por quem recebeu) na tela e na API.
   Pagamento parcial e reembolso ligado à despesa ficam para a próxima fatia.
 - ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
-- 🔄 109 testes de domínio + 86 de API cobrem limites, restos, permissões, orçamento, checklist, documentos
-  e fechamento; câmbio entra com o módulo de moedas.
+- 🔄 151 testes de domínio + 86 de API cobrem limites, restos, permissões, orçamento, checklist, documentos,
+  fechamento e notificações; câmbio entra com o módulo de moedas.
 
 ## Fase 3 — Roteiro, reservas e documentos
 - ✅ Roteiro por dia (timeline), atividades com estados manuais e versões anteriores.
@@ -55,7 +55,11 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Cache offline + fila de envio (outbox) com idempotência e resolução explícita de conflitos.
   Ids de operação usam `crypto.randomUUID()` (UUIDv4); trocar para UUIDv7 (ordenável por tempo) é uma
   melhoria pequena e localizada, sem impacto no servidor.
-- ⬜ Central de notificações com filtros, leitura ≠ dispensa ≠ resolução.
+- ✅ Central de notificações (tela 16) com filtros de situação, viagem, assunto, prioridade, busca e
+  "só o que depende de mim": **leitura ≠ dispensa ≠ resolução**. A central é derivada dos dados que já
+  existem (nada de tabela de notificações no servidor); a chave carrega a revisão do fato, então dispensar
+  2 pendências não esconde as 3 que vierem depois; Início e central mostram o mesmo número (mesmo hook);
+  cada item abre a tela certa do app e o texto diz o que **não** aconteceu (§13).
 - ✅ Fechamento (previsto × realizado) com números do servidor, acertos sugeridos e exportação `.txt`/`.csv`
   (`viagem:exportar`); no celular sem download, o texto aparece para copiar.
 

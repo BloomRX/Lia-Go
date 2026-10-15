@@ -17,3 +17,4 @@ export * from "./orcamento.ts";
 export * from "./checklist.ts";
 export * from "./documento.ts";
 export * from "./fechamento.ts";
+export * from "./notificacao.ts";

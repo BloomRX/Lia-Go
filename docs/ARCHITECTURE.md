@@ -206,7 +206,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento) | ✅ **109 testes** | `npm run test:domain` |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento, notificações) | ✅ **151 testes** | `npm run test:domain` |
 | API Fastify + PostgreSQL + SQL versionado | ✅ **86 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
@@ -218,7 +218,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
-| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reservas, orçamento com limite, checklist, documentos, fechamento, Visão geral com o hero) | ✅ **28 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero) | ✅ **37 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
 | Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
 | Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
 | Reservas (hospedagem, transporte, passeio, outro) | ✅ **13 testes** de domínio + **8** de API + 4 de interface | `packages/domain/src/reserva.ts`, `apps/api/src/routes/reservas.ts`, `telas/Reservas.tsx` |
@@ -227,6 +227,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Documentos privados por padrão (compartilhar, revogar, remover com motivo, lavagem da cópia local de quem perdeu acesso) | ✅ **7 testes** de domínio + **14** de API + 3 de interface | `packages/domain/src/documento.ts`, `apps/api/src/routes/documentos.ts`, `telas/Documentos.tsx` |
 | Fechamento/exportação (números do servidor, acertos sugeridos, `.txt`/`.csv`) | ✅ **6 testes** de domínio + **2** de API + 3 de interface | `packages/domain/src/fechamento.ts`, `apps/api/src/routes/orcamento.ts`, `telas/Fechamento.tsx` |
 | Referências visuais oficiais aplicadas (hero com a Lia, próximo compromisso, cartões do `concept-03`) | ✅ 2 testes de interface | `apps/mobile/public/lia-hero.jpg`, `telas/Viagem.tsx`, `styles.css` |
+| Central de notificações (tela 16): derivada dos dados, filtros, ler ≠ dispensar ≠ resolver, mesmo número no Início | ✅ **42 testes** de domínio + 9 de interface | `packages/domain/src/notificacao.ts`, `apps/mobile/src/services/use-notificacoes.ts`, `telas/Notificacoes.tsx` |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
 mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere
@@ -316,9 +317,29 @@ Rotas: `GET /viagens/:id/reservas`, `GET /viagens/:id/reservas/:reservaId` (com 
 `POST /viagens/:id/reservas`, `POST .../{confirmar,cancelar}`. Reservas entram no `/mudancas` pelo
 cursor (mesmo caminho offline do roteiro) e passam pela fila do aparelho.
 
+### Central de notificações: por que a estrutura é essa (implementado)
+
+A central **não é uma caixa de mensagens**: não existe tabela de notificações no servidor nem cópia
+guardada. O que existe é um cálculo (`packages/domain/src/notificacao.ts`) sobre o que já está no
+aparelho — pendências financeiras, convites, acertos, checklist, reservas, orçamento e viagens em
+rascunho. Assim a lista nunca "desatualiza sozinha": se o fato mudou, a lista mudou.
+
+| Regra de negócio | Onde vive | Por que assim |
+|---|---|---|
+| **Leitura ≠ dispensa ≠ resolução** (tela 16) | `estadoDaNotificacao`, `marcarNotificacao`, `notificacoesResolvidas` | Ler é "eu vi"; dispensar é "não me lembre agora"; resolver só acontece quando o **fato** muda — o app não deixa ninguém "marcar como resolvido" um problema que continua |
+| Dispensar não esconde piora | chave com a revisão do fato (`despesa-pendente:<viagem>:<quantidade>`, `acerto-confirmar:<id>:<valor>`, `orcamento-estourado:<viagem>:<percentual>`) | Quem dispensou 2 despesas pendentes precisa saber das 3 de agora; a antiga passa para o histórico de resolvidas |
+| Um número só para a pessoa | `apps/mobile/src/services/use-notificacoes.ts` (usado pelo Início e pela central) + marcas por usuário (`notificacoes:<usuarioId>`) | Duas contagens diferentes na mesma tela quebram a confiança no aviso |
+| Prioridade em **texto**, nunca só cor | `PRIORIDADES_NOTIFICACAO` + etiqueta "Alta prioridade" | `UI_VISUAL_GUIDELINES` §10 |
+| Nada de ação externa insinuada (§13) | `DestinoNotificacao` → tela do app; textos dizem o que **não** aconteceu | Convite enviado não é aceite; acerto a confirmar não move dinheiro; valor pendente não entra no saldo oficial |
+| Notificação de dinheiro só com dado do servidor | `pendenciasFinanceiras` do resumo da viagem | Notificação de saldo não pode nascer de conta feita no cliente |
+| Marca gravada enquanto se lê não se perde | fila de gravação do hook (soma ao que já estava guardado antes da leitura terminar) | Defeito encontrado pelo teste de tela: a leitura atrasada apagava o clique e o item dispensado voltava |
+| Voltar para o app busca novidade | `apps/mobile/src/App.tsx` (`visibilitychange` → `sincronizarAgora`) | Sem isso a central ficava velha justamente quando a pessoa olha para ela |
+
+Rotas: nenhuma nova — a central lê o que o sincronizador já mantém (`GET /viagens`, `GET /viagens/:id/mudancas`).
+
 ### Próxima fatia (proposta)
-1. **Configurações** (tela 18) e **central de notificações** (tela 16) — as duas telas V1 que faltam por completo.
+1. **Configurações** (tela 18) — a única tela V1 que falta por completo; inclui preferências de
+   notificação e o limiar de atenção do orçamento configurável (hoje fixo em 80%).
 2. **Substituir o roteiro vigente com revisão de impacto** (prévia de diferenças e versões anteriores) — o impacto de concluir/cancelar já existe.
 3. Navegação lateral da web e aba **Documentos** própria na barra inferior do celular (hoje na aba Mais).
-4. Notificações essenciais, tornando o limiar de atenção do orçamento configurável (hoje fixo em 80%).
-5. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).
+4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).

@@ -4,7 +4,7 @@
 
 ## Navegação principal
 Barra inferior pretendida: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações.
-**Estado em 2026-10-15 (décima rodada):** a barra tem Visão geral, Roteiro, Gastos e **Mais**; na aba Mais já vivem **Participantes**, **Reservas**, **Checklist**, **Documentos** e **Fechamento/exportação**, além de "Este aparelho" (dados locais e sessão). Documentos ganha aba própria quando a barra inferior tiver cinco itens (celular pequeno pede teste antes).
+**Estado em 2026-10-15 (décima primeira rodada):** a barra tem Visão geral, Roteiro, Gastos e **Mais**; na aba Mais já vivem **Participantes**, **Reservas**, **Checklist**, **Documentos** e **Fechamento/exportação**, além de "Este aparelho" (dados locais e sessão). Documentos ganha aba própria quando a barra inferior tiver cinco itens (celular pequeno pede teste antes). O cartão **Notificações** fica no topo da aba Mais — e também na tela inicial, porque é de lá que a pessoa olha o aviso antes de escolher a viagem.
 
 ## Telas V1
 1. **Boas-vindas / autenticação** — entrar, criar conta, recuperação; métodos finais a definir após inspeção técnica.
@@ -22,7 +22,7 @@ Barra inferior pretendida: **Visão geral**, **Roteiro**, **Gastos**, **Document
 13. **Moedas** — valores originais e convertidos, taxa e referência temporal, identificação de estimativas.
 14. **Reservas e checklist** — registros manuais, links, prazos e documentos associados; não afirmar confirmação sem evidência. ✅ implementada (reservas na aba Mais; checklist na aba Mais, com prazo que não conclui nada e reabertura com motivo).
 15. **Documentos** — privados por padrão, compartilhamento individual, destinatários e revogação. ✅ implementada (privado por padrão; compartilhar/revogar; remover exige motivo e é remoção lógica; o app guarda link e descrição, não o arquivo).
-16. **Central de notificações** — filtros por viagem, categoria, prioridade e estado; histórico completo.
+16. **Central de notificações** — filtros por viagem, categoria, prioridade e estado; histórico completo. ✅ implementada (derivada dos dados que já existem, sem tabela de notificações no servidor; filtros de situação, viagem, assunto, prioridade, busca e "só o que depende de mim"; **ler ≠ dispensar ≠ resolver**; dispensar não esconde fato que piora; cada item abre a tela certa do app; histórico de resolvidas e de dispensadas).
 17. **Participantes e permissões** — acesso, convites, saída/remoção e funções administrativas.
 18. **Configurações** — preferências, notificações, moedas, privacidade e sessão.
 19. **Cancelar viagem** — prévia de impactos conhecidos e confirmação explícita; após cancelar, lista de pendências restantes.
@@ -57,18 +57,18 @@ Isto é o que **existe no app hoje**, não o que está planejado — conferido r
 | 6 | Roteiro | ✅ timeline por dia, dias com conflito, resumo adaptativo, concluídas recolhíveis, criar atividade | `telas/Roteiro.tsx` |
 | 7 | Detalhes da atividade | ✅ ficha, custo com natureza, concluir/cancelar/corrigir com motivo, histórico, **revisão de impacto antes de concluir/cancelar** | `telas/Atividade.tsx` |
 | 8 | Revisão de mudanças | 🟡 impacto conhecido antes de concluir/cancelar/abrir outra viagem; falta a prévia para **substituir o roteiro vigente** | `telas/Atividade.tsx`, `packages/domain/src/roteiro.ts` (`revisarImpacto`) |
-| 9 | Orçamento | 🟡 previsto do roteiro (estimativa × já combinado × a verificar) na aba Gastos, separado do saldo oficial; falta limite coletivo/individual e alertas | `telas/Viagem.tsx`, `resumirOrcamentoDoRoteiro` |
+| 9 | Orçamento | ✅ limite coletivo (organizador) e individual, barra com estado em texto, gasto oficial e "aguardando confirmação" separados do previsto; atenção a partir de 80% e alerta na central | `telas/Orcamento.tsx` (aba Gastos), `packages/domain/src/orcamento.ts` |
 | 10–11 | Nova despesa / rateio | ✅ despesa com rateio igualitário, soma exata | `telas/Viagem.tsx` (aba Gastos) |
 | 12 | Saldos e acertos | ✅ saldo oficial do servidor + acertos sugeridos | `telas/Viagem.tsx` (aba Gastos) |
 | 13 | Moedas | ⬜ (BRL hoje; estrutura de dinheiro já é por moeda) | — |
-| 14 | Reservas | ✅ criar (prevista), confirmar com evidência, cancelar com motivo, valor desconhecido como "a verificar" | `telas/Reservas.tsx` (aba **Mais**), `packages/domain/src/reserva.ts` |
-| 15–16 | Checklist / documentos | ⬜ (próxima fatia) | — |
-| 16 | Central de notificações | ⬜ | — |
+| 14 | Reservas e checklist | ✅ reserva nasce prevista e confirmar exige evidência; checklist com prazo que não conclui nada e reabertura com motivo | `telas/Reservas.tsx` e `telas/Checklist.tsx` (aba **Mais**) |
+| 15 | Documentos | ✅ privados por padrão, compartilhar/revogar, remoção lógica com motivo; o app guarda link e descrição, não o arquivo | `telas/Documentos.tsx` (aba **Mais**) |
+| 16 | Central de notificações | ✅ contagem igual à da tela inicial, filtros, ler ≠ dispensar ≠ resolver, dispensa que não esconde piora, ação leva à aba certa, histórico | `telas/Notificacoes.tsx`, `packages/domain/src/notificacao.ts` |
 | 17 | Participantes e permissões | 🟡 papéis e convite existem; tela administrativa não | `telas/Viagem.tsx` |
-| 18 | Configurações | ⬜ (sessão em "sair") | — |
+| 18 | Configurações | 🟡 "Este aparelho" (dados locais, fila, sair) na aba Mais; preferências de notificação e moeda ainda não | `telas/Viagem.tsx` (aba **Mais**) |
 | 19 | Cancelar viagem | ✅ prévia de impactos (`impactos-cancelamento`) + confirmação explícita na tela da viagem | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
 | 20 | Concluir viagem | ✅ transições com permissão por destino (bloqueia criar atividade/reserva depois de concluída) | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
-| 21 | Fechamento / exportação | ⬜ | — |
+| 21 | Fechamento / exportação | ✅ previsto × realizado com números do servidor, acertos como sugestão, `.txt` e `.csv`; no celular sem download o texto aparece para copiar | `telas/Fechamento.tsx` (aba **Mais**), `packages/domain/src/fechamento.ts` |
 
 **Fora das telas:** a **Lia** (a assistente) ainda não fala no app. As sugestões descritas em `UI_VISUAL_GUIDELINES.md` têm lugar reservado na interface, mas nenhuma é exibida — não há texto gerado apresentado como conselho enquanto não existir IA de verdade por trás.
 

@@ -28,6 +28,7 @@ for (const nome of [
   "history",
   "HTMLElement",
   "HTMLInputElement",
+  "HTMLSelectElement",
   "Element",
   "Node",
   "Event",
@@ -76,6 +77,27 @@ export async function esperarPor(condicao: () => boolean, descricao = "a tela mu
   throw new Error(`Tempo esgotado esperando ${descricao}. Tela atual: ${textoDaTela().slice(0, 300)}`);
 }
 
+/**
+ * Simula a rede cair e voltar, como o navegador faz.
+ *
+ * Um evento sozinho não basta: o app pergunta `navigator.onLine`. Trocar só o evento (deixando o
+ * `onLine` em `true`) fazia o teste "provar" que o app reage à rede quando ele não reagiu — foi
+ * assim que descobrimos que voltar para o app não buscava novidade nenhuma.
+ */
+export async function simularRede(online: boolean): Promise<void> {
+  Object.defineProperty(janela.navigator, "onLine", { value: online, configurable: true });
+  (globalThis as unknown as { window: Window }).window.dispatchEvent(
+    new (globalThis as { Event: typeof Event }).Event(online ? "online" : "offline"),
+  );
+  await esperarAtualizacoes(4);
+}
+
+/** Simula a pessoa voltando para o app (o app volta para a frente). */
+export async function simularVoltaAoApp(): Promise<void> {
+  raizDoDocumento.dispatchEvent(new (globalThis as { Event: typeof Event }).Event("visibilitychange", { bubbles: true }));
+  await esperarAtualizacoes(4);
+}
+
 /** Clica como uma pessoa clica: evento de verdade, subindo pelo DOM. */
 export function clicar(elemento: Element | null): void {
   if (!elemento) throw new Error("Não encontrei o elemento para clicar.");
@@ -83,30 +105,50 @@ export function clicar(elemento: Element | null): void {
 }
 
 /**
- * Digita num campo de texto.
+ * Escreve um valor num campo de formulário e avisa o React.
  *
  * Detalhe do ambiente: o React 19 não entrega eventos nativos de digitação (`input`/`change`) no
  * jsdom — só `click`. Então escrevemos o valor no campo (como o navegador faz) e chamamos o
  * manipulador `onChange` do próprio React, que é exatamente o caminho que o app seguiria num
  * navegador de verdade: mesmo manipulador, mesmo estado, mesmo envio.
  */
-export async function digitar(campo: HTMLInputElement, texto: string): Promise<void> {
-  const definidor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-  definidor?.call(campo, texto);
+async function escreverValor(campo: HTMLElement, valor: string, eventoNativo: "input" | "change"): Promise<void> {
+  const definidor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(campo) as object, "value")?.set;
+  definidor?.call(campo, valor);
 
   const chave = Object.keys(campo).find((nome) => nome.startsWith("__reactProps$"));
   const props = chave ? (campo as unknown as Record<string, { onChange?: (evento: unknown) => void }>)[chave] : undefined;
   if (props?.onChange) {
-    props.onChange({ target: campo, currentTarget: campo, type: "change" });
+    props.onChange({ target: campo, currentTarget: campo, type: eventoNativo });
   } else {
-    campo.dispatchEvent(new (globalThis as { Event: typeof Event }).Event("input", { bubbles: true }));
+    campo.dispatchEvent(new (globalThis as { Event: typeof Event }).Event(eventoNativo, { bubbles: true }));
   }
   // Deixa o React aplicar o novo estado: quem digita e clica em seguida não clica com o valor antigo.
   await esperarAtualizacoes(2);
+}
+
+/** Digita num campo de texto. */
+export async function digitar(campo: HTMLInputElement, texto: string): Promise<void> {
+  await escreverValor(campo, texto, "input");
+}
+
+/** Escolhe uma opção num `select` (os filtros da central de notificações, por exemplo). */
+export async function escolher(campo: HTMLSelectElement, valor: string): Promise<void> {
+  await escreverValor(campo, valor, "change");
 }
 
 /** Procura um botão pelo texto exato (ou um trecho dele). */
 export function botaoCom(texto: string, raiz: ParentNode = raizDoDocumento): HTMLButtonElement | null {
   const botoes = Array.from(raiz.querySelectorAll("button"));
   return (botoes.find((botao) => (botao.textContent ?? "").trim().includes(texto)) as HTMLButtonElement) ?? null;
+}
+
+/** Procura um elemento pelo seletor CSS (último recurso, quando não há texto estável para buscar). */
+export function elemento<T extends Element = Element>(seletor: string, raiz: ParentNode = raizDoDocumento): T | null {
+  return raiz.querySelector<T>(seletor);
+}
+
+/** Elementos pelo seletor, na ordem do documento. */
+export function elementos<T extends Element = Element>(seletor: string, raiz: ParentNode = raizDoDocumento): T[] {
+  return Array.from(raiz.querySelectorAll<T>(seletor));
 }

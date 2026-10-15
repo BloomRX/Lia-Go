@@ -45,6 +45,9 @@ interface Props {
   viagemId: string;
   usuarioId: string;
   voltar: () => void;
+  /** Aba em que a viagem abre (a central de notificações leva direto ao assunto da notificação). */
+  abaInicial?: Aba;
+  abrirNotificacoes?: () => void;
   sincronizador: Sincronizador;
   /** A atividade abre em tela própria (diretriz §2.1); quem cuida disso é o App. */
   abrirAtividade: (atividadeId: string) => void;
@@ -64,8 +67,17 @@ interface Participante {
  * o que a pessoa faz aqui vale na hora e sobe para o servidor quando houver rede.
  * Saldos sempre vêm do servidor — o app nunca calcula dinheiro oficial.
  */
-export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }: Props): React.ReactElement {
-  const [aba, setAba] = useState<Aba>("visao");
+export function Viagem({
+  viagemId,
+  usuarioId,
+  voltar,
+  sincronizador,
+  abrirAtividade,
+  abaInicial,
+  abrirNotificacoes,
+}: Props): React.ReactElement {
+  // A aba inicial vem de fora quando a pessoa chegou aqui por uma notificação (§6).
+  const [aba, setAba] = useState<Aba>(abaInicial ?? "visao");
   const [estado, setEstado] = useState(sincronizador.obter());
   const [saldos, setSaldos] = useState<SaldosApi | null>(null);
   const [saldosEm, setSaldosEm] = useState<string | null>(null);
@@ -685,6 +697,19 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
 
       {aba === "mais" ? (
         <>
+          {abrirNotificacoes ? (
+            <section className="cartao">
+              <div className="linha entre">
+                <h2>Notificações</h2>
+                <button className="sutil" onClick={abrirNotificacoes}>Abrir</button>
+              </div>
+              <p className="suave pequeno">
+                O que espera alguém nesta viagem: despesa para confirmar, convite sem aceite, item atrasado,
+                reserva sem valor e orçamento em atenção. Ler não resolve — cada item leva ao lugar onde se resolve.
+              </p>
+            </section>
+          ) : null}
+
           <section className="cartao">
             <h2>Ficha da viagem</h2>
             <div className="linha"><span>Estado</span><strong>{(viagem.rotuloEstado as string) ?? ROTULO_ESTADO[viagem.estado as string]}</strong></div>

@@ -30,6 +30,7 @@ import {
   type ArmazenamentoLocal,
 } from "./armazenamento.ts";
 import { criarPortaServidor } from "./servidor.ts";
+import { MARCAS_VAZIAS, podarMarcas, type MarcasDeNotificacao } from "@lia-go/domain";
 import { Platform } from "../services/plataforma.ts";
 import type { SaldosApi } from "../services/api.ts";
 
@@ -49,6 +50,7 @@ export interface EstadoSincronizacao {
 type Ouvinte = (estado: EstadoSincronizacao) => void;
 
 const CHAVE_SALDOS = "saldos";
+const CHAVE_NOTIFICACOES = "notificacoes";
 
 export class Sincronizador {
   private readonly armazemLocal: ArmazenamentoLocal;
@@ -277,6 +279,22 @@ export class Sincronizador {
 
   async lerSaldos(viagemId: string): Promise<{ saldos: SaldosApi; em: string } | null> {
     return this.armazemLocal.ler<{ saldos: SaldosApi; em: string }>(`${CHAVE_SALDOS}:${viagemId}`);
+  }
+
+  /**
+   * Marcas da central de notificações (**lida** ou **dispensada**) de uma pessoa deste aparelho.
+   *
+   * Ficam no aparelho e separadas por pessoa (`notificacoes:<usuarioId>`): são estado de leitura, não
+   * dado da viagem. Ninguém precisa saber, no servidor, o que já foi aberto na tela — e a chave por
+   * pessoa evita que duas contas no mesmo aparelho herdem a leitura uma da outra.
+   */
+  async lerMarcasDeNotificacao(usuarioId: string): Promise<MarcasDeNotificacao> {
+    const bruto = await this.armazemLocal.ler<MarcasDeNotificacao>(`${CHAVE_NOTIFICACOES}:${usuarioId}`);
+    return bruto && typeof bruto === "object" ? podarMarcas(bruto) : MARCAS_VAZIAS;
+  }
+
+  async gravarMarcasDeNotificacao(usuarioId: string, marcas: MarcasDeNotificacao): Promise<void> {
+    await this.armazemLocal.gravar(`${CHAVE_NOTIFICACOES}:${usuarioId}`, podarMarcas(marcas));
   }
 
   /** Mostra na tela, sem esperar rede, o que já está guardado no aparelho. */

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Entrar } from "./telas/Entrar.tsx";
 import { Inicio } from "./telas/Inicio.tsx";
+import { Notificacoes, type AbaDaViagem } from "./telas/Notificacoes.tsx";
 import { Viagem } from "./telas/Viagem.tsx";
 import { Atividade } from "./telas/Atividade.tsx";
 import { api, ErroApi, type Usuario } from "./services/api.ts";
@@ -10,7 +11,10 @@ import { BarraSincronizacao } from "./componentes/BarraSincronizacao.tsx";
 
 type Tela =
   | { nome: "inicio" }
-  | { nome: "viagem"; viagemId: string }
+  // A central de notificações é uma tela própria (tela 16): aberta do Início ou de dentro de uma
+  // viagem, e sempre sabendo para onde voltar.
+  | { nome: "notificacoes"; viagemId: string | null }
+  | { nome: "viagem"; viagemId: string; aba?: AbaDaViagem; voltarPara?: "inicio" | "notificacoes" }
   // A atividade abre em tela própria (diretriz §2.1), e o roteiro continua atrás dela.
   | { nome: "atividade"; viagemId: string; atividadeId: string };
 
@@ -46,8 +50,19 @@ export function App(): React.ReactElement {
 
     // Rede voltou/caiu: a barra diz a verdade e o envio recomeça sozinho.
     const aoMudarRede = () => sincronizador.definirOnline(navigator.onLine !== false);
+    /**
+     * O app voltou para a frente (a pessoa trocou de aplicativo, desbloqueou o telefone, mudou de
+     * aba e voltou): além de reconferir a rede, **buscamos o que mudou no servidor**.
+     *
+     * Sem isso, a central de notificações só via novidade quando alguém abria uma viagem — e o
+     * número mostrado na tela inicial ficava velho justamente na hora em que a pessoa olha para ele.
+     */
     const aoVoltarParaApp = () => {
-      if (document.visibilityState === "visible") sincronizador.definirOnline(navigator.onLine !== false);
+      if (document.visibilityState !== "visible") return;
+      sincronizador.definirOnline(navigator.onLine !== false);
+      void sincronizador.sincronizarAgora().catch(() => {
+        /* sem rede agora: a barra já explica o que está guardado no aparelho */
+      });
     };
     window.addEventListener("online", aoMudarRede);
     window.addEventListener("offline", aoMudarRede);
@@ -200,13 +215,25 @@ export function App(): React.ReactElement {
         <Inicio
           abrirViagem={(viagemId) => setTela({ nome: "viagem", viagemId })}
           aceitarConvite={(token) => void aceitarConvite(token)}
+          usuarioId={usuario.id}
+          abrirNotificacoes={() => setTela({ nome: "notificacoes", viagemId: null })}
           sincronizador={sincronizador}
+        />
+      ) : tela.nome === "notificacoes" ? (
+        <Notificacoes
+          usuarioId={usuario.id}
+          sincronizador={sincronizador}
+          viagemIdInicial={tela.viagemId}
+          voltar={() => setTela({ nome: "inicio" })}
+          abrirViagem={(viagemId, aba) => setTela({ nome: "viagem", viagemId, aba, voltarPara: "notificacoes" })}
         />
       ) : tela.nome === "viagem" ? (
         <Viagem
           viagemId={tela.viagemId}
           usuarioId={usuario.id}
-          voltar={() => setTela({ nome: "inicio" })}
+          abaInicial={tela.aba}
+          voltar={() => setTela(tela.voltarPara === "notificacoes" ? { nome: "notificacoes", viagemId: null } : { nome: "inicio" })}
+          abrirNotificacoes={() => setTela({ nome: "notificacoes", viagemId: tela.viagemId })}
           sincronizador={sincronizador}
           abrirAtividade={(atividadeId) => setTela({ nome: "atividade", viagemId: tela.viagemId, atividadeId })}
         />

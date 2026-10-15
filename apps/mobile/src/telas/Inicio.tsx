@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { api, ErroApi, type ViagemResumo } from "../services/api.ts";
 import { ROTULO_ESTADO, formatarData } from "../services/formato.ts";
+import { useNotificacoes } from "../services/use-notificacoes.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 
 interface Props {
   abrirViagem: (id: string) => void;
   aceitarConvite: (token: string) => void;
+  /** Necessário para a central de notificações (as marcas de leitura são por pessoa). */
+  usuarioId: string;
+  abrirNotificacoes: () => void;
   sincronizador: Sincronizador;
 }
 
@@ -13,7 +17,7 @@ interface Props {
  * Início: lista lida do **aparelho** (funciona sem sinal) e renovada pelo sincronizador.
  * Criar viagem também funciona offline: a viagem entra na fila e sobe quando houver rede.
  */
-export function Inicio({ abrirViagem, aceitarConvite, sincronizador }: Props): React.ReactElement {
+export function Inicio({ abrirViagem, aceitarConvite, usuarioId, abrirNotificacoes, sincronizador }: Props): React.ReactElement {
   const [estado, setEstado] = useState(sincronizador.obter());
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -25,6 +29,9 @@ export function Inicio({ abrirViagem, aceitarConvite, sincronizador }: Props): R
   const [token, setToken] = useState("");
 
   useEffect(() => sincronizador.assinar(setEstado), [sincronizador]);
+
+  // Mesmo cálculo da central (o domínio decide o que é notificação): o número aqui é o mesmo lá.
+  const notificacoes = useNotificacoes({ sincronizador, usuarioId });
 
   useEffect(() => {
     void sincronizador.sincronizarAgora().catch(() => {
@@ -129,6 +136,22 @@ export function Inicio({ abrirViagem, aceitarConvite, sincronizador }: Props): R
 
       {erro ? <div className="aviso erro" role="alert">{erro}</div> : null}
       {aviso ? <div className="aviso ok">{aviso}</div> : null}
+
+      {/*
+        Aviso para a central de notificações (tela 16). Fica aqui, antes das viagens, porque é onde a
+        pessoa começa: o número é calculado pelo mesmo domínio que a central usa, então os dois nunca
+        discordam (se discordassem, ninguém confiaria nos dois).
+      */}
+      <button className="cartao botao-central" onClick={abrirNotificacoes}>
+        <span>
+          <strong>Notificações</strong>
+          <br />
+          <small className="suave">{notificacoes.resumo.rotulo}</small>
+        </span>
+        {notificacoes.resumo.abertas > 0 ? (
+          <span className="etiqueta estado-pendente">{notificacoes.resumo.abertas}</span>
+        ) : null}
+      </button>
 
       {convites.length > 0 ? (
         <section>
