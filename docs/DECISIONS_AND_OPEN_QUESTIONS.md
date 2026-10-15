@@ -279,6 +279,11 @@ Fatia entregue de ponta a ponta — domínio, API, app e testes — sem nova per
   plugin de assets do Vite. A imagem foi para `apps/mobile/public/lia-hero.jpg` (referenciada por caminho,
   `/lia-hero.jpg`) e os plugins de imagem saíram do empacotador: agora nenhum arquivo de imagem entra no
   bundle. A próxima rodada do PC confirma — e, se a causa for outra, o motivo vem escrito.
+- **Menos coisa para dar errado no bundle**: `@lia-go/domain` e `@lia-go/sync` passaram a ser empacotados
+  dentro do arquivo de teste (antes o Node resolvia o workspace em tempo de execução, e ainda precisava
+  tirar os tipos deles de dentro de `node_modules` — que é onde Windows e Linux podem divergir). O bundle
+  agora só deixa de fora pacote de terceiros instalado (`jsdom`, `react`, `@capacitor/*`,
+  `fake-indexeddb`), igual ao que os testes de unidade do app já fazem todo dia.
 - **Aviso do fim da rodada**: com o **GitHub CLI** (`gh`) instalado e autenticado, o relatório é publicado
   como comentário no pull request da branch. Sem `gh`, nada falha: o relatório continua subindo no commit,
   que é por onde o responsável lê a rodada.

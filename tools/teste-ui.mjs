@@ -31,11 +31,18 @@ const pastaTestes = path.join(raiz, "apps/mobile/tests/ui");
 const pastaSaida = path.join(raiz, "apps/mobile/.ui-testes");
 const diagnostico = path.join(raiz, "reports", "interface-diagnostico.md");
 
+/**
+ * Código do próprio projeto entra no bundle (`@lia-go/domain`, `@lia-go/sync`): são TypeScript puro
+ * e, empacotados, o teste não depende de resolver workspace nem de o Node tirar tipos de dentro de
+ * `node_modules` — exatamente onde Windows e Linux podem divergir.
+ */
+const ehCodigoDoProjeto = (id) => id.startsWith("@lia-go/");
+
 async function empacotar(entrada, saida) {
   const pacote = await rolldown({
     input: entrada,
-    // Pacotes de terceiros ficam de fora: o Node resolve do node_modules na hora de rodar.
-    external: (id) => !id.startsWith(".") && !path.isAbsolute(id),
+    // Só pacote de terceiros fica de fora: o Node resolve do node_modules na hora de rodar.
+    external: (id) => !ehCodigoDoProjeto(id) && !id.startsWith(".") && !path.isAbsolute(id),
     resolve: { extensions: [".ts", ".tsx", ".js", ".mjs", ".json"] },
   });
   const { output } = await pacote.generate({ format: "esm", codeSplitting: false });
