@@ -167,4 +167,7 @@ Não esperar novos concepts para iniciar os componentes básicos. Ajustes visuai
 
 As referências fornecidas pelo planejamento devem orientar a identidade Lia Go: composição mobile-first, dark UI, magenta/roxo, glow moderado, cards arredondados, timeline, presença da Lia e continuidade de marca.
 
-**Importante:** antes deste commit, a árvore GitHub consultada não apresentava arquivos PNG/JPG das referências. Se as imagens já tiverem sido enviadas em outro commit/branch, o agente deve localizá-las e preferi-las; se ainda não estiverem versionadas, não inventar caminhos. A implementação pode avançar usando as diretrizes textuais sem bloquear o desenvolvimento.
+**Atualização (2026-10-15):** as referências foram versionadas pelo responsável em `assets/references/`
+(commits `c53c11c` e `be91721`) — caminhos oficiais registrados em `UI_VISUAL_GUIDELINES.md` §7.
+A implementação segue sem bloquear: os tokens já estavam corretos e as referências agora guiam as
+próximas fatias (hero da viagem, orçamento com barra/limite, aba Documentos).

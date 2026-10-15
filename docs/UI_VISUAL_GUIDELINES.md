@@ -219,7 +219,25 @@ Nesta etapa foram fornecidas referências do próprio conceito do Lia Go e da id
 - referência de assinatura/logo Lia;
 - variação da assinatura visual.
 
-As imagens originais desta conversa ainda precisam ser versionadas como assets binários do repositório por um fluxo que suporte upload de arquivos. **Não inventar URLs ou caminhos para esses arquivos.** Quando forem adicionadas, preferir uma pasta como `docs/ui-references/` e registrar neste documento quais são as referências oficiais.
+**As referências agora estão versionadas** (commits `c53c11c` e `be91721`) em `assets/references/` — estes são os caminhos oficiais, e nenhum outro deve ser inventado:
+
+| Arquivo | O que é |
+|---|---|
+| `assets/references/concept-01-visao-geral.png` | visão geral (mobile + web) com paleta, cartões e barra inferior |
+| `assets/references/concept-02-roteiro.png` | roteiro com timeline, dias e detalhes |
+| `assets/references/concept-03-tela-inicial.png` | tela inicial com hero da viagem, orçamento com barra e pendências |
+| `assets/references/lia-character-hero.png` | personagem Lia (hero) |
+| `assets/references/lia-logo-icon.png` | ícone do app |
+| `assets/references/lia-signature.png` | assinatura/logo Lia Go |
+
+O que as referências **confirmam** do que já está no app: fundo escuro, roxo/magenta, cartões
+arredondados, etiqueta de estado, timeline por dia, resumo financeiro no topo da viagem, barra
+inferior com quatro destinos e pendências do grupo em lista.
+
+O que as referências **pedem e ainda não existe** (próximas fatias, sem reescrever arquitetura):
+hero da viagem com a Lia, **orçamento com barra e limite** (hoje mostramos previsto × oficial sem
+limite coletivo/individual), "próximo compromisso" em destaque, seletor de abas da web (Início,
+Viagens, Despesas, Participantes, Documentos, Configurações) e a aba **Documentos**.
 
 ## 8. O que ainda não está decidido
 

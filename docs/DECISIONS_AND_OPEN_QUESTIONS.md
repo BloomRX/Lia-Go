@@ -115,10 +115,10 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   `#D884FE`, fundo `#0B0A12`, sucesso `#22D3A3`) virou o bloco `:root` de `apps/mobile/src/styles.css`, com
   escala de espaçamento em variáveis (`--e1`…`--e6`) e `prefers-reduced-motion` respeitado. Ícone continua
   sendo **texto/etiqueta** nesta fatia: instalar biblioteca de ícones é ajuste incremental, não bloqueio.
-- **Sem imagens de referência no repositório**: `UI_VISUAL_GUIDELINES.md` §7 pede para não inventar caminhos;
-  a pasta `docs/ui-references/` continua vazia e as telas seguem os **tokens que já existiam** em
-  `apps/mobile/src/styles.css` (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível,
-  estado **nunca só por cor**).
+- **Imagens de referência**: as telas deste commit seguem os **tokens** de `apps/mobile/src/styles.css`
+  (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível, estado **nunca só por cor**).
+  Desde 2026-10-15 as referências estão versionadas em `assets/references/` (caminhos oficiais em
+  `UI_VISUAL_GUIDELINES.md` §7) e confirmam esses tokens.
 - **Placar da rodada**: 283 testes verdes (ferramentas 39 · domínio 83 · sincronização 48 · app 56 — 43 de unidade + 13 de interface em jsdom · API 57).
 
 ### Reservas e revisão de impacto (2026-10-15, nona rodada)
