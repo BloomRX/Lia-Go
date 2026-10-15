@@ -151,10 +151,10 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 
 ## 6. Testes
 
-- Domínio (regras puras, sem banco): `npm run test:domain` — 70 testes.
-- Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 46 testes.
-- App (armazenamento local, sincronizador e telas em jsdom com IndexedDB simulado): `npm run test:app` — 49 testes (40 de unidade + 9 de interface).
-- API (integração com PostgreSQL real): `npm run test:api` — 49 testes.
+- Domínio (regras puras, sem banco): `npm run test:domain` — 83 testes.
+- Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 48 testes.
+- App (armazenamento local, sincronizador e telas em jsdom com IndexedDB simulado): `npm run test:app` — 56 testes (43 de unidade + 13 de interface).
+- API (integração com PostgreSQL real): `npm run test:api` — 57 testes.
 - Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 39 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
 - Sem banco, os testes de API são **pulados com aviso** (nunca falsos positivos).

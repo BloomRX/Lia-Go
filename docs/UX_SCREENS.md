@@ -5,7 +5,7 @@ de código (React + TypeScript). Layout, alvos de toque e área segura devem ser
 telas pequenas.
 
 ## Navegação principal
-Barra inferior: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações.
+Barra inferior: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações. (Hoje: Visão geral, Roteiro, Gastos e **Mais** — as reservas moram na aba Mais.)
 
 ## Telas V1
 1. **Boas-vindas / autenticação** — entrar, criar conta, recuperação; métodos finais a definir após inspeção técnica.
@@ -63,12 +63,13 @@ Isto é o que **existe no app hoje**, não o que está planejado — conferido r
 | 10–11 | Nova despesa / rateio | ✅ despesa com rateio igualitário, soma exata | `telas/Viagem.tsx` (aba Gastos) |
 | 12 | Saldos e acertos | ✅ saldo oficial do servidor + acertos sugeridos | `telas/Viagem.tsx` (aba Gastos) |
 | 13 | Moedas | ⬜ (BRL hoje; estrutura de dinheiro já é por moeda) | — |
-| 14–15 | Reservas / checklist / documentos | ⬜ (próxima fatia) | — |
+| 14 | Reservas | ✅ criar (prevista), confirmar com evidência, cancelar com motivo, valor desconhecido como "a verificar" | `telas/Reservas.tsx` (aba **Mais**), `packages/domain/src/reserva.ts` |
+| 15–16 | Checklist / documentos | ⬜ (próxima fatia) | — |
 | 16 | Central de notificações | ⬜ | — |
 | 17 | Participantes e permissões | 🟡 papéis e convite existem; tela administrativa não | `telas/Viagem.tsx` |
 | 18 | Configurações | ⬜ (sessão em "sair") | — |
-| 19 | Cancelar viagem | 🟡 cancelamento existe na API e no domínio; sem prévia de impactos na tela | `docs/ARCHITECTURE.md` §12.1 |
-| 20 | Concluir viagem | 🟡 idem (bloqueia criar atividade depois de concluída) | — |
+| 19 | Cancelar viagem | ✅ prévia de impactos (`impactos-cancelamento`) + confirmação explícita na tela da viagem | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
+| 20 | Concluir viagem | ✅ transições com permissão por destino (bloqueia criar atividade/reserva depois de concluída) | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
 | 21 | Fechamento / exportação | ⬜ | — |
 
 **Fora das telas:** a **Lia** (a assistente) ainda não fala no app. As sugestões descritas em

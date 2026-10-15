@@ -143,7 +143,7 @@ Manter simples:
 Sem criar uma linguagem visual nova para cada módulo:
 
 - **Mapas:** usar componente de mapa isolado atrás de uma camada de abstração de provedor; controles e informações importantes permanecem em UI própria.
-- **Reservas:** cartões compactos com tipo, estado, data/hora e ação principal; evidência de confirmação sempre explícita.
+- **Reservas:** ✅ cartões compactos com tipo, estado, data/hora, valor (ou "valor a verificar") e ação principal; confirmar pede a **evidência** e mostra o impacto antes (`telas/Reservas.tsx`).
 - **Documentos:** lista/cartões simples com tipo, nome, privacidade/compartilhamento e estado; privado por padrão.
 
 ## 13. Regra de segurança para implementação

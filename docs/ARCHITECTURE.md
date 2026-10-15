@@ -206,21 +206,22 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto) | ✅ **70 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado | ✅ **49 testes** | `npm run test:api` (banco real) |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas) | ✅ **83 testes** | `npm run test:domain` |
+| API Fastify + PostgreSQL + SQL versionado | ✅ **57 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **46 testes** no pacote + 40 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 testes** no pacote + 43 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
-| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto) | ✅ **9 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reservas) | ✅ **13 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
 | Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
 | Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
+| Reservas (hospedagem, transporte, passeio, outro) | ✅ **13 testes** de domínio + **8** de API + 4 de interface | `packages/domain/src/reserva.ts`, `apps/api/src/routes/reservas.ts`, `telas/Reservas.tsx` |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
 mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere
@@ -248,6 +249,7 @@ ou sem internet passa pelo mesmo caminho de código (`packages/sync` + `apps/mob
 | Nada criado durante a passada é perdido | a fila é relida no fim e o que apareceu no meio é preservado (`juntarFilaDaPassada`) |
 | Conflito | `409 conflito_versao` com `detalhes.versaoAtual`; a tela mostra as duas versões e a pessoa escolhe. **Dinheiro nunca é resolvido sozinho** |
 | Cache local | IndexedDB (web) ou armazenamento do app (nativo), atrás de `ArmazenamentoLocal` — uma interface, três implementações (a terceira é memória, para testes) |
+| Cache de versão anterior | ao ler do aparelho, a carga é completada com as listas que existem hoje (`cargaCompleta`): quem atualiza o app tem cache velho, e cache velho não pode derrubar tela |
 | Saldos | sempre calculados no servidor; o aparelho guarda a última informação conhecida e mostra quando ela é de |
 
 Arquivos: `packages/sync/src/{tipos,fila,conflito,carga,motor}.ts`,
@@ -288,8 +290,30 @@ Rotas: `GET /viagens/:id/roteiro`, `GET /viagens/:id/atividades/:atividadeId`,
 Atividades também entram no fluxo offline (`atividades` em `packages/sync/src/carga.ts`) — a mesma fila,
 o mesmo cursor, a mesma idempotência das despesas.
 
+### Reservas: por que a estrutura é essa (implementado)
+
+Uma reserva **nasce prevista** e só passa a confirmada com **evidência** (localizador, código,
+comprovante) — `docs/UI_V1_DECISIONS.md` §13 diz "não confirmar reserva automaticamente" e a interface
+não pode dar a entender que o app falou com o hotel. O que muda ao confirmar é a **natureza** do
+dinheiro (estimativa → compromisso), nunca o valor; cancelar exige motivo, preserva a evidência e a
+tela avisa que **não** cancela no fornecedor. Valor desconhecido é `null` (nada de `R$ 0,00`).
+
+| Regra | Onde vive |
+|---|---|
+| Nasce prevista; confirmar é ação separada com evidência (≥3 caracteres) | `criarReserva` / `confirmarReserva` |
+| Cancelar exige motivo (≥5) e não apaga a confirmação do histórico | `cancelarReserva` |
+| Confirmada = compromisso; prevista = estimativa; `null` = desconhecido; `0` = gratuito | `naturezaDaReserva` |
+| Resumo separa estimativa de combinado e ignora cancelada | `resumirReservas` |
+| Confirmar/cancelar mostram impacto antes (e "não cancela no fornecedor") | `revisarImpactoDaReserva` |
+| Banco recusa confirmada sem evidência/autor/hora e cancelada sem motivo | migração `0004_reservas.sql` (CHECKs) |
+
+Rotas: `GET /viagens/:id/reservas`, `GET /viagens/:id/reservas/:reservaId` (com histórico),
+`POST /viagens/:id/reservas`, `POST .../{confirmar,cancelar}`. Reservas entram no `/mudancas` pelo
+cursor (mesmo caminho offline do roteiro) e passam pela fila do aparelho.
+
 ### Próxima fatia (proposta)
-1. **Reservas manuais** (com local, horário e custo) e **checklist**, reusando o mesmo padrão do roteiro.
-2. Documentos privados com compartilhamento revogável.
+1. **Checklist** da viagem (itens por pessoa, prazos) e **documentos** privados com compartilhamento
+   revogável — reusando o padrão de reservas/roteiro.
+2. Exportação/fechamento de contas (tela 21) e configurações (tela 18).
 3. Revisão de impacto para **substituir o roteiro vigente** (prévia de diferenças e versões anteriores) — o impacto de concluir/cancelar já existe.
 4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).

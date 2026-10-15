@@ -8,16 +8,17 @@ Celular é a plataforma principal; a versão web é complementar.
 
 | Área | Situação |
 |---|---|
-| Planejamento de produto e regras | ✅ completo em `docs/` (253 testes verdes no total) |
+| Planejamento de produto e regras | ✅ completo em `docs/` (283 testes verdes no total) |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro e orçamento) | ✅ **70 testes** |
-| API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro) | ✅ **49 testes** com PostgreSQL real |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento e reservas) | ✅ **83 testes** |
+| API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas) | ✅ **57 testes** com PostgreSQL real |
 | App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **46 + 40 testes** (`npm run test:sync`, `npm run test:app`) |
-| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem, revisão de impacto) | ✅ **9 testes** (`npm run test:ui`) |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 + 43 testes** (`npm run test:sync`, `npm run test:app`) |
+| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem, revisão de impacto, reservas) | ✅ **13 testes** (`npm run test:ui`) |
 | Automação de execução | ✅ `LiaGo.bat` (**duplo clique faz tudo**: atualiza do GitHub, instala dependências, sobe o banco, testa, grava relatórios/diagnóstico, envia ao GitHub e deixa o app no ar) |
 | Roteiro (timeline, concluir/cancelar/corrigir) e orçamento do roteiro | ✅ funcionando (`telas/Roteiro.tsx`, `telas/Atividade.tsx`, `telas/Viagem.tsx`) |
-| Reservas / documentos / checklist | ⬜ próximas fatias |
+| Reservas (prevista → confirmada com evidência → cancelada com motivo) | ✅ funcionando (`telas/Reservas.tsx`, aba Mais) |
+| Checklist / documentos | ⬜ próximas fatias |
 | Ferramentas de git seguro (DevKit) | ✅ funcionando, 39 testes passando |
 
 ## Ordem de leitura

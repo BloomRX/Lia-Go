@@ -119,7 +119,25 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   a pasta `docs/ui-references/` continua vazia e as telas seguem os **tokens que já existiam** em
   `apps/mobile/src/styles.css` (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível,
   estado **nunca só por cor**).
-- **Placar da rodada**: 253 testes verdes (ferramentas 39 · domínio 70 · sincronização 46 · app 49 — 40 de unidade + 9 de interface em jsdom · API 49).
+- **Placar da rodada**: 283 testes verdes (ferramentas 39 · domínio 83 · sincronização 48 · app 56 — 43 de unidade + 13 de interface em jsdom · API 57).
+
+### Reservas e revisão de impacto (2026-10-15, nona rodada)
+
+- **Reservas entram no app** (tela 14) com a regra que separa reserva de promessa: a reserva **nasce
+  prevista** e confirmar é ação separada que **exige evidência** (localizador, código, comprovante).
+  Decidido, não perguntado: sem evidência não existe "confirmada" — a interface não pode insinuar que
+  o app falou com o hotel (§13). Confirmar muda a **natureza** do dinheiro (estimativa → já combinado),
+  nunca o valor; cancelar exige motivo, preserva a evidência e avisa que **não** cancela no fornecedor.
+- **Orçamento e revisão de impacto do roteiro** (etapas 8/9): `resumirOrcamentoDoRoteiro` mostra o
+  previsto (estimativa × já combinado, "a verificar" sem somar) separado do **gasto oficial** — o
+  previsto é planejamento e não entra no saldo. `revisarImpacto` mostra, **antes** de concluir ou
+  cancelar uma atividade, o que muda e o que não muda (saldo oficial, despesas já registradas).
+- **Cache de versão anterior não derruba tela**: ao ler do aparelho a carga é completada
+  (`cargaCompleta`). Quem atualiza o app tem cache gravado pela versão antiga — e foi exatamente esse
+  cache que faria a tela quebrar quando `reservas` entrou. Há teste para isso.
+- **Testes de interface rodam em sequência**: dois apps em jsdom em paralelo deixavam a máquina lenta
+  e um fluxo com espera de rede estourava o prazo. Teste instável mente — a suíte de UI agora roda
+  `--test-concurrency=1` e ficou estável em três execuções completas seguidas.
 
 ### Defeitos de uso real + orçamento do roteiro (2026-10-15, oitava rodada)
 

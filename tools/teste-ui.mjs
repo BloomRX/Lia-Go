@@ -4,6 +4,11 @@
  *
  * O motivo de existir: `.tsx` tem JSX, e o Node só entende TypeScript puro. Aqui o teste é
  * empacotado (rolldown, o mesmo do Vite) num arquivo `.mjs` e só então o `node --test` roda.
+ *
+ * Os arquivos rodam **um por vez** (`--test-concurrency=1`): cada teste monta o app inteiro em
+ * jsdom, e dois em paralelo deixavam a máquina lenta o bastante para um fluxo com espera de rede
+ * estourar o prazo (teste instável é teste que mente). Sequencial custa poucos segundos e o
+ * resultado reflete o que a pessoa vê.
  */
 import { rolldown } from "rolldown";
 import { mkdir, rm, readdir } from "node:fs/promises";
@@ -46,5 +51,5 @@ for (const arquivo of arquivos) {
   gerados.push(destino);
 }
 
-const processo = spawn(process.execPath, ["--test", ...gerados], { stdio: "inherit", cwd: raiz });
+const processo = spawn(process.execPath, ["--test", "--test-concurrency=1", ...gerados], { stdio: "inherit", cwd: raiz });
 processo.on("exit", (codigo) => process.exit(codigo ?? 0));
