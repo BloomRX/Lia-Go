@@ -1,8 +1,6 @@
 # Mapa de telas e comportamentos — Lia Go
 
-**Plataforma principal: celular** (app Capacitor); a versão web é complementar e reaproveita a mesma base
-de código (React + TypeScript). Layout, alvos de toque e área segura devem ser desenhados primeiro para
-telas pequenas.
+**Plataforma principal: celular** (app Capacitor); a versão web é complementar e reaproveita a mesma base de código (React + TypeScript). Layout, alvos de toque e área segura devem ser desenhados primeiro para telas pequenas.
 
 ## Navegação principal
 Barra inferior pretendida: **Visão geral**, **Roteiro**, **Gastos**, **Documentos**. Área **Mais**: Participantes, Reservas e Configurações.
@@ -47,8 +45,7 @@ As decisões detalhadas e o padrão de componentes estão em [`UI_VISUAL_GUIDELI
 
 ## Estado real de implementação (2026-10-15)
 
-Isto é o que **existe no app hoje**, não o que está planejado — conferido rodando o app
-(`npm run dev:app` + `npm run dev:api`), não por leitura de código.
+Isto é o que **existe no app hoje**, não o que está planejado — conferido rodando o app (`npm run dev:app` + `npm run dev:api`), não por leitura de código.
 
 | # | Tela | Estado | Onde |
 |---|---|---|---|
@@ -73,9 +70,7 @@ Isto é o que **existe no app hoje**, não o que está planejado — conferido r
 | 20 | Concluir viagem | ✅ transições com permissão por destino (bloqueia criar atividade/reserva depois de concluída) | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
 | 21 | Fechamento / exportação | ⬜ | — |
 
-**Fora das telas:** a **Lia** (a assistente) ainda não fala no app. As sugestões descritas em
-`UI_VISUAL_GUIDELINES.md` têm lugar reservado na interface, mas nenhuma é exibida — não há texto gerado
-apresentado como conselho enquanto não existir IA de verdade por trás.
+**Fora das telas:** a **Lia** (a assistente) ainda não fala no app. As sugestões descritas em `UI_VISUAL_GUIDELINES.md` têm lugar reservado na interface, mas nenhuma é exibida — não há texto gerado apresentado como conselho enquanto não existir IA de verdade por trás.
 
 ## Estados de interface obrigatórios
 Para cada tela aplicável: carregando, vazio, erro, offline/desatualizado, conflito, sucesso e sem permissão.
@@ -90,3 +85,37 @@ Para cada tela aplicável: carregando, vazio, erro, offline/desatualizado, confl
 Profissional, moderna e confiável; base escura com roxo/magenta, efeitos luminosos moderados e cartões arredondados, adaptada para mobile, contraste e acessibilidade. A personalidade da Lia não deve competir com dados e ações.
 
 Referências de conceito fornecidas no planejamento devem ser tratadas como direção visual, não como especificação pixel-perfect. A identidade deve permanecer consistente entre mobile e web, com o celular como prioridade.
+
+## Próxima rodada de implementação — instruções ao agent
+
+A partir deste ponto, o planejamento visual **não deve bloquear o desenvolvimento por novas decisões cosméticas menores**. O agent deve usar os conceitos, `UI_VISUAL_GUIDELINES.md` e `UI_V1_DECISIONS.md` como referência suficiente para entregar uma primeira versão visual navegável.
+
+### Escopo prioritário
+
+1. **Roteiro completo:** timeline vertical, resumo diário adaptativo, cartões equilibrados, estados híbridos, custos contextuais, atividades flexíveis, deslocamentos adaptativos, concluídas recolhíveis e conflitos com explicação/ação.
+2. **Detalhes da atividade:** tela própria com horário/duração, local, deslocamento, custo/natureza do valor, reserva/evidência, acessibilidade/observações, documentos/links, histórico e ações autorizadas.
+3. **Identidade visual:** aplicar os assets oficiais em `assets/references/`; não criar identidade paralela; manter glow moderado e legibilidade como prioridade.
+4. **Responsividade e acessibilidade:** mobile-first, Android como prioridade, tablet/web reaproveitando componentes, safe areas, teclado, áreas de toque, foco, fonte ampliada e redução de movimento.
+5. **Regras já estabilizadas:** preservar permissões, confirmações financeiras, offline/outbox, conflitos de sincronização e histórico. A UI não pode duplicar nem enfraquecer essas regras.
+
+### Regras de execução
+
+- Não criar telas, abstrações ou efeitos apenas por estética.
+- Reutilizar componentes existentes sempre que possível.
+- Detalhes cosméticos não definidos devem ser resolvidos pragmaticamente pela alternativa mais simples, acessível e consistente com as diretrizes.
+- Não inventar dados, estados ou confirmações para preencher conceitos.
+- Uma tela só é considerada pronta quando fluxo, permissões, estados de erro/offline e ações continuam coerentes.
+
+### Validação de cada fatia
+
+- Rodar a suíte de testes existente e os testes de interface aplicáveis.
+- Corrigir regressões introduzidas pela implementação.
+- Se um teste precisar mudar por alteração legítima de UI/comportamento, registrar o motivo separadamente.
+- Verificar ao menos uma largura de celular estreita e uma largura maior antes de concluir a fatia.
+- Reportar objetivamente: implementado, pendente, testes/resultados e qualquer nova decisão que altere arquitetura ou regra de negócio.
+
+### Ordem de entrega
+
+**Roteiro → detalhes da atividade → identidade visual → responsividade/acessibilidade → refinamento financeiro.**
+
+Depois da primeira versão navegável, fazer auditoria visual/funcional contra os conceitos e estes documentos antes de ampliar o escopo.
