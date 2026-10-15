@@ -206,16 +206,17 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites) | ✅ **54 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado | ✅ **39 testes** | `npm run test:api` (banco real) |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro) | ✅ **63 testes** | `npm run test:domain` |
+| API Fastify + PostgreSQL + SQL versionado | ✅ **49 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **38 testes** no pacote + 13 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **41 testes** no pacote + 20 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
+| Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
@@ -254,9 +255,29 @@ sistema). **Próximo passo nativo:** banco local criptografado (SQLCipher com ch
 de **um arquivo** (`apps/mobile/src/offline/armazenamento.ts`), motivo e contexto em
 `DECISIONS_AND_OPEN_QUESTIONS.md`.
 
+### Roteiro: por que a estrutura é essa (implementado)
+
+O roteiro não é uma lista de compromissos com horário obrigatório — é o **plano do dia**, que pode ser
+reorganizado pela vida real. As decisões abaixo vêm de `docs/UI_VISUAL_GUIDELINES.md` §2 e estão no
+código, não só no documento:
+
+| Regra de negócio | Onde vive | Por que assim |
+|---|---|---|
+| Atividade pode ser **flexível** (`hora: null` + `ordem`) | `packages/domain/src/roteiro.ts` | Não inventamos horário para preencher tela; a ordem preserva a intenção |
+| O relógio **não** conclui atividade | `concluirAtividade` exige autor e ação explícita | Passar do horário não prova que aconteceu — quem sabe é a pessoa |
+| Custo tem **natureza**: `estimativa`, `compromisso`, `gratuito`, ou **desconhecido** | `custoParaMostrar` + CHECKs na migração `0003` | Desconhecido ≠ zero ≠ gratuito; o resumo mostra `custoConhecidoCentavos` e sinaliza `temCustoAVerificar` |
+| Conflito é **explicado**, nunca resolvido sozinho | `conflitosDoDia` (sobreposição, deslocamento insuficiente) | O app sugere o ajuste e espera a decisão; remarcar sozinho quebra a confiança |
+| Concluir/cancelar/corrigir exigem **motivo** (≥5 caracteres na correção/cancelamento) | rota + domínio | Histórico serve para aprender, não para apagar |
+| Depois do cancelamento da viagem, **registrar o que houve com o que já existia** continua permitido | `PERMITIDAS_APOS_CANCELAMENTO` (`atividade:concluir/cancelar/corrigir`) | Viagem cancelada não recebe plano novo, mas o passado aconteceu — mesma lógica das despesas |
+| Viagem concluída bloqueia `atividade:criar` | `packages/domain/src/permissions.ts` | Não se planeja o que já terminou |
+
+Rotas: `GET /viagens/:id/roteiro`, `GET /viagens/:id/atividades/:atividadeId`,
+`POST /viagens/:id/atividades`, `POST /viagens/:id/atividades/:atividadeId/{concluir,cancelar,corrigir}`.
+Atividades também entram no fluxo offline (`atividades` em `packages/sync/src/carga.ts`) — a mesma fila,
+o mesmo cursor, a mesma idempotência das despesas.
+
 ### Próxima fatia (proposta)
-1. **Offline de verdade**: cache local (SQLite nativo/IndexedDB atrás de uma interface), fila de operações
-   e sincronização por cursor (`/viagens/:id/changes` + push idempotente) — o servidor já está preparado.
-2. Reservas manuais, checklist e documentos privados com compartilhamento revogável.
-3. Roteiro por dia com revisão de impacto e versões anteriores.
+1. **Reservas manuais** (com local, horário e custo) e **checklist**, reusando o mesmo padrão do roteiro.
+2. Documentos privados com compartilhamento revogável.
+3. Revisão de impacto do roteiro (o que muda se eu tirar/atrasar uma atividade) e versões anteriores.
 4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).

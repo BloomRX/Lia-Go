@@ -81,3 +81,33 @@ test("lista sem id é ignorada em vez de virar lixo na interface", () => {
   const lista = mesclarLista([{ id: "d1" }], [{ descricao: "sem id" }, { id: "d2" }]);
   assert.deepEqual(lista.map((item) => item["id"]), ["d1", "d2"]);
 });
+
+test("roteiro: atividades do dia entram na carga local (offline) e a mais nova vence", () => {
+  const atual = {
+    ...cargaVazia(),
+    atividades: [{ id: "a1", titulo: "Museu", versao: 1, estado: "planejada" }],
+  };
+  const resultado = mesclarCarga(atual, {
+    // A atividade mudou no servidor (outra pessoa concluiu) e uma nova foi criada.
+    atividades: [
+      { id: "a1", titulo: "Museu", versao: 2, estado: "concluida" },
+      { id: "a2", titulo: "Almoço", versao: 1, estado: "planejada" },
+    ],
+  });
+  assert.deepEqual(resultado.atividades.map((item) => item["id"]), ["a1", "a2"]);
+  assert.equal(resultado.atividades[0]!["estado"], "concluida");
+  assert.equal(resultado.atividades[0]!["versao"], 2);
+
+  // Resposta atrasada não rebaixa o que já está no aparelho.
+  const atrasada = mesclarCarga(resultado, { atividades: [{ id: "a1", titulo: "Museu", versao: 1, estado: "planejada" }] });
+  assert.equal(atrasada.atividades[0]!["estado"], "concluida", "o aparelho nunca volta para um estado antigo");
+
+  assert.equal(contarItens(resultado), 2, "as duas atividades entram na contagem da carga");
+});
+
+test("roteiro: atividade cancelada sai da carga quando o servidor marca como removida", () => {
+  const atual = { ...cargaVazia(), atividades: [{ id: "a1", titulo: "Trilha", versao: 2 }] };
+  const resultado = mesclarCarga(atual, { atividades: [{ id: "a1", removido: true }] });
+  assert.deepEqual(resultado.atividades, []);
+  assert.deepEqual(removerDaCarga(resultado, "atividades", "a1").atividades, []);
+});

@@ -141,3 +141,97 @@ small.suave { color: var(--texto-suave); }
   text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); vertical-align: top;
 }
 .tabela-conflito th { color: #cbb8ff; font-weight: 600; }
+
+/* ---------------------------------------------------------------
+   Roteiro: linha do tempo, conflitos e custo.
+   Regra de acessibilidade da diretriz §4: **nenhum estado é só cor** —
+   todo marcador colorido vem acompanhado de texto ou ícone.
+   --------------------------------------------------------------- */
+.dias { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; }
+.dia-chip {
+  display: flex; flex-direction: column; gap: 2px; min-height: 44px;
+  background: var(--fundo-cartao); border: 1px solid var(--borda); color: var(--texto-suave);
+  border-radius: 14px; padding: 8px 14px; white-space: nowrap;
+}
+.dia-chip small { font-size: 0.7rem; }
+.dia-chip.ativo { border-color: var(--magenta); color: var(--texto); background: var(--fundo-cartao-alto); }
+.dia-chip.com-conflito { border-color: var(--atencao); }
+
+.dia-titulo { text-transform: capitalize; }
+
+.resumo-dia {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
+  color: var(--texto-suave); font-size: 0.86rem; padding: 6px 2px 2px;
+}
+.resumo-dia.expandido { color: var(--texto); }
+.resumo-dia .conflito-aviso { color: var(--atencao); font-weight: 600; }
+.resumo-dia .custo-a-verificar { color: var(--atencao); }
+
+.linha-tempo { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
+.atividade { position: relative; padding-left: 26px; }
+.atividade + .atividade { margin-top: 6px; }
+/* A linha vertical da timeline: discreta, só orienta a leitura. */
+.atividade::before {
+  content: ""; position: absolute; left: 7px; top: 26px; bottom: -8px;
+  width: 2px; background: var(--borda);
+}
+.atividade:last-child::before { display: none; }
+.marcador {
+  position: absolute; left: 2px; top: 18px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--roxo); box-shadow: 0 0 10px rgba(168, 85, 247, 0.55);
+}
+.atividade.concluida .marcador { background: var(--bom); box-shadow: none; }
+.atividade.cancelada .marcador { background: #6b7280; box-shadow: none; }
+.atividade.cancelada .cartao { opacity: 0.72; }
+.atividade.com-conflito .marcador { background: var(--atencao); box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+.atividade-corpo { display: block; }
+
+.cartao-atividade {
+  width: 100%; text-align: left; color: var(--texto); font: inherit; cursor: pointer;
+  min-height: 44px;
+}
+.atividade-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.atividade-hora { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--magenta); }
+.atividade-titulo { margin: 6px 0 4px; }
+.atividade-contexto { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.84rem; color: var(--texto-suave); }
+.atividade-contexto .custo { color: var(--texto); }
+.atividade-contexto .custo-a-verificar { color: var(--atencao); }
+
+.alerta-conflito {
+  margin-top: 10px; border-left: 3px solid var(--atencao); padding: 6px 10px;
+  background: rgba(251, 191, 36, 0.08); border-radius: 8px;
+}
+.alerta-conflito p { margin: 2px 0; color: var(--texto); font-size: 0.84rem; }
+.trecho { display: flex; flex-wrap: wrap; gap: 8px; color: var(--texto-suave); font-size: 0.8rem; padding: 4px 0 6px; }
+.trecho.aberto { color: var(--texto); }
+.trecho-alerta { color: var(--atencao); font-style: normal; }
+
+.etiqueta.estado-planejada { background: #2f1c4d; color: var(--texto-suave); }
+.etiqueta.estado-concluida { background: #14382c; color: var(--bom); }
+.etiqueta.estado-cancelada { background: #3a2222; color: #f0a0a0; text-decoration: line-through; }
+
+.ficha { display: grid; gap: 8px; }
+.ficha > div { display: flex; flex-direction: column; gap: 2px; }
+.ficha .rotulo { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--texto-suave); }
+.historico { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+
+.duas-colunas { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.caixa-marcacao { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 0.9rem; }
+.caixa-marcacao input { width: 20px; height: 20px; }
+button.compacto { padding: 8px 14px; font-size: 0.86rem; }
+button.perigo { background: #7f1d1d; border-color: #b91c1c; color: #ffe4e4; }
+button.sutil.pequeno { font-size: 0.78rem; }
+.suave.pequeno { font-size: 0.8rem; }
+
+/* Acessibilidade (§4): foco sempre visível e alvos de toque confortáveis. */
+button:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:focus-visible {
+  outline: 3px solid var(--magenta);
+  outline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .duas-colunas { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulso { animation: none; }
+  * { transition: none !important; }
+}

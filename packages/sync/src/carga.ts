@@ -7,11 +7,11 @@
 import type { CargaLocal, CargaRemota, DetalheViagemLocal } from "./tipos.ts";
 
 export function cargaVazia(): CargaLocal {
-  return { viagens: [], viagem: null, despesas: [], movimentos: [], convites: [], convitesParaMim: [] };
+  return { viagens: [], viagem: null, despesas: [], movimentos: [], convites: [], convitesParaMim: [], atividades: [] };
 }
 
 /** Listas que sabemos mesclar. A chave é o campo `id`; o desempate é `versao` quando existe. */
-const LISTAS = ["despesas", "movimentos", "convites"] as const;
+const LISTAS = ["despesas", "movimentos", "convites", "atividades"] as const;
 
 export function mesclarCarga(atual: CargaLocal, delta: CargaRemota): CargaLocal {
   const resultado: CargaLocal = { ...atual };
@@ -72,7 +72,7 @@ export function mesclarLista(
 }
 
 /** Remove da carga o que o servidor marcou como removido. */
-export function removerDaCarga(carga: CargaLocal, lista: "despesas" | "movimentos" | "convites", id: string): CargaLocal {
+export function removerDaCarga(carga: CargaLocal, lista: "despesas" | "movimentos" | "convites" | "atividades", id: string): CargaLocal {
   return { ...carga, [lista]: carga[lista].filter((item) => item["id"] !== id) };
 }
 
@@ -90,7 +90,8 @@ export function contarItens(carga: CargaLocal): number {
     carga.despesas.length +
     carga.movimentos.length +
     carga.convites.length +
-    carga.convitesParaMim.length
+    carga.convitesParaMim.length +
+    carga.atividades.length
   );
 }
 

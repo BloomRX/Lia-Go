@@ -44,6 +44,37 @@ As decisões detalhadas e o padrão de componentes estão em [`UI_VISUAL_GUIDELI
 - **Concluídas:** marcação discreta na timeline + etiqueta no cartão; podem ser recolhidas sem apagar histórico ou mudar a ordem.
 - **Resumo diário:** adaptativo; compacto por padrão, expandindo indicadores relevantes e destacando conflitos/pendências importantes.
 
+## Estado real de implementação (2026-10-15)
+
+Isto é o que **existe no app hoje**, não o que está planejado — conferido rodando o app
+(`npm run dev:app` + `npm run dev:api`), não por leitura de código.
+
+| # | Tela | Estado | Onde |
+|---|---|---|---|
+| 1 | Boas-vindas / autenticação | ✅ entrar e criar conta (senha ≥ 10) | `telas/Entrar.tsx` |
+| 2 | Início | ✅ viagens, pendências, estado de sincronização | `telas/Inicio.tsx` |
+| 3 | Criar viagem | ✅ formulário único; rascunho e transição para *planejada* | `telas/Viagem.tsx` (aba Visão) |
+| 4 | Convites e participantes | ✅ convite com token mostrado uma vez; participação por token | `telas/Viagem.tsx` |
+| 5 | Dashboard da viagem | ✅ destino, datas, estado, saldos e pendências | `telas/Viagem.tsx` (aba Visão) |
+| 6 | Roteiro | ✅ timeline por dia, dias com conflito, resumo adaptativo, concluídas recolhíveis, criar atividade | `telas/Roteiro.tsx` |
+| 7 | Detalhes da atividade | ✅ ficha, custo com natureza, concluir/cancelar/corrigir com motivo, histórico | `telas/Atividade.tsx` |
+| 8 | Revisão de mudanças | ⬜ (próxima fatia do roteiro) | — |
+| 9 | Orçamento | ⬜ (aparece só como resumo de custo do dia) | — |
+| 10–11 | Nova despesa / rateio | ✅ despesa com rateio igualitário, soma exata | `telas/Viagem.tsx` (aba Gastos) |
+| 12 | Saldos e acertos | ✅ saldo oficial do servidor + acertos sugeridos | `telas/Viagem.tsx` (aba Gastos) |
+| 13 | Moedas | ⬜ (BRL hoje; estrutura de dinheiro já é por moeda) | — |
+| 14–15 | Reservas / checklist / documentos | ⬜ (próxima fatia) | — |
+| 16 | Central de notificações | ⬜ | — |
+| 17 | Participantes e permissões | 🟡 papéis e convite existem; tela administrativa não | `telas/Viagem.tsx` |
+| 18 | Configurações | ⬜ (sessão em "sair") | — |
+| 19 | Cancelar viagem | 🟡 cancelamento existe na API e no domínio; sem prévia de impactos na tela | `docs/ARCHITECTURE.md` §12.1 |
+| 20 | Concluir viagem | 🟡 idem (bloqueia criar atividade depois de concluída) | — |
+| 21 | Fechamento / exportação | ⬜ | — |
+
+**Fora das telas:** a **Lia** (a assistente) ainda não fala no app. As sugestões descritas em
+`UI_VISUAL_GUIDELINES.md` têm lugar reservado na interface, mas nenhuma é exibida — não há texto gerado
+apresentado como conselho enquanto não existir IA de verdade por trás.
+
 ## Estados de interface obrigatórios
 Para cada tela aplicável: carregando, vazio, erro, offline/desatualizado, conflito, sucesso e sem permissão.
 - Exibir claramente quem pode agir e por quê.

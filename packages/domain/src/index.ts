@@ -11,3 +11,4 @@ export * from "./trip-state.ts";
 export * from "./expense.ts";
 export * from "./balances.ts";
 export * from "./invite.ts";
+export * from "./roteiro.ts";

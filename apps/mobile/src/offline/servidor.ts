@@ -62,6 +62,20 @@ async function enviarOperacao(operacao: Operacao, idempotencia: string): Promise
       return api.confirmarMovimento(operacao.viagemId, operacao.movimentoId);
     case "contestar_movimento":
       return api.contestarMovimento(operacao.viagemId, operacao.movimentoId, operacao.motivo);
+    case "criar_atividade":
+      return api.criarAtividade(operacao.viagemId, operacao.corpo as Parameters<typeof api.criarAtividade>[1], idempotencia);
+    case "concluir_atividade":
+      return api.concluirAtividade(operacao.viagemId, operacao.atividadeId, {
+        observacao: operacao.observacao ?? null,
+        ...(operacao.versao === undefined ? {} : { versao: operacao.versao }),
+      });
+    case "cancelar_atividade":
+      return api.cancelarAtividade(operacao.viagemId, operacao.atividadeId, {
+        motivo: operacao.motivo,
+        ...(operacao.versao === undefined ? {} : { versao: operacao.versao }),
+      });
+    case "corrigir_atividade":
+      return api.corrigirAtividade(operacao.viagemId, operacao.atividadeId, operacao.corpo as { motivo: string });
   }
 }
 
@@ -82,6 +96,7 @@ export function extrairCarga(mudancas: MudancasApi): Record<string, unknown> {
     despesas: mudancas.despesas as unknown as Record<string, unknown>[],
     movimentos: mudancas.movimentos as unknown as Record<string, unknown>[],
     convites: mudancas.convites,
+    atividades: (mudancas.atividades ?? []) as unknown as Record<string, unknown>[],
   };
 }
 

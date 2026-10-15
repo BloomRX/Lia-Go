@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Roteiro } from "./Roteiro.tsx";
 import { api, ErroApi, type DespesaApi, type MovimentoApi, type SaldosApi } from "../services/api.ts";
 import {
   ROTULO_DESPESA,
@@ -17,9 +18,11 @@ interface Props {
   usuarioId: string;
   voltar: () => void;
   sincronizador: Sincronizador;
+  /** A atividade abre em tela própria (diretriz §2.1); quem cuida disso é o App. */
+  abrirAtividade: (atividadeId: string) => void;
 }
 
-type Aba = "visao" | "gastos" | "mais";
+type Aba = "visao" | "roteiro" | "gastos" | "mais";
 
 interface Participante {
   usuario_id: string;
@@ -33,7 +36,7 @@ interface Participante {
  * o que a pessoa faz aqui vale na hora e sobe para o servidor quando houver rede.
  * Saldos sempre vêm do servidor — o app nunca calcula dinheiro oficial.
  */
-export function Viagem({ viagemId, usuarioId, voltar, sincronizador }: Props): React.ReactElement {
+export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }: Props): React.ReactElement {
   const [aba, setAba] = useState<Aba>("visao");
   const [estado, setEstado] = useState(sincronizador.obter());
   const [saldos, setSaldos] = useState<SaldosApi | null>(null);
@@ -313,6 +316,18 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador }: Props): R
             )}
           </section>
         </>
+      ) : null}
+
+      {aba === "roteiro" ? (
+        <Roteiro
+          viagemId={viagemId}
+          usuarioId={usuarioId}
+          sincronizador={sincronizador}
+          abrirAtividade={abrirAtividade}
+          dataInicioViagem={(viagem.data_inicio as string | null) ?? null}
+          dataFimViagem={(viagem.data_fim as string | null) ?? null}
+          estadoViagem={viagem.estado as string}
+        />
       ) : null}
 
       {aba === "gastos" ? (
@@ -632,6 +647,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador }: Props): R
 
       <nav className="barra" aria-label="Navegação principal">
         <button aria-current={aba === "visao"} onClick={() => setAba("visao")}>Visão geral</button>
+        <button aria-current={aba === "roteiro"} onClick={() => setAba("roteiro")}>Roteiro</button>
         <button aria-current={aba === "gastos"} onClick={() => setAba("gastos")}>Gastos</button>
         <button aria-current={aba === "mais"} onClick={() => setAba("mais")}>Mais</button>
       </nav>

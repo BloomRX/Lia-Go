@@ -235,3 +235,25 @@ Este documento não fecha:
 - aparência final de mapas, documentos e reservas.
 
 Esses pontos podem ser definidos incrementalmente, sem contrariar as decisões acima.
+
+### 8.1 O que já foi resolvido na implementação (hipóteses reversíveis)
+
+As telas do roteiro foram construídas em 2026-10-15 usando **somente os tokens que já existiam** em
+`apps/mobile/src/styles.css` — nenhuma cor, fonte ou espaçamento novo foi inventado. Onde este documento
+não fechava um valor, foi aplicada a opção mais simples e reversível, para não travar a fatia:
+
+| Ponto em aberto | O que está valendo agora | Trocar depois exige mexer em… |
+|---|---|---|
+| Tokens de cor | variáveis já existentes (`--roxo`, `--magenta`, `--bom`, `--atencao`, `--fundo-cartao`, `--borda`, `--texto-suave`) | `styles.css` (bloco `:root`) |
+| Tipografia | pilha do sistema, já herdada; hierarquia por tamanho/peso | `styles.css` |
+| Espaçamento | múltiplos de 2 px já usados (6/8/10/12/14/16) | `styles.css` |
+| Breakpoints | um só: **480 px** (colunas do roteiro empilham no celular) | `styles.css` |
+| Ícones | **texto/etiqueta** em vez de biblioteca (nenhum ícone novo instalado) — também é o caminho mais acessível | componentes das telas |
+| Animação | nenhuma além do pulso já existente; `prefers-reduced-motion` desliga animação e transição | `styles.css` |
+| Densidade financeira | custo em linha dentro do contexto do cartão; ficha com rótulo + valor | `CartaoAtividade.tsx`, `Atividade.tsx` |
+| Mapas | fora desta fatia (deslocamento é texto: minutos, km e alerta) | próxima fatia |
+| Acessibilidade | alvos ≥ 44 px, foco visível (`:focus-visible` com 3 px), **estado nunca só por cor** (todo marcador tem etiqueta textual) | `styles.css` |
+
+O item de **estado nunca só por cor** merece destaque porque é o mais fácil de quebrar sem perceber: o
+marcador da timeline é decorativo; quem informa o estado é a etiqueta (`planejada`, `concluída`,
+`cancelada`) e o texto do conflito (`⚠ conflito` + explicação).

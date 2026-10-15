@@ -176,3 +176,22 @@ test("resumo da fila fala a lÃ­ngua da pessoa e prioriza o que precisa de decisÃ
   assert.equal(sincronizado.estado, "sincronizado");
   assert.equal(sincronizado.rotulo, "Tudo sincronizado");
 });
+
+test("roteiro na fila: criar e concluir atividade funcionam offline e preservam a ordem", () => {
+  let fila: Fila = filaVazia();
+  fila = enfileirar(fila, {
+    id: "op-atividade-1",
+    operacao: { tipo: "criar_atividade", viagemId: "v1", corpo: { dia: "2026-12-20", titulo: "Museu" }, descricao: "Atividade: Museu" },
+    agora: T0,
+  });
+  fila = enfileirar(fila, {
+    id: "op-atividade-2",
+    operacao: { tipo: "concluir_atividade", viagemId: "v1", atividadeId: "a1", versao: 1, descricao: "Concluir: Museu" },
+    agora: depois(1),
+  });
+  const primeira = proximaOperacao(fila, T0);
+  assert.equal(primeira?.operacao.tipo, "criar_atividade");
+  const resumo = resumoFila(fila);
+  assert.equal(resumo.total, 2);
+  assert.equal(resumo.estado, "pendente");
+});

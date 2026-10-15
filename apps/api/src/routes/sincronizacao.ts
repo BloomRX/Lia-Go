@@ -7,7 +7,7 @@
  * O que volta completo (são pequenos e mudam por vários caminhos): a viagem (com permissões
  * calculadas para quem perguntou) e a lista de participantes — aceitar um convite, por exemplo,
  * muda participante sem gerar linha de "membro" na auditoria.
- * O que volta só quando mudou: despesas, acertos e convites.
+ * O que volta só quando mudou: despesas, acertos, convites e atividades do roteiro.
  */
 import type { FastifyInstance } from "fastify";
 import type pg from "pg";
@@ -18,6 +18,7 @@ import { exigirAutenticacao } from "../http.ts";
 import { exigirContexto } from "../authz.ts";
 import { carregarDetalheViagem } from "../detalhe.ts";
 import { carregarDespesa, despesaParaJson } from "../repo.ts";
+import { atividadeParaJson, listarAtividades } from "../roteiro-repo.ts";
 
 /** Quantas mudanças cabem em uma resposta. Paginação evita resposta gigante depois de dias offline. */
 export const LIMITE_MUDANCAS = 200;
@@ -58,6 +59,11 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
     const despesas = await carregarDespesasMudadas(pool, viagemId, idsPorEntidade.get("despesa") ?? []);
     const movimentos = await carregarMovimentosMudados(pool, viagemId, idsPorEntidade.get("movimento") ?? []);
     const convites = await carregarConvitesMudados(pool, viagemId, idsPorEntidade.get("convite") ?? []);
+    // Roteiro: só as atividades que mudaram (primeira sincronização traz tudo, porque a criação
+    // de cada uma deixa marca na auditoria).
+    const atividades = (await listarAtividades(pool, viagemId, idsPorEntidade.get("atividade") ?? [])).map((atividade) =>
+      atividadeParaJson(atividade),
+    );
 
     return {
       cursor,
@@ -74,6 +80,7 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
       despesas,
       movimentos,
       convites,
+      atividades,
     };
   });
 }

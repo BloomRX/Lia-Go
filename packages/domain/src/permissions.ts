@@ -20,7 +20,11 @@ export type Acao =
   | "despesa:criar"
   | "despesa:confirmar"
   | "despesa:contestar"
-  | "despesa:corrigir";
+  | "despesa:corrigir"
+  | "atividade:criar"
+  | "atividade:corrigir"
+  | "atividade:concluir"
+  | "atividade:cancelar";
 
 export interface ContextoAutorizacao {
   papel: Papel;
@@ -49,13 +53,26 @@ const SOMENTE_ORGANIZADOR: ReadonlySet<Acao> = new Set<Acao>([
   "viagem:relatorio:ampliado",
 ]);
 
-/** Depois de cancelada, só correções e encerramento são permitidos. */
+/**
+ * Depois de cancelada, só correções e encerramento são permitidos.
+ * No roteiro vale o mesmo princípio das despesas: não se **planeja** nada novo, mas registrar o que
+ * aconteceu com o que já existia (concluir, cancelar a atividade, corrigir) continua valendo.
+ */
 const PERMITIDAS_APOS_CANCELAMENTO: ReadonlySet<Acao> = new Set<Acao>([
   "viagem:relatorio:ampliado",
   "despesa:corrigir",
   "despesa:confirmar",
   "despesa:contestar",
+  "atividade:corrigir",
+  "atividade:concluir",
+  "atividade:cancelar",
 ]);
+
+/**
+ * Depois de a viagem ser concluída não se planeja mais nada novo (mesma regra de `despesa:criar`),
+ * mas concluir/cancelar uma atividade que já existia continua valendo — é registro do que houve.
+ */
+const BLOQUEADAS_APOS_CONCLUSAO: ReadonlySet<Acao> = new Set<Acao>(["despesa:criar", "viagem:editar", "atividade:criar"]);
 
 export function decidirAutorizacao(contexto: ContextoAutorizacao, acao: Acao): DecisaoAutorizacao {
   if (contexto.estadoMembro !== "ativo") return NEGADO_SEM_ACESSO;
@@ -67,7 +84,7 @@ export function decidirAutorizacao(contexto: ContextoAutorizacao, acao: Acao): D
     };
   }
 
-  if (contexto.estadoViagem === "concluida" && (acao === "despesa:criar" || acao === "viagem:editar")) {
+  if (contexto.estadoViagem === "concluida" && BLOQUEADAS_APOS_CONCLUSAO.has(acao)) {
     return {
       permitido: false,
       motivo: "Viagem concluída: correções e acertos continuam permitidos, novos lançamentos não.",

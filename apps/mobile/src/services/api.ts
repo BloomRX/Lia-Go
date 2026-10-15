@@ -166,6 +166,59 @@ export interface MudancasApi {
   despesas: DespesaApi[];
   movimentos: MovimentoApi[];
   convites: Record<string, unknown>[];
+  atividades: AtividadeApi[];
+}
+
+/** Atividade do roteiro, como o servidor devolve (custo em centavos, sem float). */
+export interface AtividadeApi {
+  id: string;
+  viagemId: string;
+  autorId: string;
+  dia: string;
+  ordem: number;
+  titulo: string;
+  hora: string | null;
+  duracaoMinutos: number | null;
+  local: string | null;
+  custo: { centavos: string | null; natureza: "estimativa" | "compromisso" | "gratuito" | null; aVerificar: boolean };
+  estado: "planejada" | "concluida" | "cancelada";
+  concluidaPor: string | null;
+  concluidaEm: string | null;
+  observacao: string | null;
+  deslocamento: { minutos: number | null; km: number | null; custoCentavos: string | null; alerta: string | null } | null;
+  versao: number;
+}
+
+export interface ConflitoApi {
+  tipo: "sobreposicao" | "deslocamento_insuficiente";
+  atividadeIds: string[];
+  explicacao: string;
+  sugestao: string;
+}
+
+export interface DiaRoteiroApi {
+  dia: string;
+  atividades: AtividadeApi[];
+  resumo: {
+    total: number;
+    concluidas: number;
+    canceladas: number;
+    planejadas: number;
+    comHorarioDefinido: number;
+    flexiveis: number;
+    custoConhecidoCentavos: string;
+    temEstimativa: boolean;
+    temCompromisso: boolean;
+    temGratuito: boolean;
+    temCustoAVerificar: boolean;
+    conflitos: number;
+  };
+  conflitos: ConflitoApi[];
+}
+
+export interface RoteiroApi {
+  dias: DiaRoteiroApi[];
+  permissoes: { criarAtividade: boolean; motivoParaNaoCriar: string | null; papel: string; estadoViagem: string };
 }
 
 export interface MovimentoApi {
@@ -316,6 +369,64 @@ export const api = {
 
   async contestarDespesa(viagemId: string, despesaId: string, motivo: string): Promise<DespesaApi> {
     return requisitar(`/viagens/${viagemId}/despesas/${despesaId}/contestar`, { metodo: "POST", corpo: { motivo } });
+  },
+
+  async roteiro(viagemId: string): Promise<RoteiroApi> {
+    return requisitar(`/viagens/${viagemId}/roteiro`);
+  },
+
+  /** Detalhe de uma atividade (inclui o histórico, quando há rede). */
+  async detalheAtividade(viagemId: string, atividadeId: string): Promise<DiaRoteiroApi & { historico: unknown[] }> {
+    return requisitar(`/viagens/${viagemId}/atividades/${atividadeId}`);
+  },
+
+  async criarAtividade(
+    viagemId: string,
+    dados: {
+      dia: string;
+      titulo: string;
+      hora: string | null;
+      duracaoMinutos: number | null;
+      local: string | null;
+      custoCentavos: string | null;
+      custoNatureza: "estimativa" | "compromisso" | "gratuito" | null;
+      custoAVerificar: boolean;
+      observacao: string | null;
+      deslocamento: { minutos: number | null; km: number | null; custoCentavos: string | null; alerta: string | null } | null;
+    },
+    idempotencia: string = crypto.randomUUID(),
+  ): Promise<DiaRoteiroApi> {
+    return requisitar(`/viagens/${viagemId}/atividades`, { metodo: "POST", corpo: dados, idempotencia });
+  },
+
+  async concluirAtividade(
+    viagemId: string,
+    atividadeId: string,
+    dados: { observacao?: string | null; versao?: number } = {},
+  ): Promise<DiaRoteiroApi> {
+    return requisitar(`/viagens/${viagemId}/atividades/${atividadeId}/concluir`, {
+      metodo: "POST",
+      corpo: { observacao: dados.observacao ?? null, ...(dados.versao === undefined ? {} : { versao: dados.versao }) },
+    });
+  },
+
+  async cancelarAtividade(
+    viagemId: string,
+    atividadeId: string,
+    dados: { motivo: string; versao?: number },
+  ): Promise<DiaRoteiroApi> {
+    return requisitar(`/viagens/${viagemId}/atividades/${atividadeId}/cancelar`, {
+      metodo: "POST",
+      corpo: { motivo: dados.motivo, ...(dados.versao === undefined ? {} : { versao: dados.versao }) },
+    });
+  },
+
+  async corrigirAtividade(
+    viagemId: string,
+    atividadeId: string,
+    dados: Record<string, unknown> & { motivo: string },
+  ): Promise<DiaRoteiroApi> {
+    return requisitar(`/viagens/${viagemId}/atividades/${atividadeId}/corrigir`, { metodo: "POST", corpo: dados });
   },
 
   async sairDaViagem(viagemId: string): Promise<void> {

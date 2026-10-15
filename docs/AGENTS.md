@@ -51,7 +51,8 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 - **Saída dos servidores (etapa 7) é repassada linha por linha**, com etiqueta `[api]`/`[app]`, e os servidores **não recebem o teclado** (`stdin: "ignore"`): escrevendo direto no console, as linhas de dois servidores colavam uma na outra e o Windows desenhava `\r\n` como "♪◙" (`separarLinhas`; há teste).
 - **`status 0` não prova que o banco subiu**: `pg_ctl` pode sair com código 0 sem subir nada (registro `postmaster.pid` antigo). A prova é a **porta respondendo** (`portaRespondendo`) e, antes de subir, `postmaster.pid` órfão é limpo.
 - **Feedback obrigatório em etapas longas**: saída ao vivo (npm install/teste), barra de progresso no download do banco e aviso `⏳ ainda trabalhando` após 15s de silêncio. Etapa longa nunca deve parecer travada.
-- `npm test` roda a suíte completa: ferramentas (39) + domínio (54) + sincronização (38) + app (13) + API (39) = 183. Sem banco, os testes de API são pulados com aviso.
+- `npm test` roda a suíte completa: ferramentas (39) + domínio (63) + sincronização (41) + app (20) + API (49) = **212**. Sem banco, os testes de API são pulados com aviso.
+- **Fonte de verdade das telas é `docs/UI_VISUAL_GUIDELINES.md` + `docs/UX_SCREENS.md`** (identidade visual e regras do roteiro). Ao mexer em tela, conferir lá antes: o relógio não conclui atividade; custo desconhecido nunca vira `R$ 0,00`; conflito se explica, não se resolve sozinho; estado nunca é só cor.
 - `npm run typecheck` confere os tipos dos quatro pacotes e é pré-requisito da automação antes de sincronizar.
 - `npm run test:sync` cobre fila de envio, conflito e cursor; `npm run test:app` cobre o armazenamento do aparelho e o sincronizador.
 - `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.

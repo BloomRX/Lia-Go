@@ -30,6 +30,17 @@ no seu computador (banco local, dados sintéticos). Para começar:
    próprio lançamento).
 5. **Saldos e acertos**: a viagem mostra o saldo oficial e os acertos sugeridos. Nada é transferido de
    verdade: o Lia Go só sugere, o pagamento acontece fora do app.
+6. **Roteiro**: aba **Roteiro** → "+ Adicionar". O título é o único campo obrigatório. Deixe **"Horário a
+   definir"** marcado (ou desmarque para escolher hora) — a atividade fica na sequência sem horário
+   inventado. Marque "Custo ainda a verificar" para exercitar o caso de custo desconhecido (a tela mostra
+   *a verificar*, nunca `R$ 0,00`). Ao salvar, o item entra na timeline do dia.
+7. **Detalhes da atividade**: toque no item da timeline (ou em "+ Adicionar" → salvar e tocar). Ali ficam
+   dia, horário, duração, local, deslocamento e custo com a natureza (**estimativa**, **valor já
+   combinado** ou **sem custo**). É nesta tela que se **conclui** (com observação), **cancela** e
+   **corrige** (pedindo motivo) — o relógio sozinho nunca conclui nada.
+8. **Ver o conflito**: crie duas atividades no mesmo dia com horários que se sobrepõem. O dia ganha o
+   marcador **⚠ conflito** e o resumo do dia explica quem bate com quem, sugerindo o ajuste — o Lia Go
+   **não** remarca por conta própria.
 
 > Esqueceu a senha? Como os dados são sintéticos, basta criar outra conta com outro e-mail — a recuperação
 > automática depende do provedor de e-mail, que ainda é uma decisão pendente.

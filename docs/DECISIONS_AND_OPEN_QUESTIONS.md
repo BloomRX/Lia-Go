@@ -1,6 +1,6 @@
 # Decisões e questões em aberto — Lia Go
 
-Atualizado em 2026-10-13. Este arquivo registra apenas **decisões confirmadas** e **questões ainda abertas**.
+Atualizado em 2026-10-15. Este arquivo registra apenas **decisões confirmadas** e **questões ainda abertas**.
 Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHITECTURE.md`.
 
 ## Decisões confirmadas
@@ -92,6 +92,30 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   recarregamento automático. Agora é local (`ws://` na própria porta) por padrão e `LIA_HMR_WSS=1` liga o
   modo proxy. O Vite 8 já libera `localhost` e endereços IP, então o acesso pelo celular na mesma rede
   continua funcionando sem lista extra de hosts.
+
+### Roteiro entregue de ponta a ponta + telas seguindo as diretrizes visuais (2026-10-15, sétima rodada)
+- **Contexto**: chegaram `docs/UI_VISUAL_GUIDELINES.md` e a tela 7 de `docs/UX_SCREENS.md`. Em vez de
+  planejar mais, a fatia do roteiro foi implementada inteira — domínio, banco, API, fila offline e telas.
+- **Regras do documento que viraram código** (não ficaram só no texto): o relógio **não** conclui atividade;
+  atividade flexível guarda `ordem` e **não** recebe horário inventado; custo tem natureza
+  (`estimativa`/`compromisso`/`gratuito`) e o **desconhecido continua desconhecido** (nunca `R$ 0,00`);
+  conflitos são **explicados** com sugestão e **nada é remarcado sozinho**; concluir/cancelar/corrigir
+  exigem ação humana (motivo na correção/cancelamento); conflito aparece no resumo do dia **e** no cartão.
+- **Interpretação registrada (reversível):** depois da viagem **cancelada**, `atividade:concluir`,
+  `cancelar` e `corrigir` **continuam permitidas** — o princípio "não se planeja nada novo, mas registrar o
+  que houve com o que já existia" já valia para despesas, e vale igual aqui. Viagem **concluída** bloqueia
+  `atividade:criar`. Se o produto preferir o contrário, é uma linha em `packages/domain/src/permissions.ts`.
+- **Custo x despesa:** o custo da atividade é **planejamento** (estimativa/compromisso), não lançamento; ele
+  nunca entra em saldo nem substitui a despesa confirmada. Transformar atividade concluída em despesa é
+  passo explícito do usuário, ainda **não** implementado.
+- **Estado real das telas** documentado em `docs/UX_SCREENS.md` ("Estado real de implementação") — inclusive
+  o que **não** existe (documentos, reservas, orçamento, notificações, configurações) e o fato de a **Lia
+  ainda não falar no app**: nenhuma sugestão é exibida enquanto não houver IA de verdade.
+- **Sem imagens de referência no repositório**: `UI_VISUAL_GUIDELINES.md` §7 pede para não inventar caminhos;
+  a pasta `docs/ui-references/` continua vazia e as telas seguem os **tokens que já existiam** em
+  `apps/mobile/src/styles.css` (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível,
+  estado **nunca só por cor**).
+- **Placar da rodada**: 212 testes verdes (ferramentas 39 · domínio 63 · sincronização 41 · app 20 · API 49).
 
 ### Nunca descartar trabalho local e nunca deixar a rodada presa (2026-10-13, quinta rodada)
 - **Dois defeitos encontrados em uso real, ambos corrigidos:**

@@ -2,11 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Entrar } from "./telas/Entrar.tsx";
 import { Inicio } from "./telas/Inicio.tsx";
 import { Viagem } from "./telas/Viagem.tsx";
+import { Atividade } from "./telas/Atividade.tsx";
 import { api, ErroApi, type Usuario } from "./services/api.ts";
 import { Sincronizador, type EstadoSincronizacao } from "./offline/sincronizador.ts";
 import { BarraSincronizacao } from "./componentes/BarraSincronizacao.tsx";
 
-type Tela = { nome: "inicio" } | { nome: "viagem"; viagemId: string };
+type Tela =
+  | { nome: "inicio" }
+  | { nome: "viagem"; viagemId: string }
+  // A atividade abre em tela própria (diretriz §2.1), e o roteiro continua atrás dela.
+  | { nome: "atividade"; viagemId: string; atividadeId: string };
 
 /**
  * O app inteiro trabalha sobre o sincronizador: a tela lê do aparelho e escreve na fila,
@@ -167,12 +172,20 @@ export function App(): React.ReactElement {
           aceitarConvite={(token) => void aceitarConvite(token)}
           sincronizador={sincronizador}
         />
-      ) : (
+      ) : tela.nome === "viagem" ? (
         <Viagem
           viagemId={tela.viagemId}
           usuarioId={usuario.id}
           voltar={() => setTela({ nome: "inicio" })}
           sincronizador={sincronizador}
+          abrirAtividade={(atividadeId) => setTela({ nome: "atividade", viagemId: tela.viagemId, atividadeId })}
+        />
+      ) : (
+        <Atividade
+          viagemId={tela.viagemId}
+          atividadeId={tela.atividadeId}
+          sincronizador={sincronizador}
+          voltar={() => setTela({ nome: "viagem", viagemId: tela.viagemId })}
         />
       )}
     </>
