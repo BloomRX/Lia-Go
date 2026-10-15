@@ -11,6 +11,9 @@ import type { Config } from "./config.ts";
 import { ErroHttp, mensagemSeguraDeErro } from "./errors.ts";
 import { rotasAuth } from "./routes/auth.ts";
 import { rotasDespesas } from "./routes/despesas.ts";
+import { rotasChecklist } from "./routes/checklist.ts";
+import { rotasDocumentos } from "./routes/documentos.ts";
+import { rotasOrcamento } from "./routes/orcamento.ts";
 import { rotasReservas } from "./routes/reservas.ts";
 import { rotasRoteiro } from "./routes/roteiro.ts";
 import { rotasSincronizacao } from "./routes/sincronizacao.ts";
@@ -68,6 +71,9 @@ export async function construirServidor(deps: Dependencias): Promise<FastifyInst
   rotasDespesas(app, deps);
   rotasRoteiro(app, deps);
   rotasReservas(app, deps);
+  rotasChecklist(app, deps);
+  rotasDocumentos(app, deps);
+  rotasOrcamento(app, deps);
   rotasSincronizacao(app, deps);
 
   return app;

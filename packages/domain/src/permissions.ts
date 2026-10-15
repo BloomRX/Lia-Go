@@ -27,7 +27,15 @@ export type Acao =
   | "atividade:cancelar"
   | "reserva:criar"
   | "reserva:confirmar"
-  | "reserva:cancelar";
+  | "reserva:cancelar"
+  | "orcamento:definir"
+  | "orcamento:definir-proprio"
+  | "checklist:criar"
+  | "checklist:concluir"
+  | "documento:criar"
+  | "documento:compartilhar"
+  | "documento:remover"
+  | "viagem:exportar";
 
 export interface ContextoAutorizacao {
   papel: Papel;
@@ -54,6 +62,7 @@ const SOMENTE_ORGANIZADOR: ReadonlySet<Acao> = new Set<Acao>([
   "viagem:participante:remover",
   "viagem:convite:gerenciar",
   "viagem:relatorio:ampliado",
+  "orcamento:definir",
 ]);
 
 /**
@@ -73,13 +82,25 @@ const PERMITIDAS_APOS_CANCELAMENTO: ReadonlySet<Acao> = new Set<Acao>([
   // que já existia (mesma lógica das despesas) — o que não vale é **planejar** reserva nova.
   "reserva:confirmar",
   "reserva:cancelar",
+  // Depois do cancelamento da viagem, fechar as pendências do que já existia continua valendo;
+  // o que não vale é **planejar** coisa nova (item de checklist, documento novo, limite novo).
+  "checklist:concluir",
+  "documento:remover",
+  "viagem:exportar",
 ]);
 
 /**
  * Depois de a viagem ser concluída não se planeja mais nada novo (mesma regra de `despesa:criar`),
  * mas concluir/cancelar uma atividade que já existia continua valendo — é registro do que houve.
  */
-const BLOQUEADAS_APOS_CONCLUSAO: ReadonlySet<Acao> = new Set<Acao>(["despesa:criar", "viagem:editar", "atividade:criar", "reserva:criar"]);
+const BLOQUEADAS_APOS_CONCLUSAO: ReadonlySet<Acao> = new Set<Acao>([
+  "despesa:criar",
+  "viagem:editar",
+  "atividade:criar",
+  "reserva:criar",
+  "checklist:criar",
+  "documento:criar",
+]);
 
 export function decidirAutorizacao(contexto: ContextoAutorizacao, acao: Acao): DecisaoAutorizacao {
   if (contexto.estadoMembro !== "ativo") return NEGADO_SEM_ACESSO;

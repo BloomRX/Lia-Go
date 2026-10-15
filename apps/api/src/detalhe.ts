@@ -61,6 +61,14 @@ export async function carregarDetalheViagem(
     criarReserva: decidir(contexto, "reserva:criar"),
     confirmarReserva: decidir(contexto, "reserva:confirmar"),
     cancelarReserva: decidir(contexto, "reserva:cancelar"),
+    definirLimite: decidir(contexto, "orcamento:definir"),
+    definirLimiteProprio: decidir(contexto, "orcamento:definir-proprio"),
+    criarItemChecklist: decidir(contexto, "checklist:criar"),
+    concluirItemChecklist: decidir(contexto, "checklist:concluir"),
+    criarDocumento: decidir(contexto, "documento:criar"),
+    compartilharDocumento: decidir(contexto, "documento:compartilhar"),
+    removerDocumento: decidir(contexto, "documento:remover"),
+    exportar: decidir(contexto, "viagem:exportar"),
     transicoesPermitidas: transicoesPermitidas(contexto.viagem.estado).filter((destino) => {
       if (contexto.contexto.papel === "organizador") return true;
       return destino === "em_andamento" || destino === "concluida" || destino === "pendente";

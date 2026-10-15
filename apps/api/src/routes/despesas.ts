@@ -23,6 +23,7 @@ import { ErroHttp, entradaInvalida } from "../errors.ts";
 import { centavosDoCorpo, comIdempotencia, exigirAutenticacao, idempotencyKey, tratarErroDeValidacao } from "../http.ts";
 import { exigirContexto, exigirPermissao, exigirVersao, participantesAtivos, type ContextoViagem } from "../authz.ts";
 import { registrarAuditoria } from "../audit.ts";
+import { carregarFinanceiroDaViagem } from "../financas.ts";
 import { carregarDespesa, despesaParaJson, gravarEvento, gravarPartes } from "../repo.ts";
 import { novoId } from "../tokens.ts";
 
@@ -342,33 +343,8 @@ export function rotasDespesas(app: FastifyInstance, deps: { pool: pg.Pool; confi
     const autenticado = await exigirAutenticacao(request, http);
     const { viagemId } = request.params as { viagemId: string };
     await exigirContexto(pool, autenticado.usuarioId, viagemId);
-    const { rows: ids } = await pool.query<{ id: string }>("SELECT id FROM despesas WHERE viagem_id = $1", [viagemId]);
-    const despesas: Despesa[] = [];
-    for (const linha of ids) {
-      const carregada = await carregarDespesa(pool, viagemId, linha.id);
-      if (carregada) despesas.push(carregada.despesa);
-    }
-    const { rows: movimentosRows } = await pool.query<{
-      id: string;
-      viagem_id: string;
-      de_id: string;
-      para_id: string;
-      valor_centavos: string;
-      estado: Movimento["estado"];
-      despesa_id: string | null;
-    }>(
-      `SELECT id, viagem_id, de_id, para_id, valor_centavos::text AS valor_centavos, estado, despesa_id
-         FROM movimentos WHERE viagem_id = $1 ORDER BY criado_em`,
-      [viagemId],
-    );
-    const movimentos = movimentosRows.map(movimentoParaDominio);
-    const resumo = calcularResumoFinanceiro(despesas, movimentos);
+    const { despesas: _despesas, movimentos: _movimentos, resumo, nomePorId } = await carregarFinanceiroDaViagem(pool, viagemId);
     const sugestoes = sugerirTransferencias(resumo.saldos);
-    const nomes = await pool.query<{ usuario_id: string; nome: string }>(
-      "SELECT usuario_id, nome FROM membros_viagem m JOIN usuarios u ON u.id = m.usuario_id WHERE m.viagem_id = $1",
-      [viagemId],
-    );
-    const nomePorId = new Map(nomes.rows.map((linha) => [linha.usuario_id, linha.nome]));
     const { rows: eventos } = await pool.query<{
       id: string;
       despesa_id: string;

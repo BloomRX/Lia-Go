@@ -18,7 +18,9 @@ import { exigirAutenticacao } from "../http.ts";
 import { exigirContexto } from "../authz.ts";
 import { carregarDetalheViagem } from "../detalhe.ts";
 import { carregarDespesa, despesaParaJson } from "../repo.ts";
+import { documentoParaJson, itemParaJson, listarDocumentos, listarItens } from "../planejamento-repo.ts";
 import { listarReservas, reservaParaJson } from "../reserva-repo.ts";
+import { podeVerDocumento } from "@lia-go/domain";
 import { atividadeParaJson, listarAtividades } from "../roteiro-repo.ts";
 
 /** Quantas mudanças cabem em uma resposta. Paginação evita resposta gigante depois de dias offline. */
@@ -68,6 +70,12 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
     const reservas = (await listarReservas(pool, viagemId, idsPorEntidade.get("reserva") ?? [])).map((reserva) =>
       reservaParaJson(reserva),
     );
+    const itensChecklist = (await listarItens(pool, viagemId, idsPorEntidade.get("checklist") ?? [])).map((item) => itemParaJson(item));
+    // Documento só vai para quem pode vê-lo: o cursor não pode virar caminho para vazar documento privado.
+    const ehOrganizador = contexto.contexto.papel === "organizador";
+    const documentos = (await listarDocumentos(pool, viagemId, idsPorEntidade.get("documento") ?? []))
+      .filter((documento) => podeVerDocumento(documento, autenticado.usuarioId, { ehOrganizador }))
+      .map((documento) => documentoParaJson(documento));
 
     return {
       cursor,
@@ -86,6 +94,8 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
       convites,
       atividades,
       reservas,
+      itensChecklist,
+      documentos,
     };
   });
 }
