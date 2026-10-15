@@ -370,7 +370,11 @@ async function iniciarComBinarios(bin) {
     }
     log(`Banco local criado em ${tempoDecorrido(inicioInitdb)}.`);
   }
-  if (!emExecucao(bin, ambiente)) {
+  // A pergunta "o banco está no ar?" é respondida pela **porta**, não pelo `pg_ctl status`:
+  // o status se apoia no arquivo `postmaster.pid`, e um arquivo antigo apontando para outro
+  // processo faz ele dizer "está rodando" com o banco desligado (visto no sandbox).
+  if (!(await portaRespondendo())) {
+    await limparRegistroOrfao();
     log(`Iniciando o PostgreSQL local na porta ${PORTA}…`);
     const inicioPgctl = Date.now();
     const opcoes = [`-p ${PORTA}`, "-c listen_addresses=127.0.0.1"];
@@ -383,11 +387,15 @@ async function iniciarComBinarios(bin) {
       { env: ambiente, legenda: "iniciando o PostgreSQL" },
     );
     if (iniciar.status === 0) log(`PostgreSQL no ar em ${tempoDecorrido(inicioPgctl)}.`);
-    if (iniciar.status !== 0) {
+    // "O comando terminou bem" não é prova de que o banco subiu: já vimos o `pg_ctl` sair com
+    // código 0 sem subir nada (registro antigo apontando para outro processo). A prova é a porta.
+    if (iniciar.status !== 0 || !(await portaRespondendo())) {
       throw new Error(
         `O PostgreSQL local não subiu.${motivoDoLogDoServidor(logDoServidor)} Log completo: ${path.relative(RAIZ, logDoServidor)}.`,
       );
     }
+  } else {
+    log(`O PostgreSQL já estava no ar na porta ${PORTA}.`);
   }
   const psql = exe(bin, "psql");
   const existe = spawnSync(
@@ -402,6 +410,65 @@ async function iniciarComBinarios(bin) {
     });
     if (criar.status !== 0) throw new Error(`Não foi possível criar o banco '${BANCO}'.`);
   }
+}
+
+/**
+ * Sobrou um `postmaster.pid` de uma rodada interrompida (janela fechada no meio, por exemplo)?
+ * Nesse caso o `pg_ctl` avisa “another server might be running; trying to start server anyway” —
+ * um susto desnecessário que apareceu no log do usuário — e, se o número gravado no arquivo
+ * pertencer a outro processo qualquer, ele ainda **sai dizendo que subiu sem subir nada**
+ * (aconteceu de verdade no sandbox). Por isso:
+ *  - se a porta responde, o banco está no ar: não mexemos em nada;
+ *  - se a porta não responde, o arquivo é lixo de uma rodada anterior: limpamos e subimos.
+ */
+async function limparRegistroOrfao() {
+  const arquivo = path.join(DIR_DADOS, "postmaster.pid");
+  if (!existsSync(arquivo)) return false;
+  if (await portaRespondendo()) return false;
+  let pid = 0;
+  try {
+    pid = Number((readFileSync(arquivo, "utf8").split("\n")[0] ?? "").trim());
+  } catch {
+    pid = 0;
+  }
+  try {
+    rmSync(arquivo, { force: true });
+    const motivo =
+      Number.isInteger(pid) && pid > 0 && processoVivo(pid)
+        ? "o processo anotado nele não é o banco (a porta não responde)"
+        : "o processo anotado nele já não existe";
+    log(`Limpei um registro antigo do banco (de uma rodada interrompida): ${motivo}.`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** O processo com esse número ainda existe? (sem matar nada: sinal 0 só pergunta) */
+function processoVivo(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (erro) {
+    // Sem permissão para checar = existe: não mexemos.
+    return erro?.code === "EPERM";
+  }
+}
+
+/** Tem alguém ouvindo na porta do banco? É a única prova de que o PostgreSQL está mesmo no ar. */
+async function portaRespondendo() {
+  const { createConnection } = await import("node:net");
+  return await new Promise((resolve) => {
+    const soquete = createConnection({ host: "127.0.0.1", port: PORTA });
+    const terminar = (resposta) => {
+      soquete.removeAllListeners();
+      soquete.destroy();
+      resolve(resposta);
+    };
+    soquete.once("connect", () => terminar(true));
+    soquete.once("error", () => terminar(false));
+    soquete.setTimeout(2000, () => terminar(false));
+  });
 }
 
 /** O cluster local está respondendo? (usado antes de subir ou parar, para não dar erro bobo) */

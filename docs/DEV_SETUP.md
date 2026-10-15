@@ -7,6 +7,8 @@
 > A rodada é dividida em **7 etapas numeradas** (`[3/7] Banco de dados`), o download do banco mostra
 > **barra de progresso com velocidade** e, quando um passo fica quieto por 15 segundos, aparece
 > `⏳ ainda trabalhando` — ou seja, nunca é preciso adivinhar se travou.
+> Na última etapa, cada linha da API e do app web vem identificada (`[api]` / `[app]`) e a tela termina com
+> um **resumo da rodada** (banco, testes, relatório, envio e tempo total).
 > As opções manuais ficam em `LiaGo.bat menu`; o mesmo conjunto existe em qualquer sistema com
 > `node tools/dev.mjs <comando>`.
 
@@ -141,7 +143,10 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 | `Muitas tentativas` (429) no login | limite de tentativas ativo | espere 15 minutos |
 | Porta ocupada | API/app já rodando | feche a outra janela ou mude `PORT`/`port` |
 | `npm install` falhou | rede, proxy, antivírus, pasta pela metade… | as últimas linhas da tela mostram a **causa real** e o que fazer; se a pasta `node_modules` ficou pela metade, a automação apaga e reinstala sozinha. Para forçar: `LiaGo.bat` **opção 9** (ou `node tools/dev.mjs instalar`) |
-| Teve que rodar `git pull` na mão | a versão antiga só sabia avançar quando a cópia estava exatamente igual ao GitHub; com qualquer commit seu (relatórios, por exemplo) ela desistia e seguia com a versão velha | já corrigido: agora ela reaplica os seus commits por cima da versão nova (rebase), guarda/devolve arquivos alterados e **reinicia a rodada** para usar o que baixou. Para só atualizar: `LiaGo.bat atualizar` (ou menu, opção 10) |
+| Teve que rodar `git pull` na mão | a versão antiga só sabia avançar quando a cópia estava exatamente igual ao GitHub; com qualquer commit seu (relatórios, por exemplo) ela desistia e seguia com a versão velha | já corrigido: agora ela reaplica os seus commits por cima da versão nova, **nunca descarta** arquivos alterados e **reinicia a rodada** para usar o que baixou. Para só atualizar: `LiaGo.bat atualizar` (ou menu, opção 10) |
+| **O resumo diz "Testes: 0 passaram" mas a tela mostrou centenas passando** | era um defeito nosso: a leitura do placar só entendia o formato que sai quando a saída é capturada (`# pass 37`), e no console do Windows o Node usa outro (`ℹ pass 37`) | já corrigido: a leitura entende os dois formatos e, se não achar placar nenhum, diz "não consegui ler o placar" em vez de "0 passaram" (nunca anunciar zero por falha de leitura) |
+| **A saída do app saiu embaralhada** (tudo numa linha só, com `♪◙` no lugar das quebras) | era um defeito nosso: os dois servidores escreviam direto na tela ao mesmo tempo e o console do Windows desenhou os caracteres de quebra de linha de um deles | já corrigido: cada linha passa pelo Lia Go antes de aparecer, vem identificada (`[api]`/`[app]`) e os servidores não recebem mais o teclado |
+| `pg_ctl: another server might be running` | sobrou um registro (`postmaster.pid`) de uma rodada interrompida | já tratado: o Lia Go limpa esse registro quando a porta do banco **não** responde e, depois de subir, confirma pela porta que o banco está mesmo no ar |
 | **A rodada ficou parada muito tempo (quase 1h) logo depois de subir o banco** | era um defeito nosso: a saída do passo do banco passava por um "cano" que o processo do PostgreSQL herdava, e o Node ficava esperando para sempre — mesmo com o banco pronto | corrigido: o passo do banco herda a tela (sem cano) e o script encerra por conta própria depois de terminar. Se acontecer de novo, feche a janela e rode de novo; o banco que já subiu continua no ar |
 | **A atualização foi adiada** ("alterações não commitadas em arquivo que o GitHub também mudou") | proteção: o Lia Go **não** mexe no seu trabalho | resolva de um dos dois jeitos e rode de novo: `git add -A && git commit -m "meu trabalho"` **ou** `git checkout -- <arquivo>` (descartar só aquele arquivo) |
 | A rodada parece parada | alguma etapa demorada está em curso | cada etapa é numerada (`[3/7]`) e as longas mostram progresso; o `⏳ ainda trabalhando` aparece a cada 15 segundos de silêncio |

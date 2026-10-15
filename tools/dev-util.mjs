@@ -33,6 +33,76 @@ export function montarComando(comando, args, plataforma = process.platform) {
   return { comando, args, shell: false };
 }
 
+// ---------------------------------------------------------------------------
+// Leitura da saída dos testes
+// ---------------------------------------------------------------------------
+
+/**
+ * Lê o placar dos testes na saída do Node.
+ *
+ * ⚠️ O Node muda o formato conforme **onde a saída está indo**: escrevendo num arquivo ou cano
+ * (é o caso do nosso sandbox de testes) sai o formato TAP — `# pass 181`. Escrevendo num console
+ * de verdade — o caso do duplo clique no Windows — sai o formato "spec" — `ℹ pass 181`.
+ * Ler só o TAP fez a rodada do usuário anunciar **"Testes: 0 passaram"** com 181 testes verdes na
+ * tela logo acima, e o relatório enviado ao GitHub saiu dizendo que nada havia rodado.
+ *
+ * Aqui entendemos os dois formatos. Somamos linha a linha porque cada `npm run test:*` imprime
+ * o seu próprio placar.
+ */
+export function lerPlacarDeTestes(saida) {
+  let passou = 0;
+  let falhou = 0;
+  let pulados = 0;
+  let encontrouPlacar = false;
+  for (const linha of String(saida ?? "").split(/\r?\n/)) {
+    // "ℹ" é do formato spec (console); "#" é do TAP (arquivo/cano).
+    const m = linha.match(/^\s*(?:#|ℹ️?)\s*(pass|fail|skipped)\s+(\d+)\b/);
+    if (!m) continue;
+    encontrouPlacar = true;
+    const valor = Number(m[2]);
+    if (m[1] === "pass") passou += valor;
+    else if (m[1] === "fail") falhou += valor;
+    else pulados += valor;
+  }
+  return { passou, falhou, pulados, encontrouPlacar };
+}
+
+/**
+ * A frase que resume os testes para a pessoa — nunca "0 passaram" quando na verdade o placar
+ * apenas não foi encontrado (foi o que aconteceu na primeira rodada no Windows).
+ */
+export function descreverPlacarDeTestes(testes) {
+  if (testes?.encontrouPlacar) {
+    return `${testes.passou} passaram · ${testes.falhou} falharam · ${testes.pulados} pulados`;
+  }
+  if (testes?.status === 0) {
+    return "não consegui ler o placar na tela (código de saída 0: os testes rodaram; veja o relatório)";
+  }
+  return "não chegaram a rodar (veja os avisos acima)";
+}
+
+/**
+ * Junta pedaços da saída de um servidor e devolve **linhas inteiras**, guardando o resto para o
+ * próximo pedaço. Duas razões:
+ *  1. duas linhas nunca colam uma na outra (antes, a saída de dois servidores juntos virava um
+ *     bloco único e ilegível);
+ *  2. `\r\n` vira `\n` — no console do Windows, quando a saída vem de um servidor, esses dois
+ *     bytes apareceram desenhados como "♪◙" no meio do texto.
+ * Numa linha com barra de progresso (`\r`), vale só o que ficou depois do último `\r`.
+ */
+export function separarLinhas(pendente, pedaco) {
+  const texto = `${pendente ?? ""}${pedaco ?? ""}`.replace(/\r\n/g, "\n");
+  const partes = texto.split("\n");
+  const resto = partes.pop() ?? "";
+  return { linhas: partes.map(limparBarraDeProgresso), resto };
+}
+
+/** O que a tela mostraria de fato numa linha que usa `\r` para reescrever a si mesma. */
+function limparBarraDeProgresso(linha) {
+  const corte = linha.lastIndexOf("\r");
+  return corte === -1 ? linha : linha.slice(corte + 1);
+}
+
 /**
  * Monta a linha de comando (com aspas) que o `cmd.exe /d /s /c` vai executar.
  * Aspas no programa são obrigatórias quando o caminho tem espaço (ex.: `C:\Program Files\nodejs`).

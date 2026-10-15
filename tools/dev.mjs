@@ -39,6 +39,9 @@ import {
   diagnosticarFalhaNpm,
   erroDeSpawn,
   lerEnvDoTexto,
+  lerPlacarDeTestes,
+  descreverPlacarDeTestes,
+  separarLinhas,
   montarComando,
   montarDiagnostico,
   ocultarUrl,
@@ -384,20 +387,11 @@ async function rodarTestes() {
   const inicio = Date.now();
   const resultado = await rodarAoVivo(NPM, ["test"], { legenda: "rodando os testes", limiteMs: LIMITE_TESTES_MS });
   const saida = resultado.saida;
-  const linhas = saida.split("\n");
-  let passou = 0;
-  let falhou = 0;
-  let pulados = 0;
-  for (const linha of linhas) {
-    const m = linha.match(/^#\s*(pass|fail|skipped)\s+(\d+)/);
-    if (m) {
-      if (m[1] === "pass") passou += Number(m[2]);
-      if (m[1] === "fail") falhou += Number(m[2]);
-      if (m[1] === "skipped") pulados += Number(m[2]);
-    }
-  }
+  // O placar vem do `dev-util` porque o formato muda conforme a saída é console (Windows,
+  // "ℹ pass") ou arquivo/cano ("# pass") — ler só um deles já fez o resumo dizer "0 passaram".
+  const placar = lerPlacarDeTestes(saida);
   console.log(`Suíte concluída em ${tempoDecorrido(inicio)}.`);
-  return { status: resultado.status, passou, falhou, pulados, saida, tipos };
+  return { status: resultado.status, ...placar, saida, tipos };
 }
 
 function gitInfo() {
@@ -405,6 +399,11 @@ function gitInfo() {
   const status = rodar("git", ["status", "--short"], { capturar: true }).saida.trim();
   const ultimo = rodar("git", ["log", "-1", "--pretty=%h %s"], { capturar: true }).saida.trim();
   return { branch, status, ultimo };
+}
+
+/** Numa tabela: mostra o número quando ele é confiável; senão, um traço que não mente. */
+function mostrar(temPlacar, valor) {
+  return temPlacar ? String(valor) : "— (não lido)";
 }
 
 function gravarRelatorio(resultadoTestes) {
@@ -432,13 +431,20 @@ function gravarRelatorio(resultadoTestes) {
     ``,
     `| Resultado | Quantidade |`,
     `|---|---|`,
-    `| Passaram | ${resultadoTestes.passou} |`,
-    `| Falharam | ${resultadoTestes.falhou} |`,
-    `| Pulados | ${resultadoTestes.pulados} |`,
+    `| Passaram | ${mostrar(resultadoTestes.encontrouPlacar, resultadoTestes.passou)} |`,
+    `| Falharam | ${mostrar(resultadoTestes.encontrouPlacar, resultadoTestes.falhou)} |`,
+    `| Pulados | ${mostrar(resultadoTestes.encontrouPlacar, resultadoTestes.pulados)} |`,
     `| Código de saída | ${resultadoTestes.status} |`,
     `| Checagem de tipos (\`npm run typecheck\`) | ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"} |`,
     ``,
-    ...(resultadoTestes.passou === 0
+    ...(!resultadoTestes.encontrouPlacar
+      ? [
+          `> ⚠️ **Os testes rodaram (código de saída ${resultadoTestes.status}), mas não encontrei o placar na saída.**`,
+          `> Isso não quer dizer que nada rodou: veja as últimas linhas abaixo (e me avise para eu ajustar a leitura).`,
+          ``,
+        ]
+      : []),
+    ...(resultadoTestes.encontrouPlacar && resultadoTestes.passou === 0
       ? [
           `> ⚠️ **Nenhum teste rodou nesta execução — isso NÃO é sucesso.** Confira as dependências (opção 9 do LiaGo.bat) e rode de novo.`,
           ``,
@@ -566,10 +572,13 @@ function sincronizar(mensagem) {
   }
 }
 
-/** Monta a chamada de `npm run <script>` já no formato certo para o sistema (Windows precisa de shell). */
+/**
+ * Monta a chamada de `npm run <script>` já no formato certo para o sistema (Windows precisa de shell).
+ * A saída é capturada em canos (não vai direto para a tela) para ser repassada linha por linha.
+ */
 function comandoComoArgumentos(script) {
   const chamada = montarComando(NPM, ["run", script]);
-  return [chamada.comando, chamada.args, { cwd: RAIZ, stdio: "inherit", shell: chamada.shell }];
+  return [chamada.comando, chamada.args, { cwd: RAIZ, stdio: ["ignore", "pipe", "pipe"], shell: chamada.shell }];
 }
 
 async function comandoTestes() {
@@ -605,19 +614,6 @@ async function comandoAuto() {
   return 0;
 }
 
-function comandoDev() {
-  verificarNode();
-  banner();
-  instalarDependencias();
-  subirBanco();
-  titulo("Subindo API e app web (Ctrl+C encerra os dois)");
-  console.log("API: http://localhost:3000 · App: http://localhost:5273");
-  const chamada = montarComando(NPM, ["run", "dev:api"]);
-  const api = spawnSync(chamada.comando, chamada.args, { cwd: RAIZ, stdio: "inherit", shell: chamada.shell });
-  if (api.error) console.error(erroDeSpawn({ error: api.error }));
-  return api.status ?? 1;
-}
-
 async function comandoDevParalelo() {
   verificarNode();
   banner();
@@ -637,6 +633,31 @@ async function jaEstaNoAr(url) {
   }
 }
 
+/**
+ * Mostra na tela o que um servidor escreve: **linha por linha** e dizendo de quem é (`[api]`/`[app]`).
+ *
+ * Por que não deixar o servidor escrever direto no console (o `stdio: "inherit"` antigo):
+ *  - com dois servidores escrevendo ao mesmo tempo, as linhas colavam uma na outra e viravam um
+ *    bloco ilegível;
+ *  - no Windows, a saída que vinha de um servidor apareceu com a quebra de linha desenhada como
+ *    "♪◙" (`\r\n` cru no console). Passando por aqui, o texto entra como texto na tela.
+ */
+function acompanharSaida(rotulo, processo) {
+  for (const fluxo of [processo.stdout, processo.stderr]) {
+    if (!fluxo) continue;
+    let pendente = "";
+    fluxo.setEncoding("utf8");
+    fluxo.on("data", (pedaco) => {
+      const { linhas, resto } = separarLinhas(pendente, pedaco);
+      pendente = resto;
+      for (const linha of linhas) console.log(`${rotulo} ${linha}`.trimEnd());
+    });
+    fluxo.on("end", () => {
+      if (pendente.trim()) console.log(`${rotulo} ${pendente}`.trimEnd());
+    });
+  }
+}
+
 /** Sobe a API e o app web e fica vigiando: se algum cair, a tela explica. */
 async function subirServidores() {
   // Duplo clique com o app já aberto de uma rodada anterior: avisar é melhor do que dar erro de porta.
@@ -647,8 +668,12 @@ async function subirServidores() {
     return;
   }
   const { spawn } = await import("node:child_process");
+  // Sem teclado para os servidores (stdin "ignore"): ferramentas de desenvolvimento trocam o modo
+  // do console quando ganham um teclado de verdade, e foi assim que a tela ficou embaralhada.
   const api = spawn(...comandoComoArgumentos("dev:api"));
   const web = spawn(...comandoComoArgumentos("dev:web"));
+  acompanharSaida("[api]", api);
+  acompanharSaida("[app]", web);
   const vigiar = (nome, processo) => {
     processo.on("error", (erro) => console.error(`\nNão foi possível iniciar ${nome}: ${erro.message}`));
     processo.on("exit", (codigo) => {
@@ -660,6 +685,7 @@ async function subirServidores() {
   vigiar("a API", api);
   vigiar("o app web", web);
   console.log("\nAPI: http://localhost:3000 · App web: http://localhost:5273");
+  console.log("Cada linha abaixo vem marcada: [api] ou [app] — é o servidor que a escreveu.");
   console.log("Para o celular na mesma rede: use o endereço 'Network' mostrado pelo app web e defina VITE_API_URL.");
   const encerrar = () => {
     api.kill();
@@ -956,7 +982,7 @@ function gravarDiagnostico(bancoOk, testes) {
       ? "portátil em .pgbin (PostgreSQL do próprio projeto)"
       : `via ${ocultarUrl(url)}`
     : "NÃO SUBIU nesta rodada";
-  const testesTexto = testes.passou === 0 ? "nenhum teste rodou (ver avisos)" : `${testes.passou} passaram, ${testes.falhou} falharam, ${testes.pulados} pulados`;
+  const testesTexto = testes.encontrouPlacar ? `${testes.passou} passaram, ${testes.falhou} falharam, ${testes.pulados} pulados` : descreverPlacarDeTestes(testes);
   const git = gitInfo();
   const arquivoDeLog = path.join(RAIZ, ".pgdata", "servidor.log");
   const conteudo = montarDiagnostico({
@@ -996,7 +1022,7 @@ function resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio }) {
   const segundos = Math.round((Date.now() - inicio) / 1000);
   console.log("\n==================== RESUMO DA RODADA ====================");
   console.log(`Banco de dados ....... ${bancoOk ? "pronto" : "não subiu (veja os avisos acima)"}`);
-  console.log(`Testes ............... ${testes.passou} passaram · ${testes.falhou} falharam · ${testes.pulados} pulados`);
+  console.log(`Testes ............... ${descreverPlacarDeTestes(testes)}`);
   console.log(`Relatório ............ ${path.relative(RAIZ, caminhoRelatorio)}`);
   console.log(`Diagnóstico do PC .... reports/estado-do-computador.md`);
   console.log(`Enviado ao GitHub .... ${enviado ? "sim" : "não (tentará de novo na próxima)"}`);

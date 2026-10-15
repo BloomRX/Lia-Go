@@ -65,6 +65,34 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
 - **App nativo do Capacitor não é versionado** (`apps/mobile/android` é gerado localmente).
 - **Navegação por estado no app** (sem roteador) nesta fatia; pode virar roteador depois sem mudar telas.
 
+### Relato honesto do que a tela mostra: placar dos testes e saída dos servidores (2026-10-15, sexta rodada)
+- **Contexto**: a primeira rodada completa bem-sucedida no PC do usuário (Windows, 85 s) provou que o
+  travamento de ~1 h estava resolvido, mas revelou **dois defeitos de leitura de tela** — e um deles fez o
+  relatório enviado ao GitHub dizer que **nenhum teste havia rodado** com 183 testes verdes.
+- **Defeito 1 — placar dos testes**: a suíte roda num console de verdade no Windows, e ali o Node usa o
+  formato "spec" (`ℹ pass 37`); quando a saída é capturada (nosso ambiente de testes, arquivos, canos) ele
+  usa TAP (`# pass 37`). A leitura só entendia TAP ⇒ `Testes: 0 passaram`, e o relatório saiu com a tabela
+  zerada. **Correção**: `lerPlacarDeTestes` entende os dois formatos (linhas `✔ …` de cada teste não contam,
+  só o placar) e, quando não encontra placar nenhum, a rodada diz "não consegui ler o placar" —
+  **nunca mais anuncia zero por falha de leitura** (`descreverPlacarDeTestes`, com testes).
+- **Defeito 2 — saída embaralhada na etapa 7**: os dois servidores escreviam direto na tela, ao mesmo tempo;
+  as linhas colaram uma na outra num bloco único e o Windows desenhou os caracteres de quebra de linha de uma
+  delas como `♪◙` (0x0D/0x0A crus no console). **Correção**: a saída passa pelo Lia Go e é reimpressa
+  **linha por linha**, identificada por `[api]`/`[app]`, com `\r\n` normalizado; os servidores **não recebem
+  o teclado** (`stdin: "ignore"`) — ferramenta de desenvolvimento que ganha teclado de verdade troca o modo
+  do console, e era disso que a tela embaralhada vinha se aproveitando (`separarLinhas`, com testes).
+- **Defeito 3 — banco dizia "pronto" sem estar no ar**: quando sobra um `postmaster.pid` de uma rodada
+  interrompida, o `pg_ctl` avisa “another server might be running; trying to start server anyway” e, se o
+  número no arquivo pertencer a outro processo, **sai com código 0 sem subir nada**. **Correção**: a pergunta
+  "o banco está no ar?" passou a ser respondida pela **porta** (`portaRespondendo`) — registro órfão é limpo
+  com explicação e, depois de subir, a rodada **confirma pela porta** antes de seguir. Vale a regra geral:
+  `status 0` não é prova de sucesso.
+- **HMR do app no PC do usuário**: o `wss://` na porta 443 (necessário atrás do proxy HTTPS do preview)
+  faz o navegador recusar o WebSocket quando se abre `http://localhost:5273` — o app abria, mas sem
+  recarregamento automático. Agora é local (`ws://` na própria porta) por padrão e `LIA_HMR_WSS=1` liga o
+  modo proxy. O Vite 8 já libera `localhost` e endereços IP, então o acesso pelo celular na mesma rede
+  continua funcionando sem lista extra de hosts.
+
 ### Nunca descartar trabalho local e nunca deixar a rodada presa (2026-10-13, quinta rodada)
 - **Dois defeitos encontrados em uso real, ambos corrigidos:**
   1. **A rodada ficava presa com o banco pronto.** O passo do banco rodava com a saída em "cano" (`pipe`)
@@ -94,6 +122,8 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   trabalho da pessoa é reaplicado por cima, nada é descartado); **stash + devolução** quando há arquivos
   alterados; se a devolução conflitar, o projeto fica limpo na versão nova e a alteração fica guardada com
   instruções (nunca marca de conflito no arquivo); **a rodada reinicia sozinha** quando baixa código novo.
+  ⚠️ **O `stash` desta rodada foi removido na rodada seguinte** (ele podia descartar trabalho em andamento —
+  ver "Nunca descartar trabalho local", abaixo): hoje vale a comparação de arquivos e o commit de segurança.
 - **Conflito durante o envio**: o DevKit deixava a cópia no meio de um rebase (com marcas de conflito), o que
   quebrava a rodada seguinte. Agora a sincronização desfaz só essa parte e preserva o commit local.
 - **Cópia sem branch ("HEAD solto")**: em vez de criar uma branch nova e perdida, a automação reencontra a

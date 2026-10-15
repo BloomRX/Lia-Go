@@ -13,6 +13,9 @@ import {
   classificarAlteracoesLocais,
   decidirAtualizacao,
   descreverDuracao,
+  lerPlacarDeTestes,
+  descreverPlacarDeTestes,
+  separarLinhas,
   escolherAlvoDeAtualizacao,
   escolherArquivoDeBinarios,
   explicarLogDoServidor,
@@ -442,6 +445,72 @@ test("a rodada NÃO fica presa quando sobra um processo vivo (o caso do PostgreS
     true,
     "o processo tem que sair sozinho depois de terminar: a saída não pode ficar num cano que o processo do banco herda",
   );
+});
+
+test("o placar dos testes é lido no console do Windows (ℹ) e no arquivo (TAP #) — nunca mais '0 passaram'", () => {
+  // Caso real: no PC do usuário a suíte inteira passou (181) e o resumo disse "0 passaram",
+  // porque a saída num console de verdade usa o formato "spec" (`ℹ pass 37`), e a leitura só
+  // entendia o TAP (`# pass 37`), que é o que sai quando a saída é capturada.
+  const comoSaiNoConsole = [
+    "✔ Windows: npm (`.cmd`) vira UMA linha executada pelo cmd.exe — sem `cmd.exe` sobrando na linha (2.6174ms)",
+    "ℹ tests 37",
+    "ℹ suites 0",
+    "ℹ pass 37",
+    "ℹ fail 0",
+    "ℹ skipped 0",
+    "ℹ todo 0",
+    "",
+    "ℹ pass 54",
+    "ℹ fail 0",
+    "ℹ skipped 0",
+    "ℹ pass 38",
+    "ℹ fail 0",
+    "ℹ skipped 0",
+    "ℹ pass 13",
+    "ℹ fail 0",
+    "ℹ skipped 0",
+    "ℹ pass 39",
+    "ℹ fail 0",
+    "ℹ skipped 0",
+  ].join("\n");
+  const consoleLido = lerPlacarDeTestes(comoSaiNoConsole);
+  assert.deepEqual(
+    { passou: consoleLido.passou, falhou: consoleLido.falhou, pulados: consoleLido.pulados, encontrouPlacar: consoleLido.encontrouPlacar },
+    { passou: 181, falhou: 0, pulados: 0, encontrouPlacar: true },
+    "as linhas '✔ …' de cada teste não podem ser contadas (só o placar conta)",
+  );
+
+  const comoSaiEmArquivo = ["# tests 37", "# pass 37", "# fail 0", "# skipped 2", "# pass 54"].join("\n");
+  assert.deepEqual(lerPlacarDeTestes(comoSaiEmArquivo), { passou: 91, falhou: 0, pulados: 2, encontrouPlacar: true });
+
+  const semPlacar = lerPlacarDeTestes("Suíte concluída em 24s.\n");
+  assert.equal(semPlacar.encontrouPlacar, false);
+  assert.equal(semPlacar.passou, 0);
+  assert.doesNotMatch(descreverPlacarDeTestes({ ...semPlacar, status: 0 }), /^0/, "não pode anunciar '0 passaram' quando o placar só não foi lido");
+  assert.match(descreverPlacarDeTestes({ ...semPlacar, status: 0 }), /não consegui ler o placar/);
+  assert.match(descreverPlacarDeTestes({ ...semPlacar, status: 1 }), /não chegaram a rodar/);
+  assert.equal(descreverPlacarDeTestes({ passou: 181, falhou: 0, pulados: 0, encontrouPlacar: true }), "181 passaram · 0 falharam · 0 pulados");
+});
+
+test("saída de servidor é repassada linha por linha (nunca cola uma linha na outra)", () => {
+  // Dois servidores escrevendo ao mesmo tempo, com o pedaço cortado no meio de uma linha —
+  // era assim que a tela ficava quando o texto ia direto para o console.
+  const primeiro = separarLinhas("", "[api] subindo\n[app] VITE rea");
+  assert.deepEqual(primeiro.linhas, ["[api] subindo"]);
+  assert.equal(primeiro.resto, "[app] VITE rea", "linha pela metade fica para o próximo pedaço");
+
+  const segundo = separarLinhas(primeiro.resto, "dy in 142 ms\n[api] porta 3000\n");
+  assert.deepEqual(segundo.linhas, ["[app] VITE ready in 142 ms", "[api] porta 3000"]);
+  assert.equal(segundo.resto, "");
+
+  // \r\n (Windows) não pode virar "♪◙" na tela: é só uma quebra de linha.
+  const janelas = separarLinhas("", "> @lia-go/api@0.1.0 dev\r\n> node --watch\r\n");
+  assert.deepEqual(janelas.linhas, ["> @lia-go/api@0.1.0 dev", "> node --watch"]);
+  assert.doesNotMatch(janelas.linhas.join("\n"), /[♪◙\r]/);
+
+  // Barra de progresso: vale o que ficou depois do último \r (é o que a tela mostraria).
+  const barra = separarLinhas("", "25%\r50%\r75%\n pronto\n");
+  assert.deepEqual(barra.linhas, ["75%", " pronto"]);
 });
 
 test("as funções principais do orquestrador continuam existindo (nenhuma remoção acidental)", async () => {

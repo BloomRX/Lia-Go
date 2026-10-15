@@ -45,9 +45,12 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 - **Nada de descartar trabalho local**: a atualização compara arquivos alterados aqui × os que chegam do GitHub e decide; nunca usa `stash` + `reset --hard`. Colisão real ⇒ adiar com explicação.
 - **Etapas que deixam processo vivo** (banco): saída **herdada** e encerramento explícito — `stdio: "pipe"` + processo neto = rodada presa para sempre (há teste).
 - **Teto de tempo em etapas longas** (banco/dependências/testes) com aviso "⏳ ainda trabalhando" a cada 15s.
-- **Atualização automática não pode desistir**: com commits locais, reaplicar por cima (rebase); com arquivos alterados, guardar/devolver (stash); **reiniciar a rodada** quando baixa código novo (processo em execução usa o código que já carregou). Nunca deixar a cópia no meio de um rebase.
+- **Atualização automática não pode desistir nem descartar**: com commits locais, reaplicar por cima (rebase); com arquivos alterados sem colisão, seguir com as alterações no lugar; com colisão real, **commit de segurança + adiar com explicação** (nunca `stash`/`reset --hard`); **reiniciar a rodada** quando baixa código novo (processo em execução usa o código que já carregou). Nunca deixar a cópia no meio de um rebase.
+- **Placar dos testes em dois formatos**: a saída do Node muda conforme o destino — console de verdade (Windows) usa `ℹ pass N`; arquivo/cano usa `# pass N`. Ler só um deles fez a rodada anunciar "0 passaram" com 183 testes verdes (`lerPlacarDeTestes`; há teste). Nunca anunciar "0 passaram" por falha de leitura: use `descreverPlacarDeTestes`.
+- **Saída dos servidores (etapa 7) é repassada linha por linha**, com etiqueta `[api]`/`[app]`, e os servidores **não recebem o teclado** (`stdin: "ignore"`): escrevendo direto no console, as linhas de dois servidores colavam uma na outra e o Windows desenhava `\r\n` como "♪◙" (`separarLinhas`; há teste).
+- **`status 0` não prova que o banco subiu**: `pg_ctl` pode sair com código 0 sem subir nada (registro `postmaster.pid` antigo). A prova é a **porta respondendo** (`portaRespondendo`) e, antes de subir, `postmaster.pid` órfão é limpo.
 - **Feedback obrigatório em etapas longas**: saída ao vivo (npm install/teste), barra de progresso no download do banco e aviso `⏳ ainda trabalhando` após 15s de silêncio. Etapa longa nunca deve parecer travada.
-- `npm test` roda a suíte completa: ferramentas (36) + domínio (54) + sincronização (38) + app (13) + API (39). Sem banco, os testes de API são pulados com aviso.
+- `npm test` roda a suíte completa: ferramentas (39) + domínio (54) + sincronização (38) + app (13) + API (39) = 183. Sem banco, os testes de API são pulados com aviso.
 - `npm run typecheck` confere os tipos dos quatro pacotes e é pré-requisito da automação antes de sincronizar.
 - `npm run test:sync` cobre fila de envio, conflito e cursor; `npm run test:app` cobre o armazenamento do aparelho e o sincronizador.
 - `npm run test:domain` / `npm run test:api` rodam cada parte isoladamente.
@@ -57,7 +60,11 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 - `python tools/project_cli.py validate --full` roda as suítes reconhecidas localmente, sem instalar nada.
 - `LiaGo.bat` automatiza instalação, testes, relatório em `reports/` e sincronização da branch de trabalho.
 - Vite em desenvolvimento **exige** `server.host: true` e `server.allowedHosts` com o host do preview;
-  sem isso o preview responde HTTP 403 (evidência em `docs/ARCHITECTURE.md` §2).
+  sem isso o preview responde HTTP 403 (evidência em `docs/ARCHITECTURE.md` §2). O Vite 8 já libera
+  `localhost` e endereços IP, então a rede local (celular) funciona sem lista extra.
+- **HMR é local por padrão** (`ws://` na própria porta — o caso do PC do usuário). Atrás de proxy
+  HTTPS (preview do Arena) o navegador recusa `ws://`: nesse caso rode com `LIA_HMR_WSS=1` para
+  usar `wss://` na porta 443. Deixar `wss` fixo quebra o recarregamento automático no PC.
 
 ## Decisões pendentes
 - Não bloqueie o projeto por detalhes que ainda não são necessários.
