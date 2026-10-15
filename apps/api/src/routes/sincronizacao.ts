@@ -18,6 +18,7 @@ import { exigirAutenticacao } from "../http.ts";
 import { exigirContexto } from "../authz.ts";
 import { carregarDetalheViagem } from "../detalhe.ts";
 import { carregarDespesa, despesaParaJson } from "../repo.ts";
+import { listarReservas, reservaParaJson } from "../reserva-repo.ts";
 import { atividadeParaJson, listarAtividades } from "../roteiro-repo.ts";
 
 /** Quantas mudanças cabem em uma resposta. Paginação evita resposta gigante depois de dias offline. */
@@ -64,6 +65,9 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
     const atividades = (await listarAtividades(pool, viagemId, idsPorEntidade.get("atividade") ?? [])).map((atividade) =>
       atividadeParaJson(atividade),
     );
+    const reservas = (await listarReservas(pool, viagemId, idsPorEntidade.get("reserva") ?? [])).map((reserva) =>
+      reservaParaJson(reserva),
+    );
 
     return {
       cursor,
@@ -81,6 +85,7 @@ export function rotasSincronizacao(app: FastifyInstance, deps: { pool: pg.Pool; 
       movimentos,
       convites,
       atividades,
+      reservas,
     };
   });
 }

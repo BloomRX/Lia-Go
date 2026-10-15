@@ -58,6 +58,9 @@ export async function carregarDetalheViagem(
     cancelar: decidir(contexto, "viagem:cancelar"),
     convidar: decidir(contexto, "viagem:convite:gerenciar"),
     registrarDespesa: decidir(contexto, "despesa:criar"),
+    criarReserva: decidir(contexto, "reserva:criar"),
+    confirmarReserva: decidir(contexto, "reserva:confirmar"),
+    cancelarReserva: decidir(contexto, "reserva:cancelar"),
     transicoesPermitidas: transicoesPermitidas(contexto.viagem.estado).filter((destino) => {
       if (contexto.contexto.papel === "organizador") return true;
       return destino === "em_andamento" || destino === "concluida" || destino === "pendente";

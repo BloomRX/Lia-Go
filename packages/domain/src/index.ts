@@ -12,3 +12,4 @@ export * from "./expense.ts";
 export * from "./balances.ts";
 export * from "./invite.ts";
 export * from "./roteiro.ts";
+export * from "./reserva.ts";

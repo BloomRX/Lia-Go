@@ -57,7 +57,8 @@ export async function prepararAmbiente(): Promise<AmbienteTeste> {
 /** Banco de teste sempre começa vazio: dados sintéticos, nada de dados reais. */
 export async function limparBanco(pool: pg.Pool): Promise<void> {
   await pool.query(
-    `TRUNCATE idempotencia, auditoria, despesa_eventos, despesas_partes, despesas, movimentos,
+    `TRUNCATE idempotencia, auditoria, reserva_eventos, reservas, atividade_eventos, atividades,
+              despesa_eventos, despesas_partes, despesas, movimentos,
               convites, membros_viagem, viagens, tentativas_login, refresh_tokens, sessoes, usuarios
      RESTART IDENTITY CASCADE`,
   );

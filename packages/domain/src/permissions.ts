@@ -24,7 +24,10 @@ export type Acao =
   | "atividade:criar"
   | "atividade:corrigir"
   | "atividade:concluir"
-  | "atividade:cancelar";
+  | "atividade:cancelar"
+  | "reserva:criar"
+  | "reserva:confirmar"
+  | "reserva:cancelar";
 
 export interface ContextoAutorizacao {
   papel: Papel;
@@ -66,13 +69,17 @@ const PERMITIDAS_APOS_CANCELAMENTO: ReadonlySet<Acao> = new Set<Acao>([
   "atividade:corrigir",
   "atividade:concluir",
   "atividade:cancelar",
+  // Reserva confirmada/cancelada depois do cancelamento da viagem é registro do que houve com o
+  // que já existia (mesma lógica das despesas) — o que não vale é **planejar** reserva nova.
+  "reserva:confirmar",
+  "reserva:cancelar",
 ]);
 
 /**
  * Depois de a viagem ser concluída não se planeja mais nada novo (mesma regra de `despesa:criar`),
  * mas concluir/cancelar uma atividade que já existia continua valendo — é registro do que houve.
  */
-const BLOQUEADAS_APOS_CONCLUSAO: ReadonlySet<Acao> = new Set<Acao>(["despesa:criar", "viagem:editar", "atividade:criar"]);
+const BLOQUEADAS_APOS_CONCLUSAO: ReadonlySet<Acao> = new Set<Acao>(["despesa:criar", "viagem:editar", "atividade:criar", "reserva:criar"]);
 
 export function decidirAutorizacao(contexto: ContextoAutorizacao, acao: Acao): DecisaoAutorizacao {
   if (contexto.estadoMembro !== "ativo") return NEGADO_SEM_ACESSO;
