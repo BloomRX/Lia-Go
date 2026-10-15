@@ -13,3 +13,7 @@ export * from "./balances.ts";
 export * from "./invite.ts";
 export * from "./roteiro.ts";
 export * from "./reserva.ts";
+export * from "./orcamento.ts";
+export * from "./checklist.ts";
+export * from "./documento.ts";
+export * from "./fechamento.ts";

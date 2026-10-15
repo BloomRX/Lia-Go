@@ -421,7 +421,7 @@ export interface OrcamentoDoRoteiro {
   resumo: string;
 }
 
-export function resumirOrcamentoDoRoteiro(atividades: Atividade[]): OrcamentoDoRoteiro {
+export function resumirOrcamentoDoRoteiro(atividades: readonly Atividade[]): OrcamentoDoRoteiro {
   const orcamento: OrcamentoDoRoteiro = {
     previstoCentavos: 0n,
     estimativaCentavos: 0n,
