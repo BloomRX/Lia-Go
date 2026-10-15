@@ -20,7 +20,10 @@ export type Operacao =
   | { tipo: "criar_atividade"; viagemId: string; corpo: Record<string, unknown>; descricao: string }
   | { tipo: "concluir_atividade"; viagemId: string; atividadeId: string; observacao?: string; versao?: number; descricao: string }
   | { tipo: "cancelar_atividade"; viagemId: string; atividadeId: string; motivo: string; versao?: number; descricao: string }
-  | { tipo: "corrigir_atividade"; viagemId: string; atividadeId: string; corpo: Record<string, unknown>; descricao: string };
+  | { tipo: "corrigir_atividade"; viagemId: string; atividadeId: string; corpo: Record<string, unknown>; descricao: string }
+  | { tipo: "criar_reserva"; viagemId: string; corpo: Record<string, unknown>; descricao: string }
+  | { tipo: "confirmar_reserva"; viagemId: string; reservaId: string; confirmacao: string; versao?: number; descricao: string }
+  | { tipo: "cancelar_reserva"; viagemId: string; reservaId: string; motivo: string; versao?: number; descricao: string };
 
 export type TipoOperacao = Operacao["tipo"];
 
@@ -98,6 +101,8 @@ export interface CargaLocal {
   movimentos: Record<string, unknown>[];
   /** Roteiro da viagem aberta (atividades por dia). */
   atividades: Record<string, unknown>[];
+  /** Reservas da viagem aberta (hospedagem, transporte, passeio, outro). */
+  reservas: Record<string, unknown>[];
   /** Convites da viagem aberta (quem o organizador convidou). */
   convites: Record<string, unknown>[];
   /** Convites que **eu** recebi e ainda não aceitei — vêm da lista de viagens. */

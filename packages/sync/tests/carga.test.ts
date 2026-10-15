@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buscarPorId,
+  cargaCompleta,
   cargaVazia,
   contarItens,
   detalheDaViagem,
@@ -172,4 +173,19 @@ test("detalhe da viagem nova entra mesmo sendo de outra viagem; o da antiga não
   );
   assert.deepEqual(contaminada.atividades, [], "atividade de outra viagem não aparece");
   assert.deepEqual(contaminada.despesas, []);
+});
+
+test("cargaCompleta: cache gravado por versão anterior (sem as listas de hoje) não derruba a tela", () => {
+  const antiga = { viagens: [{ id: "v1" }], viagem: null } as unknown as Parameters<typeof cargaCompleta>[0];
+
+  const completa = cargaCompleta(antiga);
+
+  assert.deepEqual(completa.reservas, [], "lista que ainda não existia no cache entra vazia");
+  assert.deepEqual(completa.atividades, []);
+  assert.deepEqual(completa.viagens, [{ id: "v1" }], "o que já estava guardado continua");
+});
+
+test("cargaCompleta de nada continua sendo a carga vazia (primeira abertura)", () => {
+  assert.deepEqual(cargaCompleta(null), cargaVazia());
+  assert.deepEqual(cargaCompleta(undefined), cargaVazia());
 });

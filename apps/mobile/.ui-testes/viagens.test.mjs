@@ -6,8 +6,8 @@ import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
-import { agruparPorDia, conflitosDoDia, resumirDia, resumirOrcamentoDoRoteiro, revisarImpacto } from "@lia-go/domain";
-import { cargaVazia, compararParaDecisao, descartar, enfileirar, filaVazia, mesclarCarga, resumoFila, retentar, sincronizar, trocarViagemAberta } from "@lia-go/sync";
+import { ROTULO_ESTADO_RESERVA, ROTULO_TIPO_RESERVA, agruparPorDia, cancelarReserva, confirmarReserva, conflitosDoDia, criarReserva, ordenarReservas, resumirDia, resumirOrcamentoDoRoteiro, resumirReservas, revisarImpacto, revisarImpactoDaReserva } from "@lia-go/domain";
+import { cargaCompleta, cargaVazia, compararParaDecisao, descartar, enfileirar, filaVazia, mesclarCarga, resumoFila, retentar, sincronizar, trocarViagemAberta } from "@lia-go/sync";
 //#region tests/ui/ambiente.ts
 /**
 * Ambiente de navegador para os testes de interface (jsdom), sem baixar navegador de verdade.
@@ -215,12 +215,25 @@ function criarServidorFalso(viagens, usuarioId = "u1") {
 					permitido: viagem.estado !== "cancelada",
 					motivo: "ok"
 				},
+				criarReserva: {
+					permitido: viagem.estado === "rascunho" || viagem.estado === "planejada" || viagem.estado === "em_andamento",
+					motivo: "ok"
+				},
+				confirmarReserva: {
+					permitido: true,
+					motivo: "ok"
+				},
+				cancelarReserva: {
+					permitido: viagem.estado !== "cancelada",
+					motivo: "ok"
+				},
 				transicoesPermitidas: []
 			},
 			despesas: viagem.despesas ?? [],
 			movimentos: [],
 			convites: [],
-			atividades: viagem.atividades ?? []
+			atividades: viagem.atividades ?? [],
+			reservas: viagem.reservas ?? []
 		});
 		if (caminho.endsWith("/saldos")) return json({
 			realizado: "0",
@@ -249,6 +262,57 @@ function criarServidorFalso(viagens, usuarioId = "u1") {
 				estado: viagem.estado,
 				rotuloEstado: viagem.estado
 			});
+		}
+		if (caminho.endsWith("/reservas") && metodo === "POST") {
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const nova = {
+				id: `r${(viagem.reservas ?? []).length + 1}`,
+				viagemId: viagem.id,
+				autorId: usuarioId,
+				tipo: corpo.tipo ?? "outro",
+				titulo: corpo.titulo ?? "sem nome",
+				local: null,
+				inicio: null,
+				fim: null,
+				custoCentavos: corpo.custoCentavos ?? null,
+				custoAVerificar: (corpo.custoCentavos ?? null) === null,
+				confirmacao: null,
+				confirmadaPor: null,
+				confirmadaEm: null,
+				estado: "prevista",
+				motivoCancelamento: null,
+				versao: 1
+			};
+			viagem.reservas = [...viagem.reservas ?? [], nova];
+			return json({ reserva: nova }, 201);
+		}
+		if (caminho.includes("/reservas/") && caminho.endsWith("/confirmar")) {
+			const id = caminho.split("/").at(-2);
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const reserva = (viagem.reservas ?? []).find((item) => item["id"] === id);
+			if (!reserva) return json({
+				erro: "nao_encontrada",
+				mensagem: "Reserva não encontrada."
+			}, 404);
+			reserva["estado"] = "confirmada";
+			reserva["confirmacao"] = corpo.confirmacao ?? null;
+			reserva["confirmadaPor"] = usuarioId;
+			reserva["confirmadaEm"] = (/* @__PURE__ */ new Date()).toISOString();
+			reserva["versao"] = Number(reserva["versao"] ?? 1) + 1;
+			return json({ reserva });
+		}
+		if (caminho.includes("/reservas/") && caminho.endsWith("/cancelar")) {
+			const id = caminho.split("/").at(-2);
+			const corpo = JSON.parse(String(init?.body ?? "{}"));
+			const reserva = (viagem.reservas ?? []).find((item) => item["id"] === id);
+			if (!reserva) return json({
+				erro: "nao_encontrada",
+				mensagem: "Reserva não encontrada."
+			}, 404);
+			reserva["estado"] = "cancelada";
+			reserva["motivoCancelamento"] = corpo.motivo ?? null;
+			reserva["versao"] = Number(reserva["versao"] ?? 1) + 1;
+			return json({ reserva });
 		}
 		if (caminho.endsWith("/atividades") && metodo === "POST") return json({
 			dia: "2026-12-20",
@@ -628,6 +692,37 @@ const api = {
 		return requisitar(`/viagens/${viagemId}/saldos`);
 	},
 	/** Sincronização incremental: só o que mudou desde o cursor (sequência de auditoria). */
+	async reservas(viagemId) {
+		return requisitar(`/viagens/${viagemId}/reservas`);
+	},
+	async detalheReserva(viagemId, reservaId) {
+		return requisitar(`/viagens/${viagemId}/reservas/${reservaId}`);
+	},
+	async criarReserva(viagemId, corpo, idempotencia) {
+		return requisitar(`/viagens/${viagemId}/reservas`, {
+			metodo: "POST",
+			corpo,
+			...idempotencia === void 0 ? {} : { idempotencia }
+		});
+	},
+	async confirmarReserva(viagemId, reservaId, confirmacao, versao) {
+		return requisitar(`/viagens/${viagemId}/reservas/${reservaId}/confirmar`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? { confirmacao } : {
+				confirmacao,
+				versao
+			}
+		});
+	},
+	async cancelarReserva(viagemId, reservaId, motivo, versao) {
+		return requisitar(`/viagens/${viagemId}/reservas/${reservaId}/cancelar`, {
+			metodo: "POST",
+			corpo: versao === void 0 ? { motivo } : {
+				motivo,
+				versao
+			}
+		});
+	},
 	async mudancas(viagemId, cursor) {
 		return requisitar(`/viagens/${viagemId}/mudancas?desde=${encodeURIComponent(cursor ?? "0")}`);
 	},
@@ -1249,14 +1344,17 @@ function dadosDaViagemAberta(estado, viagemId) {
 		detalhe: null,
 		despesas: [],
 		movimentos: [],
-		atividades: []
+		atividades: [],
+		reservas: []
 	};
 	const atividades = estado.carga.atividades.filter((atividade) => atividade.viagemId === void 0 || atividade.viagemId === viagemId);
+	const reservas = (estado.carga.reservas ?? []).filter((reserva) => reserva.viagemId === void 0 || reserva.viagemId === viagemId);
 	return {
 		detalhe,
 		despesas: estado.carga.despesas,
 		movimentos: estado.carga.movimentos,
-		atividades
+		atividades,
+		reservas
 	};
 }
 /** Permissão que pode vir ausente de um cache antigo: nunca derruba a tela por isso. */
@@ -1788,6 +1886,374 @@ function Roteiro({ viagemId, usuarioId, sincronizador, abrirAtividade, dataInici
 	] });
 }
 //#endregion
+//#region src/telas/Reservas.tsx
+/**
+* Reservas da viagem (tela 14 de `docs/UX_SCREENS.md`): hospedagem, transporte, passeio e "outro".
+*
+* Regras que esta tela **não** quebra (decisões V1 §13 e a disciplina de dinheiro do roteiro):
+*  - reserva nasce **prevista**; confirmar é ação separada e exige **evidência** (localizador, código,
+*    comprovante) — a tela nunca dá a entender que alguém falou com o hotel por nós;
+*  - cancelar exige motivo e diz, antes, que isso **não** cancela a reserva no fornecedor;
+*  - valor desconhecido aparece como "valor a verificar", nunca como `R$ 0,00`;
+*  - tudo entra na fila do aparelho: vale na hora e sobe quando houver rede.
+*/
+/** Objeto do aparelho → reserva do domínio (mesma forma que o servidor devolve). */
+function comoReserva(item) {
+	if (typeof item["id"] !== "string" || typeof item["titulo"] !== "string") return null;
+	const custo = item["custoCentavos"];
+	return {
+		id: item["id"],
+		viagemId: String(item["viagemId"] ?? ""),
+		autorId: String(item["autorId"] ?? ""),
+		tipo: item["tipo"] ?? "outro",
+		titulo: item["titulo"],
+		local: item["local"] ?? null,
+		inicio: item["inicio"] ?? null,
+		fim: item["fim"] ?? null,
+		custoCentavos: typeof custo === "string" && custo.length > 0 ? BigInt(custo) : null,
+		custoAVerificar: Boolean(item["custoAVerificar"]),
+		confirmacao: item["confirmacao"] ?? null,
+		confirmadaPor: item["confirmadaPor"] ?? null,
+		confirmadaEm: item["confirmadaEm"] ?? null,
+		estado: item["estado"] ?? "prevista",
+		motivoCancelamento: item["motivoCancelamento"] ?? null,
+		versao: Number(item["versao"] ?? 1)
+	};
+}
+function quando(inicio, fim) {
+	if (inicio === null) return "Ainda sem data";
+	const formatar = (iso) => new Date(iso).toLocaleString("pt-BR", {
+		dateStyle: "short",
+		timeStyle: "short"
+	});
+	return fim === null ? formatar(inicio) : `${formatar(inicio)} → ${formatar(fim)}`;
+}
+function Reservas({ viagemId, usuarioId, sincronizador, reservas, permissoes }) {
+	const [formularioAberto, setFormularioAberto] = useState(false);
+	const [tipo, setTipo] = useState("hospedagem");
+	const [titulo, setTitulo] = useState("");
+	const [local, setLocal] = useState("");
+	const [inicio, setInicio] = useState("");
+	const [custo, setCusto] = useState("");
+	const [acao, setAcao] = useState(null);
+	const [textoDaAcao, setTextoDaAcao] = useState("");
+	const [erro, setErro] = useState(null);
+	const [aviso, setAviso] = useState(null);
+	const lista = useMemo(() => ordenarReservas(reservas.map((item) => comoReserva(item)).filter((item) => item !== null)), [reservas]);
+	const resumo = useMemo(() => resumirReservas(lista), [lista]);
+	const podeCriar = pode(permissoes.criarReserva);
+	async function enfileirar(operacao, mensagem) {
+		setErro(null);
+		await sincronizador.enfileirar(operacao);
+		setAviso(mensagem);
+	}
+	async function criar(evento) {
+		evento.preventDefault();
+		setErro(null);
+		let reserva;
+		try {
+			reserva = criarReserva({
+				id: crypto.randomUUID(),
+				viagemId,
+				autorId: usuarioId,
+				tipo,
+				titulo,
+				local: local || null,
+				inicio: inicio === "" ? null : new Date(inicio).toISOString(),
+				custoCentavos: custo.trim() === "" ? null : BigInt(paraCentavos(custo))
+			});
+		} catch (falha) {
+			setErro(falha instanceof Error ? falha.message : "Não foi possível registrar a reserva.");
+			return;
+		}
+		await enfileirar({
+			tipo: "criar_reserva",
+			viagemId,
+			corpo: {
+				tipo: reserva.tipo,
+				titulo: reserva.titulo,
+				local: reserva.local,
+				inicio: reserva.inicio,
+				fim: null,
+				custoCentavos: reserva.custoCentavos === null ? null : reserva.custoCentavos.toString()
+			},
+			descricao: `Reserva: ${reserva.titulo}`
+		}, `${reserva.titulo} entrou como prevista. Confirmar é um passo separado, com evidência.`);
+		setTitulo("");
+		setLocal("");
+		setInicio("");
+		setCusto("");
+		setFormularioAberto(false);
+	}
+	async function executarAcao(reserva) {
+		setErro(null);
+		try {
+			if (acao?.tipo === "confirmar") {
+				const confirmada = confirmarReserva(reserva, {
+					porId: usuarioId,
+					confirmacao: textoDaAcao
+				});
+				await enfileirar({
+					tipo: "confirmar_reserva",
+					viagemId,
+					reservaId: reserva.id,
+					confirmacao: confirmada.confirmacao,
+					versao: reserva.versao,
+					descricao: `Reserva confirmada: ${reserva.titulo}`
+				}, `${reserva.titulo} ficou confirmada com a evidência registrada.`);
+			} else if (acao?.tipo === "cancelar") {
+				const cancelada = cancelarReserva(reserva, {
+					porId: usuarioId,
+					motivo: textoDaAcao
+				});
+				await enfileirar({
+					tipo: "cancelar_reserva",
+					viagemId,
+					reservaId: reserva.id,
+					motivo: cancelada.motivoCancelamento,
+					versao: reserva.versao,
+					descricao: `Reserva cancelada: ${reserva.titulo}`
+				}, `${reserva.titulo} saiu do previsto. O motivo ficou no histórico.`);
+			}
+			setAcao(null);
+			setTextoDaAcao("");
+		} catch (falha) {
+			setErro(falha instanceof Error ? falha.message : "Não foi possível concluir a ação.");
+		}
+	}
+	return /* @__PURE__ */ jsxs(Fragment, { children: [
+		erro ? /* @__PURE__ */ jsx("div", {
+			className: "aviso erro",
+			role: "alert",
+			children: erro
+		}) : null,
+		aviso ? /* @__PURE__ */ jsx("div", {
+			className: "aviso ok",
+			role: "status",
+			children: aviso
+		}) : null,
+		/* @__PURE__ */ jsxs("section", {
+			className: "cartao",
+			children: [
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha entre",
+					children: [/* @__PURE__ */ jsx("h2", { children: "Reservas" }), podeCriar ? /* @__PURE__ */ jsx("button", {
+						className: "principal compacto",
+						onClick: () => setFormularioAberto((aberto) => !aberto),
+						children: formularioAberto ? "Fechar" : "Nova reserva"
+					}) : null]
+				}),
+				lista.length === 0 ? /* @__PURE__ */ jsx("p", {
+					className: "suave pequeno",
+					children: "Nenhuma reserva registrada. Hospedagem, transporte e passeios ficam aqui, com o valor que já foi combinado separado do que ainda é estimativa."
+				}) : /* @__PURE__ */ jsxs(Fragment, { children: [
+					/* @__PURE__ */ jsxs("div", {
+						className: "linha",
+						children: [/* @__PURE__ */ jsx("span", { children: "Previsto em reservas" }), /* @__PURE__ */ jsx("strong", { children: formatarBRL(resumo.previstoCentavos) })]
+					}),
+					resumo.compromissoCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
+						className: "linha",
+						children: [/* @__PURE__ */ jsx("span", { children: "· já combinado" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(resumo.compromissoCentavos) })]
+					}) : null,
+					resumo.estimativaCentavos > 0n ? /* @__PURE__ */ jsxs("div", {
+						className: "linha",
+						children: [/* @__PURE__ */ jsx("span", { children: "· estimativa" }), /* @__PURE__ */ jsx("span", { children: formatarBRL(resumo.estimativaCentavos) })]
+					}) : null,
+					/* @__PURE__ */ jsx("p", { children: /* @__PURE__ */ jsxs("small", {
+						className: "suave",
+						children: [resumo.resumo, resumo.semCustoInformado > 0 ? ` · ${resumo.semCustoInformado} sem valor informado` : ""]
+					}) })
+				] }),
+				formularioAberto ? /* @__PURE__ */ jsxs("form", {
+					onSubmit: criar,
+					children: [
+						/* @__PURE__ */ jsxs("div", {
+							className: "duas-colunas",
+							children: [/* @__PURE__ */ jsxs("div", { children: [/* @__PURE__ */ jsx("label", {
+								htmlFor: "reserva-tipo",
+								children: "Tipo"
+							}), /* @__PURE__ */ jsx("select", {
+								id: "reserva-tipo",
+								value: tipo,
+								onChange: (evento) => setTipo(evento.target.value),
+								children: Object.keys(ROTULO_TIPO_RESERVA).map((chave) => /* @__PURE__ */ jsx("option", {
+									value: chave,
+									children: ROTULO_TIPO_RESERVA[chave]
+								}, chave))
+							})] }), /* @__PURE__ */ jsxs("div", { children: [/* @__PURE__ */ jsx("label", {
+								htmlFor: "reserva-titulo",
+								children: "Nome"
+							}), /* @__PURE__ */ jsx("input", {
+								id: "reserva-titulo",
+								value: titulo,
+								onChange: (evento) => setTitulo(evento.target.value),
+								placeholder: "Pousada da Serra",
+								required: true,
+								minLength: 2
+							})] })]
+						}),
+						/* @__PURE__ */ jsxs("div", {
+							className: "duas-colunas",
+							children: [/* @__PURE__ */ jsxs("div", { children: [/* @__PURE__ */ jsx("label", {
+								htmlFor: "reserva-local",
+								children: "Onde"
+							}), /* @__PURE__ */ jsx("input", {
+								id: "reserva-local",
+								value: local,
+								onChange: (evento) => setLocal(evento.target.value),
+								placeholder: "Rua das Flores, 120"
+							})] }), /* @__PURE__ */ jsxs("div", { children: [/* @__PURE__ */ jsx("label", {
+								htmlFor: "reserva-inicio",
+								children: "Quando"
+							}), /* @__PURE__ */ jsx("input", {
+								id: "reserva-inicio",
+								type: "datetime-local",
+								value: inicio,
+								onChange: (evento) => setInicio(evento.target.value)
+							})] })]
+						}),
+						/* @__PURE__ */ jsx("label", {
+							htmlFor: "reserva-custo",
+							children: "Valor combinado ou estimado (deixe vazio se ainda não sabe)"
+						}),
+						/* @__PURE__ */ jsx("input", {
+							id: "reserva-custo",
+							value: custo,
+							onChange: (evento) => setCusto(evento.target.value),
+							placeholder: "1200,00",
+							inputMode: "decimal"
+						}),
+						/* @__PURE__ */ jsxs("div", {
+							className: "acoes",
+							children: [/* @__PURE__ */ jsx("button", {
+								className: "principal",
+								type: "submit",
+								children: "Salvar reserva"
+							}), /* @__PURE__ */ jsx("button", {
+								className: "sutil",
+								type: "button",
+								onClick: () => setFormularioAberto(false),
+								children: "Cancelar"
+							})]
+						}),
+						/* @__PURE__ */ jsxs("p", {
+							className: "suave pequeno",
+							children: [
+								"A reserva entra como ",
+								/* @__PURE__ */ jsx("strong", { children: "prevista" }),
+								". Confirmar (com localizador ou comprovante) é um passo separado — o app não confirma nada sozinho."
+							]
+						})
+					]
+				}) : null
+			]
+		}),
+		lista.map((reserva) => /* @__PURE__ */ jsxs("section", {
+			className: "cartao",
+			children: [
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha entre",
+					children: [/* @__PURE__ */ jsx("h3", { children: reserva.titulo }), /* @__PURE__ */ jsx("span", {
+						className: `etiqueta estado-${reserva.estado}`,
+						children: ROTULO_ESTADO_RESERVA[reserva.estado]
+					})]
+				}),
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: ROTULO_TIPO_RESERVA[reserva.tipo] }), /* @__PURE__ */ jsx("span", {
+						className: "suave",
+						children: quando(reserva.inicio, reserva.fim)
+					})]
+				}),
+				reserva.local ? /* @__PURE__ */ jsx("div", {
+					className: "linha",
+					children: /* @__PURE__ */ jsx("span", {
+						className: "suave",
+						children: reserva.local
+					})
+				}) : null,
+				/* @__PURE__ */ jsxs("div", {
+					className: "linha",
+					children: [/* @__PURE__ */ jsx("span", { children: "Valor" }), reserva.custoCentavos === null ? /* @__PURE__ */ jsx("span", {
+						className: "custo-a-verificar",
+						children: reserva.custoAVerificar ? "Valor a verificar" : "Sem valor informado"
+					}) : /* @__PURE__ */ jsx("strong", { children: formatarBRL(reserva.custoCentavos) })]
+				}),
+				reserva.confirmacao ? /* @__PURE__ */ jsx("p", { children: /* @__PURE__ */ jsxs("small", {
+					className: "suave",
+					children: [
+						"Confirmação: “",
+						reserva.confirmacao,
+						"”",
+						reserva.confirmadaEm ? ` · ${new Date(reserva.confirmadaEm).toLocaleString("pt-BR")}` : ""
+					]
+				}) }) : null,
+				reserva.motivoCancelamento ? /* @__PURE__ */ jsx("p", { children: /* @__PURE__ */ jsxs("small", {
+					className: "suave",
+					children: ["Motivo do cancelamento: ", reserva.motivoCancelamento]
+				}) }) : null,
+				reserva.estado !== "cancelada" ? /* @__PURE__ */ jsxs("div", {
+					className: "acoes",
+					children: [pode(permissoes.confirmarReserva) && reserva.estado === "prevista" ? /* @__PURE__ */ jsx("button", {
+						className: "sutil",
+						onClick: () => {
+							setAcao({
+								reservaId: reserva.id,
+								tipo: "confirmar"
+							});
+							setTextoDaAcao("");
+						},
+						children: "Confirmar reserva"
+					}) : null, pode(permissoes.cancelarReserva) ? /* @__PURE__ */ jsx("button", {
+						className: "perigo",
+						onClick: () => {
+							setAcao({
+								reservaId: reserva.id,
+								tipo: "cancelar"
+							});
+							setTextoDaAcao("");
+						},
+						children: "Cancelar reserva"
+					}) : null]
+				}) : null,
+				acao?.reservaId === reserva.id ? /* @__PURE__ */ jsxs("div", {
+					className: "impacto",
+					children: [
+						/* @__PURE__ */ jsx("h3", { children: "Antes de continuar: o que isso muda" }),
+						/* @__PURE__ */ jsx("ul", { children: revisarImpactoDaReserva(reserva, acao.tipo).itens.map((item) => /* @__PURE__ */ jsx("li", { children: item }, item)) }),
+						revisarImpactoDaReserva(reserva, acao.tipo).atencao.length > 0 ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("h4", { children: "Atenção" }), /* @__PURE__ */ jsx("ul", {
+							className: "impacto-atencao",
+							children: revisarImpactoDaReserva(reserva, acao.tipo).atencao.map((item) => /* @__PURE__ */ jsx("li", { children: item }, item))
+						})] }) : null,
+						/* @__PURE__ */ jsx("label", {
+							htmlFor: `reserva-acao-${reserva.id}`,
+							children: acao.tipo === "confirmar" ? "Evidência da confirmação (código, localizador ou comprovante)" : "Motivo do cancelamento"
+						}),
+						/* @__PURE__ */ jsx("input", {
+							id: `reserva-acao-${reserva.id}`,
+							value: textoDaAcao,
+							onChange: (evento) => setTextoDaAcao(evento.target.value),
+							placeholder: acao.tipo === "confirmar" ? "Localizador ABC123" : "Pousada fechou para reforma"
+						}),
+						/* @__PURE__ */ jsxs("div", {
+							className: "acoes",
+							children: [/* @__PURE__ */ jsx("button", {
+								className: acao.tipo === "confirmar" ? "principal" : "perigo",
+								onClick: () => void executarAcao(reserva),
+								children: acao.tipo === "confirmar" ? "Registrar confirmação" : "Registrar cancelamento"
+							}), /* @__PURE__ */ jsx("button", {
+								className: "sutil",
+								onClick: () => setAcao(null),
+								children: "Voltar"
+							})]
+						})
+					]
+				}) : null
+			]
+		}, reserva.id))
+	] });
+}
+//#endregion
 //#region src/telas/Viagem.tsx
 /**
 * Tela da viagem. Lê do aparelho primeiro (funciona sem sinal) e escreve pela fila:
@@ -1852,7 +2318,7 @@ function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }) 
 		estado.ultimaSincronizacao,
 		estado.resumo.total
 	]);
-	const { detalhe, despesas, movimentos } = dadosDaViagemAberta(estado, viagemId);
+	const { detalhe, despesas, movimentos, reservas } = dadosDaViagemAberta(estado, viagemId);
 	const viagem = detalhe?.viagem ?? null;
 	const participantes = detalhe?.participantes ?? [];
 	const permissoes = detalhe?.permissoes;
@@ -2571,6 +3037,13 @@ function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtividade }) 
 							children: "Organizador(a) não sai sem passar a organização para outra pessoa."
 						}) })
 					]
+				}),
+				/* @__PURE__ */ jsx(Reservas, {
+					viagemId,
+					usuarioId,
+					sincronizador,
+					reservas,
+					permissoes: permissoes ?? {}
 				}),
 				/* @__PURE__ */ jsxs("section", {
 					className: "cartao",
@@ -3359,6 +3832,9 @@ async function enviarOperacao(operacao, idempotencia) {
 			motivo: operacao.motivo,
 			...operacao.versao === void 0 ? {} : { versao: operacao.versao }
 		});
+		case "criar_reserva": return api.criarReserva(operacao.viagemId, operacao.corpo, idempotencia);
+		case "confirmar_reserva": return api.confirmarReserva(operacao.viagemId, operacao.reservaId, operacao.confirmacao, operacao.versao);
+		case "cancelar_reserva": return api.cancelarReserva(operacao.viagemId, operacao.reservaId, operacao.motivo, operacao.versao);
 		case "corrigir_atividade": return api.corrigirAtividade(operacao.viagemId, operacao.atividadeId, operacao.corpo);
 	}
 }
@@ -3379,7 +3855,8 @@ function extrairCarga(mudancas) {
 		despesas: mudancas.despesas,
 		movimentos: mudancas.movimentos,
 		convites: mudancas.convites,
-		atividades: mudancas.atividades ?? []
+		atividades: mudancas.atividades ?? [],
+		reservas: mudancas.reservas ?? []
 	};
 }
 /**
@@ -3449,7 +3926,7 @@ var Sincronizador = class Sincronizador {
 	async carregarDoAparelho() {
 		const { fila, carga } = await this.armazem.lerFila().then(async (filaLida) => ({
 			fila: filaLida,
-			carga: (await this.armazem.lerCarga()).carga
+			carga: cargaCompleta((await this.armazem.lerCarga()).carga)
 		}));
 		const viagemAtiva = await this.armazemLocal.ler(CHAVE_VIAGEM_ATIVA);
 		this.publicar({
@@ -3577,7 +4054,7 @@ var Sincronizador = class Sincronizador {
 			});
 			const { fila, carga } = await this.armazem.lerFila().then(async (filaLida) => ({
 				fila: filaLida,
-				carga: (await this.armazem.lerCarga()).carga
+				carga: cargaCompleta((await this.armazem.lerCarga()).carga)
 			}));
 			const ultimaSincronizacao = fila.operacoes.length === 0 ? fila.ultimoSucessoEm ?? null : this.estado.ultimaSincronizacao;
 			this.publicar({

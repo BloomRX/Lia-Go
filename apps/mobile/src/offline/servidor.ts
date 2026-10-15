@@ -74,6 +74,12 @@ async function enviarOperacao(operacao: Operacao, idempotencia: string): Promise
         motivo: operacao.motivo,
         ...(operacao.versao === undefined ? {} : { versao: operacao.versao }),
       });
+    case "criar_reserva":
+      return api.criarReserva(operacao.viagemId, operacao.corpo as Parameters<typeof api.criarReserva>[1], idempotencia);
+    case "confirmar_reserva":
+      return api.confirmarReserva(operacao.viagemId, operacao.reservaId, operacao.confirmacao, operacao.versao);
+    case "cancelar_reserva":
+      return api.cancelarReserva(operacao.viagemId, operacao.reservaId, operacao.motivo, operacao.versao);
     case "corrigir_atividade":
       return api.corrigirAtividade(operacao.viagemId, operacao.atividadeId, operacao.corpo as { motivo: string });
   }
@@ -97,6 +103,7 @@ export function extrairCarga(mudancas: MudancasApi): Record<string, unknown> {
     movimentos: mudancas.movimentos as unknown as Record<string, unknown>[],
     convites: mudancas.convites,
     atividades: (mudancas.atividades ?? []) as unknown as Record<string, unknown>[],
+    reservas: (mudancas.reservas ?? []) as unknown as Record<string, unknown>[],
   };
 }
 

@@ -7,11 +7,21 @@
 import type { CargaLocal, CargaRemota, DetalheViagemLocal } from "./tipos.ts";
 
 export function cargaVazia(): CargaLocal {
-  return { viagens: [], viagem: null, despesas: [], movimentos: [], convites: [], convitesParaMim: [], atividades: [] };
+  return { viagens: [], viagem: null, despesas: [], movimentos: [], convites: [], convitesParaMim: [], atividades: [], reservas: [] };
+}
+
+/**
+ * Carga lida do aparelho, **completa**: cache escrito por uma versão anterior do app pode não ter
+ * as listas que existem hoje (foi assim que `reservas` entrou). Sem isso, a tela quebra com
+ * "cannot read properties of undefined" para quem já usava o app — o aparelho de quem atualiza é
+ * justamente quem tem cache antigo.
+ */
+export function cargaCompleta(carga: Partial<CargaLocal> | null | undefined): CargaLocal {
+  return { ...cargaVazia(), ...(carga ?? {}) };
 }
 
 /** Listas que sabemos mesclar. A chave é o campo `id`; o desempate é `versao` quando existe. */
-const LISTAS = ["despesas", "movimentos", "convites", "atividades"] as const;
+const LISTAS = ["despesas", "movimentos", "convites", "atividades", "reservas"] as const;
 
 export interface OpcoesMesclagem {
   /**
@@ -77,7 +87,7 @@ export function mesclarCarga(atual: CargaLocal, delta: CargaRemota, opcoes: Opco
  * e os convites pendentes **não** são tocados: não pertencem a nenhuma viagem.
  */
 export function trocarViagemAberta(carga: CargaLocal): CargaLocal {
-  return { ...carga, viagem: null, despesas: [], movimentos: [], convites: [], atividades: [] };
+  return { ...carga, viagem: null, despesas: [], movimentos: [], convites: [], atividades: [], reservas: [] };
 }
 
 /** Junta itens por `id`: entram os novos, atualizam-se os mais antigos, saem os marcados como removidos. */
@@ -115,7 +125,7 @@ export function mesclarLista(
 }
 
 /** Remove da carga o que o servidor marcou como removido. */
-export function removerDaCarga(carga: CargaLocal, lista: "despesas" | "movimentos" | "convites" | "atividades", id: string): CargaLocal {
+export function removerDaCarga(carga: CargaLocal, lista: "despesas" | "movimentos" | "convites" | "atividades" | "reservas", id: string): CargaLocal {
   return { ...carga, [lista]: carga[lista].filter((item) => item["id"] !== id) };
 }
 
@@ -134,7 +144,8 @@ export function contarItens(carga: CargaLocal): number {
     carga.movimentos.length +
     carga.convites.length +
     carga.convitesParaMim.length +
-    carga.atividades.length
+    carga.atividades.length +
+    carga.reservas.length
   );
 }
 

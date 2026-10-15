@@ -6,6 +6,7 @@
  * o sinal volta — inclusive depois de fechar e reabrir o app.
  */
 import {
+  cargaCompleta,
   cargaVazia,
   descartar,
   enfileirar,
@@ -91,7 +92,7 @@ export class Sincronizador {
   private async carregarDoAparelho(): Promise<void> {
     const { fila, carga } = await this.armazem.lerFila().then(async (filaLida) => ({
       fila: filaLida,
-      carga: (await this.armazem.lerCarga()).carga,
+      carga: cargaCompleta((await this.armazem.lerCarga()).carga),
     }));
     const viagemAtiva = await this.armazemLocal.ler<string>(CHAVE_VIAGEM_ATIVA);
     this.publicar({
@@ -220,7 +221,7 @@ export class Sincronizador {
       });
       const { fila, carga } = await this.armazem.lerFila().then(async (filaLida) => ({
         fila: filaLida,
-        carga: (await this.armazem.lerCarga()).carga,
+        carga: cargaCompleta((await this.armazem.lerCarga()).carga),
       }));
       const ultimaSincronizacao = fila.operacoes.length === 0 ? (fila.ultimoSucessoEm ?? null) : this.estado.ultimaSincronizacao;
       this.publicar({

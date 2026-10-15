@@ -12,6 +12,7 @@ import {
 import type { Sincronizador } from "../offline/sincronizador.ts";
 import { Platform } from "../services/plataforma.ts";
 import { atividadesDoDominio, dadosDaViagemAberta, pode } from "../services/viagem-local.ts";
+import { Reservas } from "./Reservas.tsx";
 import { resumirOrcamentoDoRoteiro } from "@lia-go/domain";
 import { rotuloDeArmazenamento } from "../services/tokens.ts";
 
@@ -99,7 +100,7 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
 
   // Só os dados **desta** viagem: enquanto a troca de viagem não termina, o cache pode ser o da
   // viagem anterior e mostrar isso seria mentir sobre a viagem aberta.
-  const { detalhe, despesas, movimentos } = dadosDaViagemAberta(estado, viagemId);
+  const { detalhe, despesas, movimentos, reservas } = dadosDaViagemAberta(estado, viagemId);
   const viagem = detalhe?.viagem ?? null;
   const participantes = (detalhe?.participantes ?? []) as unknown as Participante[];
   const permissoes = detalhe?.permissoes as
@@ -108,6 +109,9 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
         cancelar: { permitido: boolean; motivo?: string };
         convidar: { permitido: boolean; motivo?: string };
         registrarDespesa: { permitido: boolean; motivo?: string };
+        criarReserva?: { permitido?: boolean; motivo?: string };
+        confirmarReserva?: { permitido?: boolean; motivo?: string };
+        cancelarReserva?: { permitido?: boolean; motivo?: string };
         transicoesPermitidas: string[];
       }
     | undefined;
@@ -644,6 +648,14 @@ export function Viagem({ viagemId, usuarioId, voltar, sincronizador, abrirAtivid
               <p><small className="suave">Organizador(a) não sai sem passar a organização para outra pessoa.</small></p>
             )}
           </section>
+
+          <Reservas
+            viagemId={viagemId}
+            usuarioId={usuarioId}
+            sincronizador={sincronizador}
+            reservas={reservas}
+            permissoes={permissoes ?? {}}
+          />
 
           <section className="cartao">
             <h2>Este aparelho</h2>

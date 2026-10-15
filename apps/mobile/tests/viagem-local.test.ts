@@ -107,3 +107,24 @@ test("atividadesDoDominio pega só as atividades da viagem aberta", () => {
 
   assert.deepEqual(atividades.map((item) => item.id), ["a1"]);
 });
+
+test("reserva de outra viagem não entra na tela (e a viagem aberta entrega as reservas dela)", () => {
+  const estado = estadoCom("v1", {
+    reservas: [
+      { id: "r1", viagemId: "v1", titulo: "Pousada daqui" },
+      { id: "r2", viagemId: "v2", titulo: "Pousada de outra viagem" },
+    ],
+  });
+
+  assert.deepEqual(dadosDaViagemAberta(estado, "v1").reservas.map((item) => item["id"]), ["r1"]);
+});
+
+test("cache antigo, sem a lista de reservas, continua abrindo a viagem (quem atualiza tem cache velho)", () => {
+  const estado = estadoCom("v1", {});
+  // Simula exatamente o cache gravado por uma versão anterior do app.
+  delete (estado.carga as unknown as Record<string, unknown>)["reservas"];
+
+  const dados = dadosDaViagemAberta(estado, "v1");
+
+  assert.deepEqual(dados.reservas, [], "sem a lista, a tela mostra vazio — e não quebra");
+});

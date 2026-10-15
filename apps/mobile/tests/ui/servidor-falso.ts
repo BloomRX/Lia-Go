@@ -12,6 +12,7 @@ export interface ViagemFalsa {
   versao: number;
   papel: "organizador" | "participante";
   atividades?: Record<string, unknown>[];
+  reservas?: Record<string, unknown>[];
   despesas?: Record<string, unknown>[];
 }
 
@@ -100,12 +101,16 @@ export function criarServidorFalso(viagens: ViagemFalsa[], usuarioId = "u1"): Se
           cancelar: { permitido: true, motivo: "ok" },
           convidar: { permitido: true, motivo: "ok" },
           registrarDespesa: { permitido: viagem.estado !== "cancelada", motivo: "ok" },
+          criarReserva: { permitido: viagem.estado === "rascunho" || viagem.estado === "planejada" || viagem.estado === "em_andamento", motivo: "ok" },
+          confirmarReserva: { permitido: true, motivo: "ok" },
+          cancelarReserva: { permitido: viagem.estado !== "cancelada", motivo: "ok" },
           transicoesPermitidas: [],
         },
         despesas: viagem.despesas ?? [],
         movimentos: [],
         convites: [],
         atividades: viagem.atividades ?? [],
+        reservas: viagem.reservas ?? [],
       });
     }
 
@@ -134,6 +139,54 @@ export function criarServidorFalso(viagens: ViagemFalsa[], usuarioId = "u1"): Se
         viagem.versao += 1;
       }
       return json({ estado: viagem.estado, rotuloEstado: viagem.estado });
+    }
+
+    if (caminho.endsWith("/reservas") && metodo === "POST") {
+      const corpo = JSON.parse(String(init?.body ?? "{}")) as { titulo?: string; tipo?: string; custoCentavos?: string | null };
+      const nova = {
+        id: `r${(viagem.reservas ?? []).length + 1}`,
+        viagemId: viagem.id,
+        autorId: usuarioId,
+        tipo: corpo.tipo ?? "outro",
+        titulo: corpo.titulo ?? "sem nome",
+        local: null,
+        inicio: null,
+        fim: null,
+        custoCentavos: corpo.custoCentavos ?? null,
+        custoAVerificar: (corpo.custoCentavos ?? null) === null,
+        confirmacao: null,
+        confirmadaPor: null,
+        confirmadaEm: null,
+        estado: "prevista",
+        motivoCancelamento: null,
+        versao: 1,
+      };
+      viagem.reservas = [...(viagem.reservas ?? []), nova];
+      return json({ reserva: nova }, 201);
+    }
+
+    if (caminho.includes("/reservas/") && caminho.endsWith("/confirmar")) {
+      const id = caminho.split("/").at(-2);
+      const corpo = JSON.parse(String(init?.body ?? "{}")) as { confirmacao?: string; versao?: number };
+      const reserva = (viagem.reservas ?? []).find((item) => item["id"] === id);
+      if (!reserva) return json({ erro: "nao_encontrada", mensagem: "Reserva não encontrada." }, 404);
+      reserva["estado"] = "confirmada";
+      reserva["confirmacao"] = corpo.confirmacao ?? null;
+      reserva["confirmadaPor"] = usuarioId;
+      reserva["confirmadaEm"] = new Date().toISOString();
+      reserva["versao"] = Number(reserva["versao"] ?? 1) + 1;
+      return json({ reserva });
+    }
+
+    if (caminho.includes("/reservas/") && caminho.endsWith("/cancelar")) {
+      const id = caminho.split("/").at(-2);
+      const corpo = JSON.parse(String(init?.body ?? "{}")) as { motivo?: string };
+      const reserva = (viagem.reservas ?? []).find((item) => item["id"] === id);
+      if (!reserva) return json({ erro: "nao_encontrada", mensagem: "Reserva não encontrada." }, 404);
+      reserva["estado"] = "cancelada";
+      reserva["motivoCancelamento"] = corpo.motivo ?? null;
+      reserva["versao"] = Number(reserva["versao"] ?? 1) + 1;
+      return json({ reserva });
     }
 
     if (caminho.endsWith("/atividades") && metodo === "POST") {

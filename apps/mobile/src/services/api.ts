@@ -167,6 +167,27 @@ export interface MudancasApi {
   movimentos: MovimentoApi[];
   convites: Record<string, unknown>[];
   atividades: AtividadeApi[];
+  reservas: ReservaApi[];
+}
+
+/** Reserva como o servidor devolve (custo em centavos, string; `null` = desconhecido). */
+export interface ReservaApi {
+  id: string;
+  viagemId: string;
+  autorId: string;
+  tipo: "hospedagem" | "transporte" | "passeio" | "outro";
+  titulo: string;
+  local: string | null;
+  inicio: string | null;
+  fim: string | null;
+  custoCentavos: string | null;
+  custoAVerificar: boolean;
+  confirmacao: string | null;
+  confirmadaPor: string | null;
+  confirmadaEm: string | null;
+  estado: "prevista" | "confirmada" | "cancelada";
+  motivoCancelamento: string | null;
+  versao: number;
 }
 
 /** Atividade do roteiro, como o servidor devolve (custo em centavos, sem float). */
@@ -438,6 +459,40 @@ export const api = {
   },
 
   /** Sincronização incremental: só o que mudou desde o cursor (sequência de auditoria). */
+  async reservas(viagemId: string): Promise<{ reservas: ReservaApi[]; tipos: { tipo: ReservaApi["tipo"]; rotulo: string }[] }> {
+    return requisitar(`/viagens/${viagemId}/reservas`);
+  },
+
+  async detalheReserva(viagemId: string, reservaId: string): Promise<{ reserva: ReservaApi; historico: { acao: string; autorId: string; em: string; motivo: string | null }[] }> {
+    return requisitar(`/viagens/${viagemId}/reservas/${reservaId}`);
+  },
+
+  async criarReserva(
+    viagemId: string,
+    corpo: { tipo: ReservaApi["tipo"]; titulo: string; local?: string | null; inicio?: string | null; fim?: string | null; custoCentavos?: string | null },
+    idempotencia?: string,
+  ): Promise<{ reserva: ReservaApi }> {
+    return requisitar(`/viagens/${viagemId}/reservas`, {
+      metodo: "POST",
+      corpo,
+      ...(idempotencia === undefined ? {} : { idempotencia }),
+    });
+  },
+
+  async confirmarReserva(viagemId: string, reservaId: string, confirmacao: string, versao?: number): Promise<{ reserva: ReservaApi }> {
+    return requisitar(`/viagens/${viagemId}/reservas/${reservaId}/confirmar`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { confirmacao } : { confirmacao, versao },
+    });
+  },
+
+  async cancelarReserva(viagemId: string, reservaId: string, motivo: string, versao?: number): Promise<{ reserva: ReservaApi }> {
+    return requisitar(`/viagens/${viagemId}/reservas/${reservaId}/cancelar`, {
+      metodo: "POST",
+      corpo: versao === undefined ? { motivo } : { motivo, versao },
+    });
+  },
+
   async mudancas(viagemId: string, cursor: string | null): Promise<MudancasApi> {
     const desde = cursor ?? "0";
     return requisitar(`/viagens/${viagemId}/mudancas?desde=${encodeURIComponent(desde)}`);

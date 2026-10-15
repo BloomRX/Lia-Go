@@ -38,7 +38,26 @@ function servidorFalso(opcoes: { falharTudo?: boolean; conflito?: boolean } = {}
       return { ok: true, carga: { viagens: [{ id: "v1", nome: "Praia", estado: "planejada" }], convitesParaMim: [] } };
     },
     async buscarMudancas(): Promise<ResultadoBusca> {
-      return { ok: true, cursor: "30", carga: { viagem: detalhe, despesas: [{ id: "d1", descricao: "Almoço", estado: "pendente", versao: 1 }] } };
+      return {
+        ok: true,
+        cursor: "30",
+        carga: {
+          viagem: detalhe,
+          despesas: [{ id: "d1", descricao: "Almoço", estado: "pendente", versao: 1 }],
+          reservas: [
+            {
+              id: "r1",
+              viagemId: "v1",
+              tipo: "hospedagem",
+              titulo: "Pousada da Serra",
+              estado: "prevista",
+              custoCentavos: "120000",
+              custoAVerificar: false,
+              versao: 1,
+            },
+          ],
+        },
+      };
     },
   };
 
@@ -233,4 +252,27 @@ test("cinco pedidos durante uma passada viram uma passada seguinte, não cinco",
   await Promise.all([primeira, ...esperas]);
 
   assert.equal(buscaViagens, 2, `duas passadas no total (a presa + a que atendeu todos os pedidos). Foram ${buscaViagens}`);
+});
+
+test("reserva criada offline sobe quando a rede volta e entra no cache como as outras entidades", async () => {
+  const { porta, recebidas } = servidorFalso();
+  const sincronizador = await Sincronizador.criar(criarArmazenamentoIndexedDB("sync-teste-reserva"), porta);
+  sincronizador.definirOnline(false);
+
+  await sincronizador.enfileirar({
+    tipo: "criar_reserva",
+    viagemId: "v1",
+    corpo: { tipo: "hospedagem", titulo: "Pousada da Serra", custoCentavos: "120000" },
+    descricao: "Reserva: Pousada da Serra",
+  });
+  assert.equal(sincronizador.obter().resumo.rotulo, "1 alteração aguardando envio");
+
+  await sincronizador.abrirViagem("v1");
+  sincronizador.definirOnline(true);
+  await sincronizador.sincronizarAgora();
+
+  assert.equal(recebidas[0]!.tipo, "criar_reserva", "a reserva vai pelo mesmo caminho da fila");
+  assert.equal(sincronizador.obter().fila.operacoes.length, 0, "nada fica preso na fila");
+  assert.equal(sincronizador.obter().carga.reservas.length, 1, "as reservas do servidor entram no aparelho");
+  assert.equal((sincronizador.obter().carga.reservas[0] as { titulo: string }).titulo, "Pousada da Serra");
 });

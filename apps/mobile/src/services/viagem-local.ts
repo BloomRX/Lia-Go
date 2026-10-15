@@ -19,6 +19,8 @@ export interface DadosDaViagemAberta {
   despesas: DespesaApi[];
   movimentos: MovimentoApi[];
   atividades: AtividadeApi[];
+  /** Reservas da viagem aberta (já filtradas: nada de reserva de outra viagem). */
+  reservas: Record<string, unknown>[];
 }
 
 export function dadosDaViagemAberta(estado: EstadoSincronizacao, viagemId: string): DadosDaViagemAberta {
@@ -26,7 +28,7 @@ export function dadosDaViagemAberta(estado: EstadoSincronizacao, viagemId: strin
   const donoDoCache = detalhe?.viagem?.id ?? null;
 
   if (donoDoCache !== viagemId) {
-    return { detalhe: null, despesas: [], movimentos: [], atividades: [] };
+    return { detalhe: null, despesas: [], movimentos: [], atividades: [], reservas: [] };
   }
 
   const atividades = (estado.carga.atividades as unknown as AtividadeApi[]).filter(
@@ -35,11 +37,17 @@ export function dadosDaViagemAberta(estado: EstadoSincronizacao, viagemId: strin
     (atividade) => atividade.viagemId === undefined || atividade.viagemId === viagemId,
   );
 
+  const reservas = ((estado.carga.reservas ?? []) as unknown as { viagemId?: string }[]).filter(
+    // Mesma defesa da atividade: reserva de outra viagem não entra nesta tela.
+    (reserva) => reserva.viagemId === undefined || reserva.viagemId === viagemId,
+  ) as unknown as Record<string, unknown>[];
+
   return {
     detalhe,
     despesas: estado.carga.despesas as unknown as DespesaApi[],
     movimentos: estado.carga.movimentos as unknown as MovimentoApi[],
     atividades,
+    reservas,
   };
 }
 
