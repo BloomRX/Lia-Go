@@ -206,7 +206,7 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro) | ✅ **63 testes** | `npm run test:domain` |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto) | ✅ **70 testes** | `npm run test:domain` |
 | API Fastify + PostgreSQL + SQL versionado | ✅ **49 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
@@ -214,10 +214,13 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **41 testes** no pacote + 30 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **46 testes** no pacote + 40 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto) | ✅ **9 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
+| Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
 
 **Cuidado medido em execução:** uma instalação parcial de dependências (pasta `node_modules` existente
 mas incompleta) fazia os testes falharem com `Cannot find package 'pg'`. A automação agora confere
@@ -240,6 +243,9 @@ ou sem internet passa pelo mesmo caminho de código (`packages/sync` + `apps/mob
 | Ordem causal | a fila é enviada na ordem de criação; uma alteração que espera o relógio bloqueia as seguintes, mas o que precisa de decisão humana **não** trava o resto |
 | Recuo exponencial | 2s, 4s, 8s… até 5 min; erro de rede volta para a fila, erro de regra de negócio para de tentar e aparece para a pessoa |
 | Cursor de mudanças | `auditoria.id` (sequência), nunca horário: relógio de celular errado não faz ninguém perder dado. Resposta paginada (`temMais`) |
+| Cursor por viagem | ao abrir outra viagem o cursor **e** a carga da anterior saem (`trocarViagemAberta`); a versão só é comparada dentro da mesma viagem |
+| Uma passada por vez, sem avalanche | pedidos feitos durante uma passada esperam **a mesma** passada seguinte (`sincronizarAgora`, coalescência); antes, cada pedido criava uma passada e a tela ficava presa em "Confirmando a viagem com o servidor…" |
+| Nada criado durante a passada é perdido | a fila é relida no fim e o que apareceu no meio é preservado (`juntarFilaDaPassada`) |
 | Conflito | `409 conflito_versao` com `detalhes.versaoAtual`; a tela mostra as duas versões e a pessoa escolhe. **Dinheiro nunca é resolvido sozinho** |
 | Cache local | IndexedDB (web) ou armazenamento do app (nativo), atrás de `ArmazenamentoLocal` — uma interface, três implementações (a terceira é memória, para testes) |
 | Saldos | sempre calculados no servidor; o aparelho guarda a última informação conhecida e mostra quando ela é de |
@@ -268,6 +274,7 @@ código, não só no documento:
 | Custo tem **natureza**: `estimativa`, `compromisso`, `gratuito`, ou **desconhecido** | `custoParaMostrar` + CHECKs na migração `0003` | Desconhecido ≠ zero ≠ gratuito; o resumo mostra `custoConhecidoCentavos` e sinaliza `temCustoAVerificar` |
 | Conflito é **explicado**, nunca resolvido sozinho | `conflitosDoDia` (sobreposição, deslocamento insuficiente) | O app sugere o ajuste e espera a decisão; remarcar sozinho quebra a confiança |
 | Concluir/cancelar/corrigir exigem **motivo** (≥5 caracteres na correção/cancelamento) | rota + domínio | Histórico serve para aprender, não para apagar |
+| Antes de concluir/cancelar, a tela mostra o **impacto conhecido** | `revisarImpacto` + bloco "Antes de continuar" | `UI_V1_DECISIONS` §13: a interface não pode insinuar que algo externo aconteceu nem mudar dinheiro oficial por conta própria |
 | Depois do cancelamento da viagem, **registrar o que houve com o que já existia** continua permitido | `PERMITIDAS_APOS_CANCELAMENTO` (`atividade:concluir/cancelar/corrigir`) | Viagem cancelada não recebe plano novo, mas o passado aconteceu — mesma lógica das despesas |
 | Viagem concluída bloqueia `atividade:criar` | `packages/domain/src/permissions.ts` | Não se planeja o que já terminou |
 
@@ -284,5 +291,5 @@ o mesmo cursor, a mesma idempotência das despesas.
 ### Próxima fatia (proposta)
 1. **Reservas manuais** (com local, horário e custo) e **checklist**, reusando o mesmo padrão do roteiro.
 2. Documentos privados com compartilhamento revogável.
-3. Revisão de impacto do roteiro (o que muda se eu tirar/atrasar uma atividade) e versões anteriores.
+3. Revisão de impacto para **substituir o roteiro vigente** (prévia de diferenças e versões anteriores) — o impacto de concluir/cancelar já existe.
 4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).

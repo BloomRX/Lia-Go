@@ -56,19 +56,23 @@ O estado da viagem, o estado da atividade, o estado da reserva e o estado financ
 
 ## 6. Roteiro V1
 
-Implementar primeiro o fluxo que já está suficientemente definido:
+Implementar primeiro o fluxo que já está suficientemente definido (✅ = no app, com teste):
 
-1. seleção/navegação de dia;
-2. resumo diário adaptativo;
-3. timeline vertical;
-4. `ActivityCard` equilibrado;
-5. marcador de estado na timeline + etiqueta no cartão;
-6. `TravelSegment` compacto, expandindo por distância/atraso/custo/risco;
-7. atividade flexível na sequência sem horário artificial;
-8. atividade concluída suavizada e recolhível sem apagar histórico;
-9. conflito no resumo e nos cartões afetados;
-10. abertura de detalhes em **tela própria**;
-11. ações autorizadas e revisão de impacto antes de mudanças relevantes.
+1. seleção/navegação de dia; ✅
+2. resumo diário adaptativo; ✅
+3. timeline vertical; ✅
+4. `ActivityCard` equilibrado; ✅
+5. marcador de estado na timeline + etiqueta no cartão; ✅
+6. `TravelSegment` compacto, expandindo por distância/atraso/custo/risco; ✅
+7. atividade flexível na sequência sem horário artificial; ✅
+8. atividade concluída suavizada e recolhível sem apagar histórico; ✅
+9. conflito no resumo e nos cartões afetados; ✅
+10. abertura de detalhes em **tela própria**; ✅
+11. ações autorizadas e revisão de impacto antes de mudanças relevantes. 🟡 (concluir e cancelar
+    revisam o impacto; a prévia para **substituir o roteiro vigente** ainda falta)
+
+Depois da lista: **orçamento do roteiro** (item 8 de `UX_SCREENS.md`) entrou como planejamento separado
+do dinheiro oficial — `resumirOrcamentoDoRoteiro`, mostrado na aba Gastos (`§7` e `§8` acima).
 
 O cartão deve mostrar apenas horário, título, estado, custo essencial e contexto relevante. A tela de detalhes concentra o restante.
 

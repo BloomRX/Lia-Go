@@ -57,9 +57,9 @@ Isto é o que **existe no app hoje**, não o que está planejado — conferido r
 | 4 | Convites e participantes | ✅ convite com token mostrado uma vez; participação por token | `telas/Viagem.tsx` |
 | 5 | Dashboard da viagem | ✅ destino, datas, estado, saldos e pendências | `telas/Viagem.tsx` (aba Visão) |
 | 6 | Roteiro | ✅ timeline por dia, dias com conflito, resumo adaptativo, concluídas recolhíveis, criar atividade | `telas/Roteiro.tsx` |
-| 7 | Detalhes da atividade | ✅ ficha, custo com natureza, concluir/cancelar/corrigir com motivo, histórico | `telas/Atividade.tsx` |
-| 8 | Revisão de mudanças | ⬜ (próxima fatia do roteiro) | — |
-| 9 | Orçamento | ⬜ (aparece só como resumo de custo do dia) | — |
+| 7 | Detalhes da atividade | ✅ ficha, custo com natureza, concluir/cancelar/corrigir com motivo, histórico, **revisão de impacto antes de concluir/cancelar** | `telas/Atividade.tsx` |
+| 8 | Revisão de mudanças | 🟡 impacto conhecido antes de concluir/cancelar/abrir outra viagem; falta a prévia para **substituir o roteiro vigente** | `telas/Atividade.tsx`, `packages/domain/src/roteiro.ts` (`revisarImpacto`) |
+| 9 | Orçamento | 🟡 previsto do roteiro (estimativa × já combinado × a verificar) na aba Gastos, separado do saldo oficial; falta limite coletivo/individual e alertas | `telas/Viagem.tsx`, `resumirOrcamentoDoRoteiro` |
 | 10–11 | Nova despesa / rateio | ✅ despesa com rateio igualitário, soma exata | `telas/Viagem.tsx` (aba Gastos) |
 | 12 | Saldos e acertos | ✅ saldo oficial do servidor + acertos sugeridos | `telas/Viagem.tsx` (aba Gastos) |
 | 13 | Moedas | ⬜ (BRL hoje; estrutura de dinheiro já é por moeda) | — |

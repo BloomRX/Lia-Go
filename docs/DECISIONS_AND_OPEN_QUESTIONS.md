@@ -119,7 +119,34 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   a pasta `docs/ui-references/` continua vazia e as telas seguem os **tokens que já existiam** em
   `apps/mobile/src/styles.css` (base escura, roxo/magenta, cartões arredondados, alvos ≥ 44 px, foco visível,
   estado **nunca só por cor**).
-- **Placar da rodada**: 222 testes verdes (ferramentas 39 · domínio 63 · sincronização 41 · app 30 · API 49).
+- **Placar da rodada**: 253 testes verdes (ferramentas 39 · domínio 70 · sincronização 46 · app 49 — 40 de unidade + 9 de interface em jsdom · API 49).
+
+### Defeitos de uso real + orçamento do roteiro (2026-10-15, oitava rodada)
+
+- **Três defeitos relatados, três causas encontradas** (nenhuma era "cosmética"):
+  1. **Criar viagem abria/caía na viagem cancelada anterior.** Eram três causas somadas: `viagemAtiva` era
+     valor fixo durante a passada (o resultado da viagem antiga era mesclado por cima da nova); `abrirViagem`
+     só limpava o cache quando havia viagem anterior (o caso "primeira viagem" não limpava); e a comparação de
+     versão era feita **entre viagens diferentes**, recusando a troca (`v1 !== v2`). Correção: `trocandoDeViagem`
+     zera viagem e listas ao abrir outra, o cursor é por viagem e a versão só é comparada dentro da mesma viagem.
+  2. **"Sair" não fazia nada.** O plugin de armazenamento seguro é um Proxy no navegador e o `await` ficava
+     pendurado para sempre. Correção: só usar o plugin quando `Platform.ehNativo() && isPluginAvailable`, teto
+     de 3 s (`comTempoLimite`), tela muda **antes** da limpeza e `lia.saidaPendente`/cleanup retoma no próximo uso.
+  3. **A viagem criada não chegava ao servidor.** A fila era lida no início da passada e gravada no fim: o que
+     fosse criado no meio era apagado. Correção: `filaInicial` + `salvarFila()` + `juntarFilaDaPassada`.
+- **Defeito que só o teste de interface pegou**: abrir o roteiro de uma viagem com atividade deixava a tela
+  **em branco** (`linhasDeContexto` lia `custo.centavos` e a tela entrega a forma do domínio). Agora `custoDoCartao`
+  aceita as duas formas e dado incompleto é **desconhecido**, nunca zero. É a razão de a suíte de UI ser obrigatória.
+- **Avalanche de sincronizações**: cada pedido feito durante uma passada disparava uma passada nova. Abrir o app
+  criava uma fila de sincronizações e a tela ficava presa em "Confirmando a viagem com o servidor…". Agora todos
+  os pedidos durante uma passada esperam **a mesma** passada seguinte (in-flight + dirty flag).
+- **Orçamento do roteiro é planejamento, não dinheiro oficial** (`decidido, não perguntado`): `resumirOrcamentoDoRoteiro`
+  soma estimativa e compromisso **separados**, conta "a verificar" sem somar, ignora cancelada e nunca escreve
+  `R$ 0,00` para desconhecido. A aba Gastos mostra "Previsto no roteiro" ao lado de "Gasto confirmado (oficial)",
+  com a frase que separa os dois: o previsto não entra no saldo oficial.
+- **Revisão de impacto antes de mudar** (`UI_V1_DECISIONS` §13): concluir e cancelar mostram, antes do botão, o que
+  muda (valor que sai do previsto, motivo que fica no histórico) e o que **não** muda (saldo oficial, despesas já
+  registradas, compromisso assumido fora do app). O bloco é gerado no domínio (`revisarImpacto`), não no JSX.
 
 ### Nunca descartar trabalho local e nunca deixar a rodada presa (2026-10-13, quinta rodada)
 - **Dois defeitos encontrados em uso real, ambos corrigidos:**
