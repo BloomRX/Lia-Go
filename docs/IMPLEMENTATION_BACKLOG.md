@@ -1,6 +1,6 @@
 # Backlog — Lia Go
 
-Atualizado em **2026-10-16** (décima quarta rodada — identidade visual das referências), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Atualizado em **2026-10-16** (décima quinta rodada — dependências e "o app abriu?"), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
@@ -16,7 +16,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Barra com Visão geral, Roteiro, Gastos e Mais; identidade escura roxo/magenta, referências oficiais
   aplicadas (hero da viagem com a Lia, próximo compromisso em destaque, orçamento com barra) e estados
   carregando/vazio/erro/sem permissão. Documentos e checklist vivem na aba Mais por ora.
-- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 157 · sincronização 49 · app 49 + 45 (jsdom) · API 92 = **436**.
+- 🔄 Placar de testes da rodada: ferramentas 53 · domínio 157 · sincronização 49 · app 49 + 45 (jsdom) · API 92 = **445**.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
 - ✅ `packages/domain` com **157 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
@@ -49,6 +49,12 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Reservas manuais assistidas, checklist (prazo não conclui; reabertura com motivo) e documentos privados
   por padrão com compartilhamento revogável, remoção lógica com motivo e limpeza da cópia local de quem
   perdeu acesso.
+- ✅ **Corrigido (2026-10-16, rodada do PC da tarde)**: dependência nova não era instalada. A
+  conferência usava uma lista fixa de pacotes; `lucide-react` entrou na fatia de identidade visual,
+  a lista não o conhecia, o `npm install` foi pulado e o site abriu com "Failed to resolve import"
+  (9 falhas de interface e o typecheck vermelho). Agora a conferência lê **todos** os `package.json`
+  (raiz e workspaces) e o `package-lock.json`, mostra **o que** falta e a rodada ainda pergunta
+  "o app abriu?" percorrendo os módulos como o navegador faria — em vez de confiar na porta aberta.
 - ✅ **Corrigido (2026-10-16, rodada do PC)**: criar viagem podia perder a operação — a passada de
   sincronização lia a fila, a criação entrava nesse intervalo e a gravação do fim apagava a operação
   nova. A viagem nunca chegava ao servidor e a tela ainda dizia "Tudo sincronizado". Agora toda

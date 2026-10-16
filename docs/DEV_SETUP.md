@@ -155,6 +155,7 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - Sincronização (fila, conflito, cursor, motor): `npm run test:sync` — 48 testes.
 - App (armazenamento local e sincronizador): `npm run test:app` — 49 testes de unidade.
 - Interface de verdade em jsdom: `npm run test:ui` — 45 testes (monta o app inteiro, inclusive com rede instável).
+- Ferramentas da rodada (conferência de dependências e "o app abriu?"): `npm run test:tools` — 53 testes.
 - API (integração com PostgreSQL real): `npm run test:api` — 86 testes.
 - Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 44 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).

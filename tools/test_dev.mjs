@@ -1,6 +1,13 @@
 import test from "node:test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import assert from "node:assert/strict";
 import {
+  arvoreDeDependenciasEmDia,
+  dependenciasDeclaradas,
+  dependenciasQueFaltam,
+  estadoDoAppWeb,
   arquivosQueFalharam,
   extrairFalhas,
   caminhoDoLogDoNpm,
@@ -596,4 +603,139 @@ test("erro de TypeScript também entra no relatório como falha", () => {
 test("saída sem falha não inventa bloco de erro (relatório verde fica limpo)", () => {
   const saida = ["ℹ tests 39", "ℹ pass 39", "ℹ fail 0", "ok 1 - tudo certo"].join("\n");
   assert.deepEqual(extrairFalhas(saida), []);
+});
+
+
+// ---------------------------------------------------------------------------
+// Dependências: a conferência que furava deixava a rodada sem instalar o que faltava
+// ---------------------------------------------------------------------------
+
+/** Árvore de mentira no disco: `package.json` da raiz, de um workspace e um node_modules. */
+function arvoreDeMentira({ raizDeclaradas = {}, appDeclaradas = {}, instalados = [], extras = {} } = {}) {
+  const base = mkdtempSync(path.join(tmpdir(), "lia-go-deps-"));
+  const escrever = (caminho, dados) => {
+    mkdirSync(path.dirname(caminho), { recursive: true });
+    writeFileSync(caminho, JSON.stringify(dados), "utf8");
+  };
+  escrever(path.join(base, "package.json"), { name: "raiz", workspaces: ["apps/*"], ...raizDeclaradas });
+  escrever(path.join(base, "apps", "mobile", "package.json"), { name: "@lia-go/mobile", ...appDeclaradas });
+  const marcarInstalado = (nome) => {
+    const pasta = path.join(base, "node_modules", ...nome.split("/"));
+    mkdirSync(pasta, { recursive: true });
+    writeFileSync(path.join(pasta, "package.json"), "{}", "utf8");
+  };
+  for (const nome of instalados) marcarInstalado(nome);
+  if (extras.comMarcador !== false) {
+    mkdirSync(path.join(base, "node_modules"), { recursive: true });
+    writeFileSync(path.join(base, "node_modules", ".package-lock.json"), "{}", "utf8");
+    writeFileSync(path.join(base, "package-lock.json"), "{}", "utf8");
+  }
+  return base;
+}
+
+test("dependências declaradas: lê a raiz e os workspaces (pacote novo entra na conta sozinho)", () => {
+  const base = arvoreDeMentira({
+    raizDeclaradas: { devDependencies: { rolldown: "1.0.0" } },
+    appDeclaradas: { dependencies: { react: "19.0.0", "lucide-react": "0.5.0" } },
+  });
+  const nomes = dependenciasDeclaradas(base);
+  assert.ok(nomes.includes("rolldown"));
+  assert.ok(nomes.includes("react"));
+  assert.ok(nomes.includes("lucide-react"), "o pacote que a rodada de 2026-10-16 não instalou");
+});
+
+test("pacote declarado e ausente do disco é reportado com o nome", () => {
+  const base = arvoreDeMentira({
+    appDeclaradas: { dependencies: { react: "19.0.0", "lucide-react": "0.5.0" } },
+    instalados: ["react"],
+  });
+  assert.deepEqual(dependenciasQueFaltam(base), ["lucide-react"]);
+});
+
+test("pacote instalado no node_modules do workspace também conta", () => {
+  const base = arvoreDeMentira({ appDeclaradas: { dependencies: { jsdom: "1.0.0" } }, instalados: [] });
+  mkdirSync(path.join(base, "apps", "mobile", "node_modules", "jsdom"), { recursive: true });
+  assert.deepEqual(dependenciasQueFaltam(base), []);
+});
+
+test("árvore em dia: marcador presente, nada faltando e trava mais antiga que o marcador", () => {
+  const base = arvoreDeMentira({ appDeclaradas: { dependencies: { react: "19.0.0" } }, instalados: ["react"] });
+  assert.equal(arvoreDeDependenciasEmDia(base), true);
+});
+
+test("pacote novo depois da última instalação manda instalar de novo (o defeito do lucide-react)", () => {
+  const base = arvoreDeMentira({ appDeclaradas: { dependencies: { react: "19.0.0" } }, instalados: ["react"] });
+  assert.equal(arvoreDeDependenciasEmDia(base, { extras: ["rolldown"] }), false, "extra que falta conta");
+  writeFileSync(path.join(base, "package.json"), JSON.stringify({ dependencies: { vite: "1.0.0" } }), "utf8");
+  assert.equal(
+    arvoreDeDependenciasEmDia(base, { extras: ["react"] }),
+    false,
+    "declarado novo e não instalado precisa derrubar a conferência",
+  );
+});
+
+test("sem o marcador do npm a árvore não está confiável", () => {
+  const base = arvoreDeMentira({ appDeclaradas: { dependencies: { react: "1.0.0" } }, instalados: ["react"], extras: { comMarcador: false } });
+  assert.equal(arvoreDeDependenciasEmDia(base), false);
+});
+
+
+// ---------------------------------------------------------------------------
+// "O app abriu?" — a pergunta que a rodada não fazia (aviso vermelho só no navegador)
+// ---------------------------------------------------------------------------
+
+function resposta(corpo, { status = 200 } = {}) {
+  return { ok: status >= 200 && status < 300, status, text: async () => corpo };
+}
+
+/** Como o Vite responde o módulo: página HTML de erro, com as aspas escapadas. */
+function erroDoVite(pacote) {
+  const corpo =
+    `<script type="module">const error = {"message":"Failed to resolve import \\"${pacote}\\" from \\"apps/mobile/src/telas/Viagem.tsx\\". Does the file exist?"}</script>`;
+  return resposta(corpo, { status: 500 });
+}
+
+test("app servindo: percorre o app da entrada até as telas, como o navegador", async () => {
+  const modulos = {
+    "/src/main.tsx": 'import { App } from "/src/App.tsx";',
+    "/src/App.tsx": 'import { Viagem } from "/src/telas/Viagem.tsx";',
+    "/src/telas/Viagem.tsx": 'import { Roteiro } from "/src/telas/Roteiro.tsx";',
+    "/src/telas/Roteiro.tsx": "export const Roteiro = 1;",
+  };
+  const buscar = async (url) => {
+    const caminho = new URL(url).pathname;
+    if (caminho === "/") return resposta('<script type="module" src="/src/main.tsx"></script>');
+    return modulos[caminho] ? resposta(modulos[caminho]) : resposta("", { status: 404 });
+  };
+  const estado = await estadoDoAppWeb("http://app/", buscar);
+  assert.equal(estado.ok, true);
+  assert.equal(estado.modulos, 4, "entrada, App e as duas telas foram visitadas");
+});
+
+test("dependência não instalada: a rodada percebe pelo módulo, não pela porta", async () => {
+  const buscar = async (url) => {
+    const caminho = new URL(url).pathname;
+    if (caminho === "/") return resposta('<script type="module" src="/src/main.tsx"></script>');
+    if (caminho === "/src/main.tsx") return resposta('import { App } from "/src/App.tsx";');
+    if (caminho === "/src/App.tsx") return resposta('import { Viagem } from "/src/telas/Viagem.tsx";');
+    // A tela funda é onde o import quebrado aparece — exatamente o caso do `lucide-react`.
+    return erroDoVite("lucide-react");
+  };
+  const estado = await estadoDoAppWeb("http://app/", buscar);
+  assert.equal(estado.ok, false);
+  assert.equal(estado.modulo, "/src/telas/Viagem.tsx", "o motivo aponta onde quebrou");
+  assert.match(estado.motivo, /lucide-react/, "o motivo precisa dizer **qual** dependência falta");
+  assert.match(estado.motivo, /dependência/, 'e dizer que é dependência, não "erro misterioso"');
+});
+
+test("página fora do ar e servidor sem resposta também são falha explícita", async () => {
+  const fora = await estadoDoAppWeb("http://app/", async () => resposta("", { status: 502 }));
+  assert.equal(fora.ok, false);
+  assert.match(fora.motivo, /502/);
+
+  const semResposta = await estadoDoAppWeb("http://app/", async () => {
+    throw new Error("fetch failed");
+  });
+  assert.equal(semResposta.ok, false);
+  assert.match(semResposta.motivo, /fetch failed/);
 });

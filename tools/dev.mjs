@@ -25,6 +25,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   abriuPromptDoWindows,
+  arvoreDeDependenciasEmDia,
+  dependenciasQueFaltam,
+  estadoDoAppWeb,
   arquivosQueFalharam,
   extrairFalhas,
   candidatosDePython,
@@ -145,16 +148,18 @@ const PACOTES_OBRIGATORIOS = ["fastify", "@fastify/cookie", "pg", "zod", "vite",
  */
 const PACOTES_DE_TESTE = ["rolldown", "jsdom", "fake-indexeddb"];
 
+/**
+ * A árvore de dependências está de pé? A regra vive em `dev-util.mjs` (`arvoreDeDependenciasEmDia`)
+ * porque é lá que ela tem teste: foi a conferência furada que deixou a rodada de 2026-10-16 sem
+ * instalar `lucide-react` e quebrou o site na máquina do usuário.
+ */
 function dependenciasInstaladas() {
-  // O npm escreve `node_modules/.package-lock.json` ao terminar uma instalação. Sem esse marcador,
-  // a pasta pode estar pela metade — foi o que aconteceu quando o npm nem chegava a rodar no Windows.
-  if (!existsSync(path.join(RAIZ, "node_modules", ".package-lock.json"))) return false;
-  const noRaiz = (nome) => existsSync(path.join(RAIZ, "node_modules", ...nome.split("/")));
-  if (!PACOTES_OBRIGATORIOS.every(noRaiz)) return false;
-  // Os pacotes de teste podem estar no node_modules do app (workspace) em vez da raiz: vale nos dois.
-  const noApp = (nome) =>
-    noRaiz(nome) || existsSync(path.join(RAIZ, "apps", "mobile", "node_modules", ...nome.split("/")));
-  return PACOTES_DE_TESTE.every(noApp);
+  return arvoreDeDependenciasEmDia(RAIZ, { extras: [...PACOTES_OBRIGATORIOS, ...PACOTES_DE_TESTE] });
+}
+
+/** O que está faltando agora, com nome — é o que o log mostra antes de instalar. */
+function dependenciasFaltandoAgora() {
+  return dependenciasQueFaltam(RAIZ, { extras: [...PACOTES_OBRIGATORIOS, ...PACOTES_DE_TESTE] });
 }
 
 /** Versão do npm (também serve de teste de vida: se o npm não roda, isso aparece no banner). */
@@ -192,6 +197,14 @@ function conferirInstalacaoReal(rotulo, resultado) {
         "Rode de novo (opção 9 do LiaGo.bat) e, se repetir, envie o texto desta tela.",
     );
   }
+  const faltando = dependenciasFaltandoAgora();
+  if (faltando.length > 0) {
+    throw new Error(
+      `${rotulo}: o comando terminou, mas ${faltando.length} pacote(s) continuam faltando: ` +
+        `${faltando.slice(0, 8).join(", ")}${faltando.length > 8 ? ", …" : ""}. ` +
+        "Rode de novo (opção 9 do LiaGo.bat); se repetir, envie o texto desta tela.",
+    );
+  }
 }
 
 async function instalarDependencias(forcar = false) {
@@ -199,6 +212,13 @@ async function instalarDependencias(forcar = false) {
   if (!forcar && dependenciasInstaladas()) {
     console.log("Já estão instaladas — nada a baixar agora.");
     return;
+  }
+  const faltando = dependenciasFaltandoAgora();
+  if (faltando.length > 0) {
+    console.log(
+      `Faltando no disco (${faltando.length}): ${faltando.slice(0, 8).join(", ")}` +
+        (faltando.length > 8 ? `, +${faltando.length - 8}` : ""),
+    );
   }
   const registro = rodar(NPM, ["config", "get", "registry"], { capturar: true });
   const urlRegistro = registro.status === 0 ? registro.saida.trim() : "(não foi possível perguntar ao npm)";
@@ -749,6 +769,32 @@ async function jaEstaNoAr(url) {
   }
 }
 
+/** Espera o app responder por até ~30 s (a primeira transformação no Windows é lenta). */
+async function esperarAppResponder(limiteMs = 30000) {
+  const inicio = Date.now();
+  let ultimo = { ok: false, motivo: "ainda não respondeu" };
+  for (;;) {
+    ultimo = await estadoDoAppWeb();
+    if (ultimo.ok) return ultimo;
+    if (Date.now() - inicio >= limiteMs) return ultimo;
+    await new Promise((resolver) => setTimeout(resolver, 1500));
+  }
+}
+
+/** Explica o que fazer quando o app não abre — sem obrigar a pessoa a ler o console do navegador. */
+function explicarAppQuebrado(motivo) {
+  console.error("\n⚠️  O app não abriu no navegador.");
+  console.error(`Motivo: ${motivo}`);
+  if (/dependência|resolve import|not found/i.test(motivo)) {
+    console.error(
+      "Parece que falta uma dependência instalada. Rode o LiaGo.bat de novo (duplo clique): " +
+        "ele baixa o que falta e sobe o app outra vez.",
+    );
+  } else {
+    console.error("Rode o LiaGo.bat de novo (duplo clique). Se repetir, envie o texto desta tela.");
+  }
+}
+
 /**
  * Mostra na tela o que um servidor escreve: **linha por linha** e dizendo de quem é (`[api]`/`[app]`).
  *
@@ -799,6 +845,12 @@ async function subirServidores() {
     console.log("\nO app já está no ar de uma rodada anterior — não vou subir outro.");
     console.log("Abra no navegador: http://localhost:5273  (API em http://localhost:3000)");
     console.log("Para encerrar o que está rodando, feche aquela janela do Lia Go.");
+    const estado = await estadoDoAppWeb();
+    if (!estado.ok) {
+      // Já está no ar **e quebrado**: é o caso em que a pessoa vê o aviso vermelho e não sabe por quê.
+      explicarAppQuebrado(estado.motivo ?? "motivo desconhecido");
+      return;
+    }
     if (abrirNoNavegador("http://localhost:5273")) console.log("Abrindo o app no seu navegador…");
     return;
   }
@@ -822,8 +874,15 @@ async function subirServidores() {
   console.log("\nAPI: http://localhost:3000 · App web: http://localhost:5273");
   console.log("Cada linha abaixo vem marcada: [api] ou [app] — é o servidor que a escreveu.");
   console.log("Para o celular na mesma rede: use o endereço 'Network' mostrado pelo app web e defina VITE_API_URL.");
-  // Deixa o app aberto na tela: o duplo clique não deve exigir copiar endereço nenhum.
-  if (abrirNoNavegador("http://localhost:5273")) console.log("Abrindo o app no seu navegador…");
+
+  // O app abre de verdade? (a rodada não confia só na porta estar aberta)
+  const estadoDoApp = await esperarAppResponder();
+  if (!estadoDoApp.ok) {
+    explicarAppQuebrado(estadoDoApp.motivo ?? "motivo desconhecido");
+  } else if (abrirNoNavegador("http://localhost:5273")) {
+    // Deixa o app aberto na tela: o duplo clique não deve exigir copiar endereço nenhum.
+    console.log("App respondendo. Abrindo no seu navegador…");
+  }
   const encerrar = () => {
     api.kill();
     web.kill();

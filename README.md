@@ -8,7 +8,7 @@ Celular é a plataforma principal; a versão web é complementar.
 
 | Área | Situação |
 |---|---|
-| Planejamento de produto e regras | ✅ completo em `docs/` (436 testes verdes no total) |
+| Planejamento de produto e regras | ✅ completo em `docs/` (445 testes verdes no total) |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
 | Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, reservas, checklist, documentos e fechamento) | ✅ **109 testes** |
 | API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas, orçamento, checklist, documentos, fechamento) | ✅ **86 testes** com PostgreSQL real |

@@ -4,6 +4,133 @@
  * A regra que motivou este arquivo: quando uma ferramenta falha, a pessoa precisa ver o motivo
  * real na tela — nunca um "falhou, verifique a conexão" que esconde a causa.
  */
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+
+// ---------------------------------------------------------------------------
+// O app web está servindo de verdade?
+// ---------------------------------------------------------------------------
+
+/**
+ * Pergunta a mesma coisa que o navegador pergunta: a página responde e o **app inteiro transforma**?
+ *
+ * Não basta a porta responder, e não basta o módulo de entrada: o Vite transforma um módulo por vez,
+ * quando o navegador pede. Na rodada de 2026-10-16 o `lucide-react` não estava instalado, a página
+ * abriu, o módulo de entrada transformou — e o erro só apareceu quando o navegador pediu a tela que
+ * importava o pacote, como um aviso vermelho **dentro do navegador**. O console da rodada não disse
+ * nada. Por isso aqui o app é percorrido como o navegador faria: da entrada, seguindo os imports do
+ * próprio projeto, até o fim (com teto de módulos e de tempo).
+ */
+export async function estadoDoAppWeb(url = "http://127.0.0.1:5273/", buscar = fetch, { limiteModulos = 250 } = {}) {
+  try {
+    const pagina = await buscar(url, { signal: AbortSignal.timeout(3000) });
+    if (!pagina.ok) return { ok: false, motivo: `a página respondeu ${pagina.status}` };
+    const html = await pagina.text();
+    const entrada = html.match(/src="(\/[^"]+\.tsx)"/)?.[1] ?? "/src/main.tsx";
+
+    const fila = [entrada];
+    const vistas = new Set();
+    while (fila.length > 0 && vistas.size < limiteModulos) {
+      const caminho = fila.shift();
+      if (vistas.has(caminho)) continue;
+      const modulo = await buscar(new URL(caminho, url).href, { signal: AbortSignal.timeout(15000) });
+      const corpo = await modulo.text();
+      if (!modulo.ok || corpo.includes("Failed to resolve import")) {
+        // O nome do pacote é a parte útil para quem vai consertar — "falta a dependência X".
+        // O Vite devolve o erro como página HTML com as aspas escapadas (`\"lucide-react\"`).
+        const achado = corpo.match(/Failed to resolve import \\?["']([^"'\\]+)/);
+        const causa = achado
+          ? `falta a dependência "${achado[1]}" (o Vite não conseguiu resolver o import)`
+          : `o módulo ${caminho} não foi servido (resposta ${modulo.status})`;
+        return { ok: false, motivo: causa, modulo: caminho };
+      }
+      vistas.add(caminho);
+      // Só módulos do próprio projeto: os de biblioteca são pedidos pelo Vite já empacotados.
+      for (const achado of corpo.matchAll(/from\s+"(\/src\/[^"]+)"/g)) {
+        if (!vistas.has(achado[1])) fila.push(achado[1]);
+      }
+    }
+    return { ok: true, modulos: vistas.size };
+  } catch (causa) {
+    return { ok: false, motivo: causa instanceof Error ? causa.message : "sem resposta" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dependências instaladas (o que a rodada precisa ter no disco)
+// ---------------------------------------------------------------------------
+
+/**
+ * Toda dependência **declarada** nos `package.json` — da raiz e de cada workspace.
+ *
+ * A conferência era uma lista fixa de pacotes, e foi assim que a rodada de 2026-10-16 quebrou no PC
+ * do usuário: a fatia de identidade visual acrescentou `lucide-react`, a lista não conhecia o pacote
+ * novo, o `npm install` foi pulado e o servidor de desenvolvimento abriu com
+ * "Failed to resolve import lucide-react" — a suíte de interface caiu inteira (9 falhas) e o site
+ * ficou sem abrir. Lendo os `package.json` de verdade, pacote novo entra na conta sozinho.
+ */
+export function dependenciasDeclaradas(raiz, { grupos = ["packages", "apps"] } = {}) {
+  const nomes = new Set();
+  const lerPacote = (caminho) => {
+    if (!existsSync(caminho)) return;
+    let pacote;
+    try {
+      pacote = JSON.parse(readFileSync(caminho, "utf8"));
+    } catch {
+      return; // `package.json` estragado vira erro de instalação, não trava a conferência aqui
+    }
+    for (const grupo of ["dependencies", "devDependencies", "optionalDependencies"]) {
+      for (const nome of Object.keys(pacote[grupo] ?? {})) nomes.add(nome);
+    }
+  };
+  lerPacote(path.join(raiz, "package.json"));
+  for (const grupo of grupos) {
+    const pasta = path.join(raiz, grupo);
+    if (!existsSync(pasta)) continue;
+    for (const nome of readdirSync(pasta)) lerPacote(path.join(pasta, nome, "package.json"));
+  }
+  return [...nomes];
+}
+
+/** Onde um pacote pode estar: no node_modules da raiz ou no de um workspace (o npm escolhe sozinho). */
+export function pacoteNoDisco(raiz, nome, { grupos = ["packages", "apps"] } = {}) {
+  const partes = nome.split("/");
+  if (existsSync(path.join(raiz, "node_modules", ...partes))) return true;
+  return grupos.some((grupo) => {
+    const pasta = path.join(raiz, grupo);
+    if (!existsSync(pasta)) return false;
+    return readdirSync(pasta).some((workspace) =>
+      existsSync(path.join(pasta, workspace, "node_modules", ...partes)),
+    );
+  });
+}
+
+/**
+ * O que falta no disco agora — nome por nome.
+ *
+ * `extras` é para o que a rodada precisa e não está declarado como dependência de ninguém (ex.: o
+ * empacotador da suíte de interface). O log passa a dizer **o que** falta, em vez de só "não está
+ * pronta", que foi o que deixou a rodada do PC sem pista.
+ */
+export function dependenciasQueFaltam(raiz, { extras = [] } = {}) {
+  const pedidos = [...extras, ...dependenciasDeclaradas(raiz)];
+  return [...new Set(pedidos)].filter((nome) => !pacoteNoDisco(raiz, nome));
+}
+
+/**
+ * A árvore de dependências está de pé?
+ *
+ * `npm install` escreve `node_modules/.package-lock.json` ao terminar. Marcador velho com
+ * `package-lock.json` novo significa dependência acrescentada depois da última instalação —
+ * exatamente o caso que precisava de um `npm install` e não acontecia.
+ */
+export function arvoreDeDependenciasEmDia(raiz, { extras = [], toleranciaMs = 1000 } = {}) {
+  const marcador = path.join(raiz, "node_modules", ".package-lock.json");
+  if (!existsSync(marcador)) return false;
+  const trava = path.join(raiz, "package-lock.json");
+  if (existsSync(trava) && statSync(trava).mtimeMs > statSync(marcador).mtimeMs + toleranciaMs) return false;
+  return dependenciasQueFaltam(raiz, { extras }).length === 0;
+}
 
 // ---------------------------------------------------------------------------
 // Execução de comandos
