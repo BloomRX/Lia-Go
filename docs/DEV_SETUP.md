@@ -156,6 +156,23 @@ aceitar convite, gerar convite, ver saldos atualizados e sair da viagem. Nesses 
 - App (armazenamento local e sincronizador): `npm run test:app` — 49 testes de unidade.
 - Interface de verdade em jsdom: `npm run test:ui` — 45 testes (monta o app inteiro, inclusive com rede instável).
 - Ferramentas da rodada (conferência de dependências e "o app abriu?"): `npm run test:tools` — 53 testes.
+
+---
+
+## Demonstração (conta e viagem de exemplo)
+
+Para olhar a interface sem cadastrar nada, com a API no ar:
+
+```bash
+node tools/demo.mjs
+```
+
+Cria (ou reaproveita) a conta **demo@lia.go** / **lia-go-demo-2026** com uma viagem de exemplo, quatro
+atividades e uma reserva prevista. É idempotente e fala só com a API pública — as mesmas rotas que o
+app usa. Existe porque o ambiente de demonstração não guarda o banco local nem as dependências: quando
+ele reinicia, o PostgreSQL volta vazio e a conta criada à mão deixa de existir (foi o que fez o login
+responder "E-mail ou senha incorretos" em 2026-10-16).
+
 - API (integração com PostgreSQL real): `npm run test:api` — 86 testes.
 - Ferramentas de automação (diagnóstico de falhas, comando do npm no Windows): `npm run test:tools` — 44 testes.
 - Tipos dos quatro pacotes: `npm run typecheck` (sem erro é pré-requisito para sincronizar).
