@@ -169,7 +169,10 @@ node tools/demo.mjs
 
 Cria (ou reaproveita) a conta **demo@lia.go** / **lia-go-demo-2026** com uma viagem de exemplo, quatro
 atividades e uma reserva prevista. É idempotente e fala só com a API pública — as mesmas rotas que o
-app usa. Existe porque o ambiente de demonstração não guarda o banco local nem as dependências: quando
+app usa.
+
+⚠️ **Rodar depois dos testes**: a suíte de API limpa o banco (é assim que ela garante isolamento), então
+um seed feito antes de `npm test` ou de `node tools/dev.mjs testes` desaparece. Existe porque o ambiente de demonstração não guarda o banco local nem as dependências: quando
 ele reinicia, o PostgreSQL volta vazio e a conta criada à mão deixa de existir (foi o que fez o login
 responder "E-mail ou senha incorretos" em 2026-10-16).
 
