@@ -35,10 +35,33 @@ export function horaDoAparelho(agora = new Date()): string {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false }).format(agora);
 }
 
-export function hojeIso(): string {
-  const agora = new Date();
+/**
+ * "Hoje" no fuso das viagens (São Paulo), não no fuso do aparelho nem em UTC.
+ *
+ * O fuso fica fixo de propósito: quem lê o roteiro está no destino, e a viagem acontece no horário
+ * do destino. Sem isso, um aparelho configurado em outro fuso veria "hoje" virar no meio do dia.
+ * Também é o que faz a regra valer igual em qualquer máquina que rode os testes.
+ */
+export function hojeIso(agora = new Date()): string {
   const fuso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
   return fuso.format(agora);
+}
+
+/**
+ * Dia seguinte a um dia ISO ("2026-10-15" → "2026-10-16"), sem passar pelo fuso do aparelho.
+ *
+ * Meio-dia UTC evita a armadilha clássica: somar um dia a "2026-10-15T00:00Z" num fuso a oeste
+ * ainda é dia 15, e o rótulo "amanhã" apontaria para o dia errado. Uma função só, usada pelo
+ * app e pelos testes — se a regra mudar, muda nos dois.
+ */
+export function diaSeguinte(dia: string): string {
+  const [ano, mes, dataDia] = dia.split("-").map(Number);
+  return new Date(Date.UTC(ano!, (mes ?? 1) - 1, (dataDia ?? 1) + 1, 12)).toISOString().slice(0, 10);
+}
+
+/** "Amanhã" no fuso das viagens, pronto para comparar com o dia de uma atividade. */
+export function amanhaIso(agora = new Date()): string {
+  return diaSeguinte(hojeIso(agora));
 }
 
 export const ROTULO_ESTADO: Record<string, string> = {

@@ -15,6 +15,7 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../../src/App.tsx";
 import { criarArmazenamentoIndexedDB } from "../../src/offline/armazenamento.ts";
+import { amanhaIso } from "../../src/services/formato.ts";
 
 let raizMontada: ReturnType<typeof createRoot> | null = null;
 
@@ -30,11 +31,16 @@ function montar(): void {
   raizMontada.render(createElement(App));
 }
 
-/** Data de amanhã (o "próximo" compromisso depende do dia de hoje, como na vida real). */
+/**
+ * Data de amanhã, pela **mesma regra do app** (`amanhaIso`, no fuso das viagens).
+ *
+ * Antes daqui a conta era feita em UTC. Rodava no Linux e falhava na máquina do usuário (UTC−3)
+ * depois das 21h: lá o dia UTC já é o seguinte, então "amanhã" caía em depois de amanhã e o hero
+ * mostrava a data em vez de "amanhã". O teste agora não pode discordar do app: os dois chamam
+ * a mesma função.
+ */
 function amanha(): string {
-  const agora = new Date();
-  agora.setUTCDate(agora.getUTCDate() + 1);
-  return agora.toISOString().slice(0, 10);
+  return amanhaIso();
 }
 
 async function abrirViagem(viagem: ViagemFalsa): Promise<void> {

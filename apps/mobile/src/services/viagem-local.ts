@@ -14,6 +14,7 @@ import type { AtividadeApi, DespesaApi, DocumentoApi, ItemChecklistApi, Moviment
 import type { DetalheViagemLocal } from "@lia-go/sync";
 import type { Atividade, Documento, ItemChecklist, Reserva } from "@lia-go/domain";
 import { comoReserva } from "./reserva-cache.ts";
+import { diaSeguinte } from "./formato.ts";
 
 export interface DadosDaViagemAberta {
   detalhe: DetalheViagemLocal | null;
@@ -217,8 +218,6 @@ export function proximoCompromisso(
 
 /** Rótulo humano do "quando" do próximo compromisso (hoje, amanhã ou o dia). */
 export function quandoDoCompromisso(dia: string, hora: string | null, hoje: string): string {
-  const [ano, mes, dataDia] = hoje.split("-").map(Number);
-  const amanha = new Date(Date.UTC(ano!, (mes ?? 1) - 1, (dataDia ?? 1) + 1, 12)).toISOString().slice(0, 10);
-  const quando = dia === hoje ? "hoje" : dia === amanha ? "amanhã" : dia.split("-").reverse().join("/");
+  const quando = dia === hoje ? "hoje" : dia === diaSeguinte(hoje) ? "amanhã" : dia.split("-").reverse().join("/");
   return hora === null ? `${quando}, sem hora marcada` : `${quando} às ${hora}`;
 }

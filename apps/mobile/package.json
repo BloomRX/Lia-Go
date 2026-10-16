@@ -12,7 +12,7 @@
     "cap:sync": "cap sync",
     "cap:add:android": "cap add android",
     "cap:android": "cap open android",
-    "test": "node --test \"tests/*.test.ts\" && npm run test:ui",
+    "test": "node --test \"tests/*.test.ts\"",
     "test:ui": "node ../../tools/teste-ui.mjs"
   },
   "dependencies": {

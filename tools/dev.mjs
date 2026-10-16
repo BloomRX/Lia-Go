@@ -393,18 +393,52 @@ function rodarTipos() {
   return { status: resultado.status, saida: resultado.saida };
 }
 
+/**
+ * As suítes rodam **uma por vez, cada uma por si**.
+ *
+ * Quando a rodada chamava `npm test` (encadeado com `&&`), a primeira suíte que falhasse escondia
+ * todas as seguintes: na máquina do usuário, 2 testes de interface derrubaram a rodada e os 92 da
+ * API nunca chegaram a rodar — o relatório dizia "335 passaram" e não dizia por que faltava o resto.
+ * Rodando separado, a rodada sempre mede tudo, o relatório mostra qual suíte falhou e o placar é a
+ * soma de verdade. Nenhuma suíte pode impedir as outras de rodar.
+ */
+const SUITES_DE_TESTE = [
+  { nome: "ferramentas", argumentos: ["run", "test:tools"] },
+  { nome: "domínio", argumentos: ["run", "test:domain"] },
+  { nome: "sincronização", argumentos: ["run", "test:sync"] },
+  { nome: "app (unidade)", argumentos: ["run", "test:app"] },
+  { nome: "interface (jsdom)", argumentos: ["run", "test:ui"] },
+  { nome: "API (banco real)", argumentos: ["run", "test:api"] },
+];
+
 async function rodarTestes() {
   const tipos = rodarTipos();
-  titulo("Testes (domínio + API)");
-  console.log("⏳ Rodando a suíte completa (a saída aparece abaixo, teste por teste; costuma levar cerca de 30 segundos).");
+  titulo("Testes (ferramentas + domínio + sincronização + app + interface + API)");
+  console.log("⏳ Rodando a suíte completa (a saída aparece abaixo, teste por teste; costuma levar cerca de 1 minuto).");
   const inicio = Date.now();
-  const resultado = await rodarAoVivo(NPM, ["test"], { legenda: "rodando os testes", limiteMs: LIMITE_TESTES_MS });
-  const saida = resultado.saida;
+  const pedacos = [];
+  const falharam = [];
+  for (const suite of SUITES_DE_TESTE) {
+    console.log(`\n--- ${suite.nome} ---`);
+    const resultado = await rodarAoVivo(NPM, suite.argumentos, {
+      legenda: `rodando ${suite.nome}`,
+      limiteMs: LIMITE_TESTES_MS,
+    });
+    pedacos.push(resultado.saida);
+    if (resultado.status !== 0) falharam.push(suite.nome);
+  }
+  const saida = pedacos.join("\n");
   // O placar vem do `dev-util` porque o formato muda conforme a saída é console (Windows,
   // "ℹ pass") ou arquivo/cano ("# pass") — ler só um deles já fez o resumo dizer "0 passaram".
   const placar = lerPlacarDeTestes(saida);
   console.log(`Suíte concluída em ${tempoDecorrido(inicio)}.`);
-  return { status: resultado.status, ...placar, saida, tipos };
+  return {
+    status: falharam.length > 0 ? 1 : 0,
+    suitesComFalha: falharam,
+    ...placar,
+    saida,
+    tipos,
+  };
 }
 
 function gitInfo() {
@@ -453,6 +487,9 @@ function gravarRelatorio(resultadoTestes) {
     `| Falharam | ${mostrar(resultadoTestes.encontrouPlacar, resultadoTestes.falhou)} |`,
     `| Pulados | ${mostrar(resultadoTestes.encontrouPlacar, resultadoTestes.pulados)} |`,
     `| Código de saída | ${resultadoTestes.status} |`,
+    ...(resultadoTestes.suitesComFalha?.length
+      ? [`| Suítes com falha | ${resultadoTestes.suitesComFalha.join(", ")} |`]
+      : []),
     `| Checagem de tipos (\`npm run typecheck\`) | ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"} |`,
     ``,
     ...(!resultadoTestes.encontrouPlacar
@@ -545,6 +582,9 @@ function gravarSaidaCompleta(resultadoTestes, falhas) {
     `- **Quando:** ${new Date().toISOString()} (local ${new Date().toLocaleString("pt-BR")})`,
     `- **Node:** ${versaoNode()} · **npm:** ${versaoNpm()} · **Sistema:** ${process.platform} ${process.arch}`,
     `- **Placar:** ${descreverPlacarDeTestes(resultadoTestes)} · **Código de saída:** ${resultadoTestes.status}`,
+    ...(resultadoTestes.suitesComFalha?.length
+      ? [`- **Suítes com falha:** ${resultadoTestes.suitesComFalha.join(", ")}`]
+      : []),
     `- **Tipos:** ${resultadoTestes.tipos?.status === 0 ? "sem erro" : "COM ERRO"}`,
     `- **Arquivos de teste que não carregaram:** ${arquivosQueFalharam(corpo).join(", ") || "nenhum"}`,
     cortado ? `- **Observação:** a saída tinha ${completo.length} caracteres; está aqui o fim dela (${LIMITE}).` : "",
@@ -1159,6 +1199,7 @@ function resumoFinal({ bancoOk, testes, caminhoRelatorio, enviado, inicio }) {
   console.log("\n==================== RESUMO DA RODADA ====================");
   console.log(`Banco de dados ....... ${bancoOk ? "pronto" : "não subiu (veja os avisos acima)"}`);
   console.log(`Testes ............... ${descreverPlacarDeTestes(testes)}`);
+  if (testes?.suitesComFalha?.length) console.log(`Suítes com falha ..... ${testes.suitesComFalha.join(", ")}`);
   console.log(`Relatório ............ ${path.relative(RAIZ, caminhoRelatorio)}`);
   console.log(`Diagnóstico do PC .... reports/estado-do-computador.md`);
   console.log(`Saída dos testes ..... reports/saida-dos-testes.md`);

@@ -8,13 +8,13 @@ Celular é a plataforma principal; a versão web é complementar.
 
 | Área | Situação |
 |---|---|
-| Planejamento de produto e regras | ✅ completo em `docs/` (429 testes verdes no total) |
+| Planejamento de produto e regras | ✅ completo em `docs/` (434 testes verdes no total) |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
 | Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, reservas, checklist, documentos e fechamento) | ✅ **109 testes** |
 | API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas, orçamento, checklist, documentos, fechamento) | ✅ **86 testes** com PostgreSQL real |
 | App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 + 46 testes** (`npm run test:sync`, `npm run test:app`) |
-| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem, revisão de impacto, reservas, orçamento, checklist, documentos, fechamento) | ✅ **28 testes** (`npm run test:ui`) |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **49 + 49 testes** (`npm run test:sync`, `npm run test:app`) |
+| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem (inclusive com rede instável), revisão de impacto, reservas, orçamento, checklist, documentos, fechamento) | ✅ **43 testes** (`npm run test:ui`) |
 | Automação de execução | ✅ `LiaGo.bat` (**duplo clique faz tudo**: atualiza do GitHub, instala dependências, sobe o banco, testa, grava relatórios/diagnóstico, envia ao GitHub e deixa o app no ar) |
 | Roteiro (timeline, concluir/cancelar/corrigir) e orçamento do roteiro | ✅ funcionando (`telas/Roteiro.tsx`, `telas/Atividade.tsx`, `telas/Viagem.tsx`) |
 | Reservas (prevista → confirmada com evidência → cancelada com motivo) | ✅ funcionando (`telas/Reservas.tsx`, aba Mais) |

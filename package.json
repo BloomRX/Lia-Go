@@ -15,7 +15,7 @@
     "rolldown": "^1.2.13"
   },
   "scripts": {
-    "test": "npm run test:tools && npm run test:domain && npm run test:sync && npm run test:app && npm run test:api",
+    "test": "npm run test:tools && npm run test:domain && npm run test:sync && npm run test:app && npm run test:ui && npm run test:api",
     "test:domain": "npm run test --workspace @lia-go/domain",
     "test:api": "npm run test --workspace @lia-go/api",
     "db:up": "node tools/db.mjs up",

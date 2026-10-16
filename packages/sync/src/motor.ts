@@ -28,6 +28,14 @@ import type {
 export interface ArmazenamentoSync {
   lerFila(): Promise<Fila>;
   gravarFila(fila: Fila): Promise<void>;
+  /**
+   * Transforma a fila gravada **numa seção crítica** e devolve o resultado.
+   *
+   * A passada precisa disto: ela lê a fila no começo e grava no fim, e nesse meio alguém pode criar
+   * uma viagem. Ler-e-gravar separados perdiam a operação que entrasse no intervalo (defeito real,
+   * corrigido em 2026-10-16 — a viagem criada desaparecia sem erro na tela).
+   */
+  mutarFila(transformar: (fila: Fila) => Fila): Promise<Fila>;
   lerCarga(): Promise<{ cursor: string | null; carga: CargaLocal }>;
   gravarCarga(cursor: string | null, carga: CargaLocal): Promise<void>;
 }
@@ -75,9 +83,7 @@ export async function sincronizar(
    * preservado (era o defeito que fazia a viagem recém-criada desaparecer, em 2026-10-15).
    */
   const salvarFila = async (): Promise<void> => {
-    const doAparelho = await armazem.lerFila();
-    fila = juntarFilaDaPassada(doAparelho, { antes: filaInicial, depois: fila });
-    await armazem.gravarFila(fila);
+    fila = await armazem.mutarFila((doAparelho) => juntarFilaDaPassada(doAparelho, { antes: filaInicial, depois: fila }));
   };
   const relatorio: RelatorioSincronizacao = {
     enviados: 0,

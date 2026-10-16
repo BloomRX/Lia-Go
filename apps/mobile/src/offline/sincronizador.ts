@@ -155,22 +155,22 @@ export class Sincronizador {
   async enfileirar(operacao: Operacao): Promise<string> {
     const id = crypto.randomUUID();
     const agora = new Date().toISOString();
-    const fila = enfileirar(this.estado.fila, { id, operacao, agora });
-    await this.armazem.gravarFila(fila);
+    // A fila do disco é a fonte da verdade: uma passada pode estar gravando agora, e a operação
+    // nova não pode ser sobrescrita por uma leitura velha nem apagar o que a passada já viu.
+    const fila = await this.armazem.mutarFila((atual) => enfileirar(atual, { id, operacao, agora }));
     this.publicar({ fila, resumo: resumoFila(fila) });
     void this.sincronizarAgora();
     return id;
   }
 
   async descartar(id: string): Promise<void> {
-    const fila = descartar(this.estado.fila, id);
-    await this.armazem.gravarFila(fila);
+    const fila = await this.armazem.mutarFila((atual) => descartar(atual, id));
     this.publicar({ fila, resumo: resumoFila(fila) });
   }
 
   async retentar(id: string): Promise<void> {
-    const fila = retentar(this.estado.fila, id, new Date().toISOString());
-    await this.armazem.gravarFila(fila);
+    const agora = new Date().toISOString();
+    const fila = await this.armazem.mutarFila((atual) => retentar(atual, id, agora));
     this.publicar({ fila, resumo: resumoFila(fila) });
     void this.sincronizarAgora();
   }

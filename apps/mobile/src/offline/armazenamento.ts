@@ -20,6 +20,16 @@ export interface ArmazenamentoLocal {
   ler<T>(chave: string): Promise<T | null>;
   gravar(chave: string, valor: unknown): Promise<void>;
   remover(chave: string): Promise<void>;
+  /**
+   * Lê, transforma e grava **sem ninguém no meio** — a operação de fila é uma só.
+   *
+   * Existe por um defeito real (corrigido em 2026-10-16): quem cria uma viagem grava na fila
+   * enquanto uma passada de sincronização está no meio. A passada lia a fila, a criação entrava
+   * nesse intervalo, e a gravação do fim apagava a viagem recém-criada — sem erro nenhum na tela.
+   * Com a leitura e a gravação dentro da mesma transação, o que entra durante a passada é
+   * preservado ou descartado por quem sabe (nunca perdido por acidente).
+   */
+  mutar<T>(chave: string, transformar: (atual: T | null) => T): Promise<T>;
   /** Apaga tudo o que o app guardou neste aparelho. */
   limpar(): Promise<void>;
 }
@@ -39,6 +49,12 @@ export function criarArmazenamentoMemoria(inicial: Record<string, unknown> = {})
     },
     async gravar(chave: string, valor: unknown) {
       dados.set(chave, valor);
+    },
+    async mutar<T>(chave: string, transformar: (atual: T | null) => T) {
+      // Sem await no meio: nada pode entrar entre a leitura e a gravação.
+      const novo = transformar((dados.get(chave) as T | undefined) ?? null);
+      dados.set(chave, novo);
+      return novo;
     },
     async remover(chave: string) {
       dados.delete(chave);
@@ -95,6 +111,30 @@ export function criarArmazenamentoIndexedDB(nomeBanco = NOME_BANCO_PADRAO): Arma
       // O valor precisa ser clonável; JSON garante isso e evita guardar objeto vivo da tela.
       await comDeposito("readwrite", (deposito) => deposito.put(JSON.parse(JSON.stringify(valor)), chave));
     },
+    async mutar<T>(chave: string, transformar: (atual: T | null) => T) {
+      const banco = await abrir();
+      return new Promise<T>((resolver, rejeitar) => {
+        // Leitura e gravação na **mesma** transação: o IndexedDB serializa transações sobre este
+        // depósito, então uma fila gravada aqui não pode ser sobrescrita por uma leitura velha.
+        const transacao = banco.transaction(NOME_DEPOSITO, "readwrite");
+        const deposito = transacao.objectStore(NOME_DEPOSITO);
+        let novo: T;
+        const leitura = deposito.get(chave);
+        leitura.onsuccess = () => {
+          try {
+            novo = transformar((leitura.result as T | undefined) ?? null);
+            deposito.put(JSON.parse(JSON.stringify(novo)), chave);
+          } catch (falha) {
+            transacao.abort();
+            rejeitar(falha instanceof Error ? falha : new Error("Falha ao transformar o dado local."));
+          }
+        };
+        leitura.onerror = () => rejeitar(leitura.error ?? new Error("Falha ao ler o banco local."));
+        transacao.oncomplete = () => resolver(novo);
+        transacao.onabort = () => rejeitar(transacao.error ?? new Error("Falha ao gravar no banco local."));
+        transacao.onerror = () => rejeitar(transacao.error ?? new Error("Falha ao gravar no banco local."));
+      });
+    },
     async remover(chave: string) {
       await comDeposito("readwrite", (deposito) => deposito.delete(chave));
     },
@@ -116,25 +156,45 @@ export function criarArmazenamentoNativo(): ArmazenamentoLocal {
     keys(): Promise<{ keys: string[] }>;
   };
   let promessa: Promise<Preferences> | null = null;
+  /** Fila de uma posição: serializa as transformações da mesma chave neste adaptador. */
+  let filaDeMudanca: Promise<void> = Promise.resolve();
 
   function carregar(): Promise<Preferences> {
     promessa ??= import("@capacitor/preferences").then((modulo) => modulo.Preferences as Preferences);
     return promessa;
   }
 
+  async function lerChave<T>(chave: string): Promise<T | null> {
+    const { value } = await (await carregar()).get({ key: chave });
+    if (value === null) return null;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null; // dado corrompido não derruba o app: é como se não existisse
+    }
+  }
+
   return {
     nome: "armazenamento do app (nativo)",
-    async ler<T>(chave: string) {
-      const { value } = await (await carregar()).get({ key: chave });
-      if (value === null) return null;
-      try {
-        return JSON.parse(value) as T;
-      } catch {
-        return null; // dado corrompido não derruba o app: é como se não existisse
-      }
-    },
+    ler: lerChave,
     async gravar(chave: string, valor: unknown) {
       await (await carregar()).set({ key: chave, value: JSON.stringify(valor) });
+    },
+    async mutar<T>(chave: string, transformar: (atual: T | null) => T) {
+      // O armazenamento nativo não oferece transação: a vez é garantida aqui dentro, para duas
+      // transformações da mesma chave não se atropelarem (é o mesmo cuidado da transação do IndexedDB).
+      const anterior = filaDeMudanca;
+      let liberar: () => void = () => undefined;
+      filaDeMudanca = new Promise<void>((resolver) => { liberar = resolver; });
+      await anterior;
+      try {
+        const atual = await lerChave<T>(chave);
+        const novo = transformar(atual);
+        await (await carregar()).set({ key: chave, value: JSON.stringify(novo) });
+        return novo;
+      } finally {
+        liberar();
+      }
     },
     async remover(chave: string) {
       await (await carregar()).remove({ key: chave });
@@ -171,21 +231,32 @@ export interface OpcoesArmazenamentoSync {
   aceitarEscrita?: () => boolean;
 }
 
+/** Fila do disco é tratada como não confiável: JSON estragado vira "fila vazia". */
+function normalizarFila(bruta: Fila | null): Fila {
+  if (!bruta || !Array.isArray(bruta.operacoes)) return filaVazia();
+  return { ...filaVazia(), ...bruta };
+}
+
 export function criarArmazenamentoDeSync(
   armazem: ArmazenamentoLocal,
   opcoes: OpcoesArmazenamentoSync = {},
 ): ArmazenamentoSync {
   const podeGravar = opcoes.aceitarEscrita ?? (() => true);
 
+  async function lerFila(): Promise<Fila> {
+    return normalizarFila(await armazem.ler<Fila>(CHAVE_FILA));
+  }
+
   return {
-    async lerFila(): Promise<Fila> {
-      const bruto = await armazem.ler<Fila>(CHAVE_FILA);
-      if (!bruto || !Array.isArray(bruto.operacoes)) return filaVazia();
-      return { ...filaVazia(), ...bruto };
-    },
+    lerFila,
     async gravarFila(fila) {
       if (!podeGravar()) return;
       await armazem.gravar(CHAVE_FILA, fila);
+    },
+    async mutarFila(transformar) {
+      // Sem `podeGravar` não se grava nada (a pessoa saiu da conta): devolvemos o que a fila seria.
+      if (!podeGravar()) return transformar(await lerFila());
+      return armazem.mutar<Fila>(CHAVE_FILA, (bruta) => transformar(normalizarFila(bruta)));
     },
     async lerCarga(): Promise<{ cursor: string | null; carga: CargaLocal }> {
       const [cargaBruta, cursor] = await Promise.all([

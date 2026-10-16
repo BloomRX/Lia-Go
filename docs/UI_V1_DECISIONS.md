@@ -204,3 +204,30 @@ O agent deve reportar de forma objetiva: **o que implementou, o que ficou penden
 **Roteiro → detalhes da atividade → integração visual da identidade → responsividade/acessibilidade → refinamento das telas financeiras.**
 
 Depois da primeira versão navegável, fazer uma auditoria visual/funcional contra este documento e os concepts antes de ampliar o escopo.
+
+## 17. Registro da fatia "Roteiro + detalhes da atividade" (2026-10-16)
+
+Decisões desta fatia que **não** são cosméticas e por isso ficam registradas:
+
+- **A ficha da atividade mostra a reserva vinculada com a evidência que existe** (localizador,
+  quando alguém confirmou). A tela nunca diz que a reserva está confirmada: quem confirma é a tela
+  Reservas, com evidência — a regra do §13 vale aqui como em qualquer lugar da interface.
+- **Vincular reserva não confirma reserva** e não muda custo, natureza nem estado da atividade. O
+  vínculo é um ponteiro para o que já existe; o dinheiro continua sendo decidido onde sempre foi.
+- **Observação da atividade é texto livre** (também usada para acessibilidade). Um campo
+  "acessibilidade" separado seria o mesmo dado em dois lugares, prontos para divergir.
+- **Criar viagem continua tentando depois do primeiro aviso** e abre a viagem sozinha quando o
+  servidor confirma — o aviso promete isso, então alguém precisa cumprir a promessa. Se a pessoa
+  sair da tela, para (a viagem que ela abriu já é outra decisão dela); a tela "Ver alterações"
+  segue sendo o caminho manual.
+- **Documentos/links por atividade ficou para fatia própria**: o vínculo precisa carregar a mesma
+  regra de privacidade do documento (quem perdeu acesso não pode descobrir pelo vínculo).
+
+Correções que vieram da rodada do PC (2026-10-16), sem mudança de regra de negócio:
+
+- a criação de viagem não pode perder a operação quando a gravação da fila acontece durante uma
+  passada de sincronização (a viagem desaparecia sem erro na tela);
+- o rótulo "amanhã" e os testes usam o **fuso das viagens**, não UTC — a conta em UTC quebrava
+  depois das 21h no horário de São Paulo;
+- a rodada de testes roda **suíte por suíte**: uma falha de interface não esconde mais os testes de
+  API nem o resto do placar.

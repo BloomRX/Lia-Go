@@ -128,6 +128,42 @@ test("Sair funciona mesmo se o servidor não responder (ninguém fica preso dent
 });
 
 
+test("rede instável: a viagem criada abre sozinha quando a confirmação chega (sem mentir no meio)", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  // O servidor só aceita criar viagem depois de 5 s: mais que os 4 s que o app espera na frente da
+  // pessoa. É o caso real de "o Wi-Fi está ruim" — `navigator.onLine` continua `true`, então nada
+  // avisa o app; ele tem que continuar tentando sozinho.
+  const limite = Date.now() + 5000;
+  const fetchReal = servidor.fetch;
+  (globalThis as Record<string, unknown>).fetch = (entrada: string | URL | Request, init?: RequestInit) => {
+    const criandoViagem = String(entrada).includes("/viagens") && (init?.method ?? "GET") === "POST";
+    if (criandoViagem && Date.now() < limite) return Promise.reject(new TypeError("Failed to fetch"));
+    return fetchReal(entrada, init);
+  };
+
+  montar();
+  await esperarPor(() => textoDaTela().includes("Criar viagem"), "a tela inicial aparecer");
+  clicar(botaoCom("Criar viagem"));
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#nome-viagem")), "o formulário de nova viagem abrir");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#nome-viagem")!, "Chapada");
+  clicar(botaoCom("Salvar rascunho"));
+
+  // Primeiro a tela diz a verdade: está guardada no aparelho, ainda não no servidor.
+  await esperarPor(
+    () => textoDaTela().includes("ficou guardada neste aparelho"),
+    "o aviso honesto aparecer enquanto o servidor não responde",
+    6000,
+  );
+  // E depois, sozinha, abre a viagem quando o servidor confirma — sem a pessoa tocar em nada.
+  await esperarPor(
+    () => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"),
+    "a viagem abrir quando a confirmação chegar",
+    20000,
+  );
+  assert.ok(servidor.viagens.some((viagem) => viagem.nome === "Chapada"), "a viagem chegou ao servidor");
+});
+
 test("criar viagem já abre a viagem criada (rascunho precisa dos próximos passos)", async () => {
   await limparAparelho();
   const servidor = criarServidorFalso([ANTIGA]);
@@ -143,9 +179,10 @@ test("criar viagem já abre a viagem criada (rascunho precisa dos próximos pass
   await digitar(campoNome, "Chapada");
   clicar(botaoCom("Salvar rascunho"));
 
-  // 8 s: o app espera o servidor confirmar por até 4 s e abre mesmo assim (nada de travar offline).
-  // O prazo do teste é maior que o do app para o caso "servidor lento" não virar teste instável.
-  await esperarPor(() => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"), "a viagem criada abrir", 8000);
+  // O app espera o servidor confirmar, avisa a verdade se demorar e **continua tentando** até 60 s;
+  // aqui o prazo é folgado de propósito: máquina lenta não pode virar teste vermelho (a rodada do
+  // usuário em 2026-10-16 estourou os 8 s que existiam antes, com o app ainda esperando).
+  await esperarPor(() => textoDaTela().includes("Chapada") && !textoDaTela().includes("Suas viagens"), "a viagem criada abrir", 20000);
   assert.match(textoDaTela(), /Chapada/);
   assert.ok(servidor.viagens.some((viagem) => viagem.nome === "Chapada"), "a viagem chegou ao servidor");
 });

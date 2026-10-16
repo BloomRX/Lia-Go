@@ -12,8 +12,17 @@ function operacaoDespesa(viagemId: string, descricao: string): Operacao {
   return { tipo: "criar_despesa", viagemId, corpo: { descricao }, descricao: `Despesa: ${descricao}` };
 }
 
-/** Armazenamento de mentira: guarda tudo em memória e conta as gravações. */
-function criarArmazem(inicial: { fila: Fila; carga: CargaLocal; cursor: string | null }) {
+/**
+ * Armazenamento de mentira: guarda tudo em memória e conta as gravações.
+ *
+ * `gravarFila` é **cego** de propósito: ele grava o que recebe, sem olhar o que mudou desde a
+ * leitura — é assim que o armazenamento real se comporta quando alguém grava fora da seção crítica
+ * (defeito de 2026-10-16, em que a viagem criada desaparecia). O caminho correto do motor passa por
+ * `mutarFila`, que lê e grava sem ninguém no meio.
+ */
+function criarArmazem(
+  inicial: { fila: Fila; carga: CargaLocal; cursor: string | null },
+) {
   const estado = { ...inicial };
   const gravacoes = { fila: 0, carga: 0 };
   const armazem: ArmazenamentoSync = {
@@ -21,8 +30,16 @@ function criarArmazem(inicial: { fila: Fila; carga: CargaLocal; cursor: string |
       return estado.fila;
     },
     async gravarFila(fila) {
+      await new Promise((resolver) => setTimeout(resolver, 0));
       estado.fila = fila;
       gravacoes.fila += 1;
+    },
+    async mutarFila(transformar) {
+      // Sem `await` entre ler e gravar: é uma seção crítica de verdade, como a transação do aparelho.
+      const nova = transformar(estado.fila);
+      estado.fila = nova;
+      gravacoes.fila += 1;
+      return nova;
     },
     async lerCarga() {
       return { cursor: estado.cursor, carga: estado.carga };
@@ -244,4 +261,32 @@ test("se a busca falha, o envio ainda é tentado e o relatório não mente", asy
 
   assert.equal(relatorio.enviados, 1, "sem a busca, o envio da fila continua valendo");
   assert.equal(relatorio.buscadasMudancas, false, "e o relatório diz que não trouxe mudanças");
+});
+
+
+test("a passada grava a fila dentro da seção crítica do armazenamento (nunca ler-depois-gravar)", async () => {
+  const { armazem, gravacoes } = criarArmazem({
+    fila: enfileirar(filaVazia(), { id: "op-0", operacao: operacaoDespesa("v1", "Hotel"), agora: T0 }),
+    carga: cargaVazia(),
+    cursor: null,
+  });
+  const chamadas: { mutar: number; gravar: number } = { mutar: 0, gravar: 0 };
+  const espiado: ArmazenamentoSync = {
+    ...armazem,
+    async gravarFila(fila) {
+      chamadas.gravar += 1;
+      await armazem.gravarFila(fila);
+    },
+    async mutarFila(transformar) {
+      chamadas.mutar += 1;
+      return armazem.mutarFila(transformar);
+    },
+  };
+  const servidor = criarServidor(() => ({ ok: true }));
+
+  await sincronizar(espiado, servidor.porta, { agora: () => T0, online: () => true });
+
+  assert.ok(chamadas.mutar > 0, "a passada precisa transformar a fila na seção crítica");
+  assert.equal(chamadas.gravar, 0, "gravar a fila fora da seção crítica é o defeito que perdia a operação nova");
+  assert.ok(gravacoes.fila > 0);
 });

@@ -214,11 +214,11 @@ provedor de IA e limites de custo, exportação PDF/planilha.
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **48 testes** no pacote + 46 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **49 testes** no pacote + 49 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
-| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem, revisão de impacto, reserva vinculada e observações da atividade, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero) | ✅ **42 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem (inclusive com rede instável), revisão de impacto, reserva vinculada e observações da atividade, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero) | ✅ **43 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
 | Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
 | Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
 | Reservas (hospedagem, transporte, passeio, outro) | ✅ **13 testes** de domínio + **8** de API + 4 de interface | `packages/domain/src/reserva.ts`, `apps/api/src/routes/reservas.ts`, `telas/Reservas.tsx` |
@@ -286,6 +286,7 @@ código, não só no documento:
 | A atividade pode apontar para a **reserva** que a cobre, e a ficha mostra a evidência que já existe | `atividades.reserva_id` (migração `0008`), `exigirReservaDaViagem` na rota | Vínculo cruzado mostraria evidência de outra viagem; reserva cancelada não sustenta compromisso — as duas coisas são recusadas com motivo |
 | Anexar reserva **não** confirma reserva nem muda a natureza do dinheiro | `vinculada` (domínio) e teste de API "sem mexer na reserva em si" | Confirmar exige evidência (decisões V1 §13); o vínculo é só um ponteiro para o que já existe |
 | Observação da atividade é texto livre (também usada para acessibilidade) | `atividade.observacao`, campo no formulário e na correção | Um segundo campo livre para acessibilidade seria o mesmo dado com dois lugares para divergir |
+| Toda transformação da fila acontece numa **seção crítica** do armazenamento (`mutar`/`mutarFila`) | `ArmazenamentoSync.mutarFila`, `ArmazenamentoLocal.mutar` (uma transação no IndexedDB) | Ler e gravar separados perdiam a operação que entrasse no intervalo: a viagem criada durante uma passada desaparecia sem erro na tela (defeito de 2026-10-16) |
 | Antes de concluir/cancelar, a tela mostra o **impacto conhecido** | `revisarImpacto` + bloco "Antes de continuar" | `UI_V1_DECISIONS` §13: a interface não pode insinuar que algo externo aconteceu nem mudar dinheiro oficial por conta própria |
 | Depois do cancelamento da viagem, **registrar o que houve com o que já existia** continua permitido | `PERMITIDAS_APOS_CANCELAMENTO` (`atividade:concluir/cancelar/corrigir`) | Viagem cancelada não recebe plano novo, mas o passado aconteceu — mesma lógica das despesas |
 | Viagem concluída bloqueia `atividade:criar` | `packages/domain/src/permissions.ts` | Não se planeja o que já terminou |

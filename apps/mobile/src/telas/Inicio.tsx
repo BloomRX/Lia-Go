@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ErroApi, type ViagemResumo } from "../services/api.ts";
 import { ROTULO_ESTADO, formatarData } from "../services/formato.ts";
 import { useNotificacoes } from "../services/use-notificacoes.ts";
@@ -38,6 +38,17 @@ export function Inicio({ abrirViagem, aceitarConvite, usuarioId, abrirNotificaco
       /* sem rede não é erro para quem está no meio de uma viagem: o cache continua na tela */
     });
   }, [sincronizador]);
+
+  /**
+   * Enquanto esta tela estiver na frente, as tentativas de criação ainda podem terminar.
+   *
+   * Sem isso, o navegador não avisaria o app: `navigator.onLine` continua `true` quando *o servidor*
+   * é que não responde, então nada disparava uma nova sincronização e a viagem criada só aparecia
+   * quando a pessoa saísse e voltasse ao app. Foi o que a rodada de teste do usuário mostrou
+   * (2026-10-16): o aviso prometia "abre assim que o servidor confirmar" e ninguém mais olhava.
+   */
+  const vivoRef = useRef(true);
+  useEffect(() => () => { vivoRef.current = false; }, []);
 
   const viagens = estado.carga.viagens as unknown as ViagemResumo[];
   const convites = estado.carga.convitesParaMim as unknown as { id: string; viagem_nome: string }[];
@@ -87,6 +98,29 @@ export function Inicio({ abrirViagem, aceitarConvite, usuarioId, abrirNotificaco
       return;
     }
     setAviso("A viagem ficou guardada neste aparelho. Ela abre assim que o servidor confirmar — o estado aparece na barra de sincronização acima.");
+    void vigiarViagemCriada(nomeCriado, antes);
+  }
+
+  /**
+   * Continua tentando depois do primeiro aviso e **abre a viagem** quando o servidor confirmar.
+   *
+   * É o que o aviso promete. Para quando a pessoa sai desta tela (a viagem aberta já é outra decisão
+   * dela) e para sozinho depois de um minuto — aí a fila fica esperando o próximo evento de rede, e
+   * a tela "Ver alterações" continua sendo o caminho manual.
+   */
+  async function vigiarViagemCriada(nome: string, antes: Set<string>): Promise<void> {
+    const tentativas = 24;
+    for (let tentativa = 0; tentativa < tentativas && vivoRef.current; tentativa += 1) {
+      await new Promise((resolver) => setTimeout(resolver, 2500));
+      if (!vivoRef.current) return;
+
+      const nova = viagensDoAparelho().filter((viagem) => !antes.has(viagem.id) && viagem.nome === nome).pop();
+      if (nova) {
+        abrirViagem(nova.id);
+        return;
+      }
+      if (sincronizador.obter().online) void sincronizador.sincronizarAgora().catch(() => undefined);
+    }
   }
 
   /**

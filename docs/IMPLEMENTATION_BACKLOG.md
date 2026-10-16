@@ -1,6 +1,6 @@
 # Backlog — Lia Go
 
-Atualizado em **2026-10-15** (décima segunda rodada), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Atualizado em **2026-10-16** (décima terceira rodada — correções vindas da rodada do PC), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
@@ -16,7 +16,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Barra com Visão geral, Roteiro, Gastos e Mais; identidade escura roxo/magenta, referências oficiais
   aplicadas (hero da viagem com a Lia, próximo compromisso em destaque, orçamento com barra) e estados
   carregando/vazio/erro/sem permissão. Documentos e checklist vivem na aba Mais por ora.
-- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 157 · sincronização 48 · app 46+42 (jsdom) · API 92 = **429**.
+- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 157 · sincronização 49 · app 49+43 (jsdom) · API 92 = **434**.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
 - ✅ `packages/domain` com **157 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
@@ -49,6 +49,15 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Reservas manuais assistidas, checklist (prazo não conclui; reabertura com motivo) e documentos privados
   por padrão com compartilhamento revogável, remoção lógica com motivo e limpeza da cópia local de quem
   perdeu acesso.
+- ✅ **Corrigido (2026-10-16, rodada do PC)**: criar viagem podia perder a operação — a passada de
+  sincronização lia a fila, a criação entrava nesse intervalo e a gravação do fim apagava a operação
+  nova. A viagem nunca chegava ao servidor e a tela ainda dizia "Tudo sincronizado". Agora toda
+  transformação da fila acontece numa **seção crítica** do armazenamento (`mutar`/`mutarFila`, uma
+  transação no IndexedDB), e a criação continua tentando sozinha enquanto a pessoa está na tela —
+  abrindo a viagem quando o servidor confirma, que é o que o aviso promete.
+- ✅ **Corrigido (2026-10-16)**: o teste do "próximo compromisso" fazia a conta de "amanhã" em UTC e
+  falhava depois das 21h (horário de São Paulo). Agora app e teste usam a mesma função
+  (`amanhaIso`), no fuso das viagens.
 - ✅ A ficha da atividade guarda o que **não é horário**: observações (também usadas para acessibilidade) e
   o vínculo com a reserva da viagem, mostrando a **evidência** que já existe (localizador) quando ela está
   confirmada. Vincular não confirma nada nem muda a natureza do dinheiro (§13).
