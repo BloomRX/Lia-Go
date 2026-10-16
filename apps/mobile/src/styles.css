@@ -47,12 +47,13 @@ h2 { font-size: 1.15rem; margin: 24px 0 10px; }
 h3 { font-size: 1rem; margin: 0; }
 p { margin: 4px 0; color: var(--texto-suave); line-height: 1.45; }
 
+/* Marca: pino com furo, desenhado no app (a imagem oficial vira ícone/favicon). */
 .marca { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.marca-ponto {
-  width: 14px; height: 14px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--roxo), var(--magenta));
-  box-shadow: 0 0 18px rgba(232, 121, 249, 0.7);
-}
+.marca h1 { margin: 0; }
+.marca-simbolo { width: 24px; height: 30px; flex: none; }
+.marca-pino { fill: url(#gradiente-da-marca); }
+.marca-furo { fill: var(--fundo); }
+.marca-legenda { margin: 0; font-size: 0.85rem; color: var(--texto-suave); }
 
 .cartao {
   background: var(--fundo-cartao);
@@ -60,15 +61,24 @@ p { margin: 4px 0; color: var(--texto-suave); line-height: 1.45; }
   border-radius: var(--raio);
   padding: 16px;
   margin-bottom: 12px;
+  /* Realce de um pixel na borda de cima: dá profundidade sem virar painel luminoso (§3). */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .cartao.destaque { background: var(--fundo-cartao-alto); }
 
 .linha { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .linha.entre { align-items: flex-start; }
+/* Etiqueta de estado: ponto + palavra (referência do concept-02). O ponto é decorativo — quem
+   informa o estado é o texto, e a cor nunca é o único sinal (diretrizes §4). */
 .etiqueta {
+  display: inline-flex; align-items: center; gap: 6px;
   font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
   padding: 4px 10px; border-radius: 999px; background: #2f1c4d; color: var(--texto-suave);
   white-space: nowrap;
+}
+.etiqueta::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; flex: none;
 }
 .etiqueta.estado-em_andamento { background: #2a1843; color: var(--lilas); }
 .etiqueta.estado-concluida { background: #10352c; color: var(--bom); }
@@ -115,8 +125,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--roxo); outl
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   backdrop-filter: blur(8px);
 }
-.barra button { background: none; border: 0; color: var(--texto-suave); font-size: 0.78rem; }
+/* Ícone + rótulo, como na referência. Alvo de 48 px e estado ativo também em texto (`aria-current`). */
+.barra button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  flex: 1; min-height: 48px; padding: 6px 4px; border: 0; border-radius: var(--e3);
+  background: none; color: var(--texto-suave); font-size: 0.72rem; line-height: 1.1;
+}
+.barra button span { white-space: nowrap; }
+.barra button svg { width: 22px; height: 22px; }
 .barra button[aria-current="true"] { color: var(--magenta); font-weight: 700; }
+/* O brilho é acento, não textura (decisões §1): só no item ativo. */
+.barra button[aria-current="true"] svg { filter: drop-shadow(0 0 7px rgba(255, 62, 220, 0.55)); }
 
 .carregando { display: flex; align-items: center; gap: 10px; color: var(--texto-suave); }
 .pulso { width: 10px; height: 10px; border-radius: 50%; background: var(--magenta); animation: pulsar 1.2s infinite; }
@@ -189,9 +208,11 @@ small.suave { color: var(--texto-suave); }
   width: 2px; background: var(--borda);
 }
 .atividade:last-child::before { display: none; }
+/* Brilho é acento, não textura (§1): o marcador comum fica sólido e discreto; o brilho aparece
+   onde significa algo — conflito (atenção) e atividade em andamento. */
 .marcador {
   position: absolute; left: 2px; top: 18px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--roxo); box-shadow: 0 0 10px rgba(168, 85, 247, 0.55);
+  background: var(--roxo);
 }
 .atividade.concluida .marcador { background: var(--bom); box-shadow: none; }
 .atividade.cancelada .marcador { background: #6b7280; box-shadow: none; }

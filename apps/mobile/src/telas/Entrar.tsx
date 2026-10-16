@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Marca } from "../componentes/Marca.tsx";
 import { api, ErroApi } from "../services/api.ts";
 
 // Dicas de autofill do navegador (ajudam o gerenciador de senhas; não guardam nada).
@@ -34,10 +35,7 @@ export function Entrar({ aoEntrar }: Props): React.ReactElement {
 
   return (
     <main className="app">
-      <div className="marca">
-        <span className="marca-ponto" aria-hidden="true" />
-        <h1>Lia Go</h1>
-      </div>
+      <Marca legenda="Viagens melhores. Despesas sob controle." />
       <p>Viagens em grupo sem briga de dinheiro: roteiro, gastos compartilhados e acertos — com a Lia ajudando.</p>
 
       <form className="cartao" onSubmit={enviar}>

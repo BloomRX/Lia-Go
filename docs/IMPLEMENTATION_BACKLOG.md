@@ -1,6 +1,6 @@
 # Backlog — Lia Go
 
-Atualizado em **2026-10-16** (décima terceira rodada — correções vindas da rodada do PC), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Atualizado em **2026-10-16** (décima quarta rodada — identidade visual das referências), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
@@ -16,7 +16,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Barra com Visão geral, Roteiro, Gastos e Mais; identidade escura roxo/magenta, referências oficiais
   aplicadas (hero da viagem com a Lia, próximo compromisso em destaque, orçamento com barra) e estados
   carregando/vazio/erro/sem permissão. Documentos e checklist vivem na aba Mais por ora.
-- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 157 · sincronização 49 · app 49+43 (jsdom) · API 92 = **434**.
+- 🔄 Placar de testes da rodada: ferramentas 44 · domínio 157 · sincronização 49 · app 49 + 45 (jsdom) · API 92 = **436**.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
 - ✅ `packages/domain` com **157 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
@@ -63,6 +63,12 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
   confirmada. Vincular não confirma nada nem muda a natureza do dinheiro (§13).
   ⬜ Documentos/links vinculados à atividade — o vínculo precisa carregar a mesma regra de privacidade do
   documento (quem perdeu acesso não pode descobrir pelo vínculo); próxima fatia do roteiro.
+- ✅ **Identidade visual das referências (2026-10-16)**: marca oficial (pino em SVG no app + imagem
+  oficial como ícone/favicon), barra inferior com ícone **e** rótulo (Lucide), etiquetas com ponto +
+  palavra, glow como acento e cartões com profundidade discreta. Nenhuma identidade paralela e nenhum
+  dado novo na tela.
+- ⬜ Seletor lateral da web e a aba **Documentos** própria na barra inferior (cinco destinos exigem
+  teste em tela pequena) — pedidos pelas referências, adiados de propósito.
 - ⬜ Criação por conversa/formulário alternáveis (sem perguntas repetidas) — depende da camada de IA.
 
 ## Fase 4 — Offline, notificações e fechamento

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+// Nomes com prefixo: `Map` colidiria com o `Map` do JavaScript usado nesta tela.
+import { Ellipsis as IconeMais, Home as IconeVisao, Map as IconeRoteiro, Wallet as IconeGastos } from "lucide-react";
 import { Roteiro } from "./Roteiro.tsx";
 import { api, ErroApi, type DespesaApi, type MovimentoApi, type SaldosApi } from "../services/api.ts";
 import {
@@ -800,11 +802,28 @@ export function Viagem({
         </>
       ) : null}
 
+      {/*
+        Barra inferior da referência (`assets/references/concept-02-roteiro.png`): ícone **com**
+        rótulo. O ícone é decorativo (`aria-hidden`) — quem informa o destino é o texto, e o estado
+        ativo continua sendo `aria-current`, não a cor. Cada alvo tem 48 px de altura.
+      */}
       <nav className="barra" aria-label="Navegação principal">
-        <button aria-current={aba === "visao"} onClick={() => setAba("visao")}>Visão geral</button>
-        <button aria-current={aba === "roteiro"} onClick={() => setAba("roteiro")}>Roteiro</button>
-        <button aria-current={aba === "gastos"} onClick={() => setAba("gastos")}>Gastos</button>
-        <button aria-current={aba === "mais"} onClick={() => setAba("mais")}>Mais</button>
+        <button aria-current={aba === "visao"} onClick={() => setAba("visao")}>
+          <IconeVisao size={22} aria-hidden="true" />
+          <span>Visão geral</span>
+        </button>
+        <button aria-current={aba === "roteiro"} onClick={() => setAba("roteiro")}>
+          <IconeRoteiro size={22} aria-hidden="true" />
+          <span>Roteiro</span>
+        </button>
+        <button aria-current={aba === "gastos"} onClick={() => setAba("gastos")}>
+          <IconeGastos size={22} aria-hidden="true" />
+          <span>Gastos</span>
+        </button>
+        <button aria-current={aba === "mais"} onClick={() => setAba("mais")}>
+          <IconeMais size={22} aria-hidden="true" />
+          <span>Mais</span>
+        </button>
       </nav>
     </main>
   );

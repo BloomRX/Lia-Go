@@ -248,6 +248,19 @@ que ainda vai acontecer) e as telas de **checklist**, **documentos** (privados p
 `apps/mobile/public/lia-hero.jpg` (900 px, 58 KB) — a referência original continua aqui em
 `assets/references/`.
 
+**Já aplicado do que as referências mostram** (2026-10-16, fatia de identidade visual):
+
+- a **marca oficial** no topo das telas: o pino com furo (o mesmo de `lia-logo-icon.png`) desenhado em
+  SVG no app — assim ele acompanha os tokens de cor e continua nítido em qualquer densidade — com o
+  nome em texto e a assinatura "Viagens melhores. Despesas sob controle." na entrada;
+- a imagem oficial virou **ícone/favicon** (`public/lia-logo.png`, `public/favicon.png`) e a cor de
+  tema do navegador passou a ser o fundo real (`#0b0a12`);
+- a **barra inferior com ícone e rótulo** (Lucide), alvos de 48 px e o item ativo também em
+  `aria-current` — nunca só na cor;
+- **etiquetas de estado com ponto + palavra**, como nos conceitos, com a palavra sempre presente;
+- **glow como acento**: o marcador comum da timeline ficou sólido; brilho só onde significa algo
+  (item ativo da barra, conflito, atividade em andamento).
+
 O que as referências **pedem e ainda não existe**: a barra de navegação da web com seletor lateral
 (Início, Viagens, Despesas, Participantes, Documentos, Configurações), a aba **Documentos** própria na
 barra inferior do celular (hoje ela vive na aba Mais; cinco destinos exigem teste em tela pequena) e os
@@ -281,7 +294,7 @@ do fundo neutro — mexer na identidade é mexer nessas linhas, e nada mais.
 | Tipografia | pilha do sistema, já herdada; hierarquia por tamanho/peso (§2 das decisões) | `styles.css` |
 | Espaçamento | escala em variáveis (`--e1` 4 px, `--e2` 8 px, `--e3` 12 px, `--e4` 16 px, `--e6` 24 px), composição em 8 px (§3) | `styles.css` |
 | Breakpoints | um só: **480 px** (colunas do roteiro empilham no celular; celular é uma coluna, web/tablet aproveita largura) | `styles.css` |
-| Ícones | **texto/etiqueta** por enquanto: nenhuma biblioteca de ícones foi instalada nesta fatia — preferir uma só (Lucide ou equivalente) quando o visual for refinado, nunca misturar estilos | componentes das telas |
+| Ícones | **Lucide** instalado e usado na barra inferior (`lucide-react`), sempre ao lado do rótulo; nas demais telas, texto/etiqueta — a mesma biblioteca entra conforme a tela for refinada, sem misturar estilos | `apps/mobile/package.json`, componentes das telas |
 | Animação | nenhuma além do pulso já existente; transições curtas, e `prefers-reduced-motion` desliga animação e transição (§11) | `styles.css` |
 | Densidade financeira | custo em linha dentro do contexto do cartão; ficha com rótulo + valor | `CartaoAtividade.tsx`, `Atividade.tsx` |
 | Mapas | fora desta fatia (deslocamento é texto: minutos, km e alerta) | próxima fatia |

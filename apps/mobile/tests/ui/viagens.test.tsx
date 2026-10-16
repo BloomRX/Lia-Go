@@ -6,7 +6,7 @@
  * falso e IndexedDB de verdade (fake-indexeddb), então uma regressão aqui quebra o teste antes de chegar
  * na mão de quem usa.
  */
-import { botaoCom, clicar, digitar, esperarPor, esperarAtualizacoes, raizDoDocumento, textoDaTela } from "./ambiente.ts";
+import { botaoCom, clicar, digitar, elemento, elementos, esperarPor, esperarAtualizacoes, raizDoDocumento, textoDaTela } from "./ambiente.ts";
 import { criarServidorFalso } from "./servidor-falso.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -221,4 +221,46 @@ test("aba Gastos mostra o previsto do roteiro separado do dinheiro oficial", asy
   assert.match(tela, /Enquanto houver custo a verificar, o previsto é o valor mínimo/);
   assert.match(tela, /não entram no saldo oficial/, "o previsto nunca se confunde com o saldo oficial");
   assert.match(tela, /Gasto confirmado \(oficial\)/);
+});
+
+// ---------------------------------------------------------------------------
+// Identidade visual (referências oficiais em `assets/references/`)
+// ---------------------------------------------------------------------------
+
+test("a marca é o pino oficial com o nome escrito — desenho não substitui texto", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+
+  montar();
+  await esperarPor(() => textoDaTela().includes("Criar viagem"), "a tela inicial aparecer");
+
+  const marca = elemento(".marca")!;
+  assert.ok(marca, "a marca precisa estar na tela inicial");
+  const simbolo = marca.querySelector("svg.marca-simbolo");
+  assert.ok(simbolo, "o pino da marca é desenhado no app");
+  assert.equal(simbolo!.getAttribute("aria-hidden"), "true", "o desenho é decorativo; o nome é o texto");
+  assert.ok(simbolo!.querySelector("path.marca-pino"), "o pino tem o traçado da referência");
+  assert.ok(simbolo!.querySelector("circle.marca-furo"), "o pino tem o furo da referência");
+  assert.match(marca.querySelector("h1")?.textContent ?? "", /Lia Go/, "o nome continua legível para leitor de tela");
+});
+
+test("a barra inferior tem ícone **e** rótulo, e diz qual aba está ativa por texto", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+
+  montar();
+  await esperarPor(() => textoDaTela().includes("Praia antiga"), "a lista de viagens aparecer");
+  clicar(botaoCom("Praia antiga"));
+  await esperarPor(() => textoDaTela().includes("← Minhas viagens"), "a viagem abrir");
+
+  const itens = elementos(".barra button");
+  assert.deepEqual(itens.map((item) => (item.textContent ?? "").trim()), ["Visão geral", "Roteiro", "Gastos", "Mais"]);
+  for (const item of itens) {
+    assert.ok(item.querySelector("svg"), `"${item.textContent}" precisa de ícone (referência da barra inferior)`);
+    assert.equal(item.querySelector("svg")?.getAttribute("aria-hidden"), "true", "o ícone é decorativo: o rótulo é o texto");
+  }
+  assert.equal(itens[0]!.getAttribute("aria-current"), "true", "a aba ativa é anunciada, não só pintada");
+  assert.equal(itens[1]!.getAttribute("aria-current"), "false");
 });

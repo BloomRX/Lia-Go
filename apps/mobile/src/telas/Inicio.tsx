@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ErroApi, type ViagemResumo } from "../services/api.ts";
 import { ROTULO_ESTADO, formatarData } from "../services/formato.ts";
 import { useNotificacoes } from "../services/use-notificacoes.ts";
+import { Marca } from "../componentes/Marca.tsx";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 
 interface Props {
@@ -163,10 +164,7 @@ export function Inicio({ abrirViagem, aceitarConvite, usuarioId, abrirNotificaco
 
   return (
     <main className="app">
-      <div className="marca">
-        <span className="marca-ponto" aria-hidden="true" />
-        <h1>Lia Go</h1>
-      </div>
+      <Marca />
 
       {erro ? <div className="aviso erro" role="alert">{erro}</div> : null}
       {aviso ? <div className="aviso ok">{aviso}</div> : null}

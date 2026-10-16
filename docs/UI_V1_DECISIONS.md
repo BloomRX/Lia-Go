@@ -231,3 +231,21 @@ Correções que vieram da rodada do PC (2026-10-16), sem mudança de regra de ne
   depois das 21h no horário de São Paulo;
 - a rodada de testes roda **suíte por suíte**: uma falha de interface não esconde mais os testes de
   API nem o resto do placar.
+
+## 18. Registro da fatia "identidade visual" (2026-10-16)
+
+O que foi aplicado, sem identidade paralela e sem inventar dado:
+
+- **Marca**: pino com furo desenhado em SVG dentro do app (`componentes/Marca.tsx`), com o nome em
+  `<h1>` — o desenho é decorativo (`aria-hidden`) e continua legível por leitor de tela. O ponto
+  colorido genérico que existia antes saiu. A imagem oficial continua em `assets/references/` e é ela
+  que gera o ícone do app e o favicon.
+- **Ícones**: `lucide-react` (uma biblioteca só, conforme §4), usada na barra inferior **com** rótulo.
+  Ícone nunca substitui texto; o destino tem nome escrito e o estado ativo é `aria-current`.
+- **Glow como acento (§1)**: o marcador comum da timeline ficou sólido; brilho só onde informa —
+  item ativo da barra, conflito, atividade em andamento.
+- **Cartões**: realce de 1 px na borda superior para dar profundidade, sem virar painel luminoso (§3).
+- **Etiquetas**: ponto + palavra (referência do concept-02), com a palavra sempre presente (§5).
+
+Nada disso mudou regra de negócio, permissão, dinheiro ou sincronização: a fatia é de apresentação, e
+os testes de interface que existiam continuam valendo sem alteração.
