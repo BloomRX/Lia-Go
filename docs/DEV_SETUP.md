@@ -126,7 +126,12 @@ Com `SameSite=None` o cookie também vai marcado como **`Partitioned`** (CHIPS):
 descarta cookie de terceira parte mesmo com `None; Secure`, e cada site de topo recebe uma cópia
 isolada (não é cookie compartilhado entre sites).
 
-Se, mesmo assim, a sessão não ficar, o app **não fica mudo**: mostra "o servidor aceitou seu e-mail e
+Se o navegador recusar o cookie de qualquer forma, o app tenta a **sessão de fallback** antes de
+desistir: faz o login pelo caminho do app nativo e guarda os tokens em `sessionStorage` — só na aba,
+morre ao fechar, nunca vai para `localStorage` — e passa a mandar `Authorization: Bearer`. Sair
+encerra a sessão no servidor e apaga os tokens. O caminho normal continua sendo o cookie `HttpOnly`.
+
+Se nem isso funcionar, o app **não fica mudo**: mostra "o servidor aceitou seu e-mail e
 senha, mas o navegador não guardou a sessão" e exibe o **endereço do app** para abrir em outra aba —
 o link direto pode ser barrado quando o painel abre o app num iframe restrito, então o endereço fica
 visível e copiável (com seleção automática quando o navegador nega a área de transferência).

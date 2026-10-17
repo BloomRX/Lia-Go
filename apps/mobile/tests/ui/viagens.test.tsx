@@ -56,6 +56,8 @@ function montar(conteudo: React.ReactElement = createElement(App)): void {
 async function limparAparelho(): Promise<void> {
   await criarArmazenamentoIndexedDB("lia-go").limpar();
   (globalThis as { localStorage?: Storage }).localStorage?.clear();
+  // A sessão de fallback (navegador que recusa o cookie) mora na aba: precisa sumir entre testes.
+  (globalThis as { sessionStorage?: Storage }).sessionStorage?.clear();
 }
 
 test("abrir a viagem nova mostra a viagem nova, não a que estava aberta antes", async () => {
@@ -277,6 +279,7 @@ test("login que o navegador não consegue guardar explica o motivo — nunca fic
   // o cookie SameSite=Lax não volta na chamada seguinte). Antes disso a tela simplesmente não mudava.
   servidor.logado = false;
   servidor.guardaSessao = false;
+  servidor.aceitaToken = false;
   (globalThis as Record<string, unknown>).fetch = servidor.fetch;
 
   montar();
@@ -351,4 +354,38 @@ test("fora de outra página, o aviso de aba própria não aparece", async () => 
   montar();
   await esperarPor(() => Boolean(raizDoDocumento.querySelector("#email")), "a tela de entrada aparecer");
   assert.equal(raizDoDocumento.querySelector("a.aba-propria"), null);
+});
+
+test("navegador que recusa o cookie: entra pela sessão da aba e mostra as viagens", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  servidor.logado = false;
+  servidor.guardaSessao = false; // o cookie de sessão nunca volta (app embutido em outra página)
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+
+  montar();
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#email")), "a tela de entrada aparecer");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#email")!, "demo@lia.go");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#senha")!, "lia-go-demo-2026");
+  clicar(botaoCom("Entrar", raizDoDocumento.querySelector("form")!));
+
+  await esperarPor(
+    () => textoDaTela().includes("Praia antiga"),
+    "entrar mesmo sem cookie, pela sessão da própria aba",
+    5000,
+  );
+  assert.match(textoDaTela(), /Conectado como Ana/);
+  const guardado = (globalThis as { sessionStorage?: Storage }).sessionStorage?.getItem("lia.sessao.embutida");
+  assert.ok(guardado, "a sessão de fallback fica em sessionStorage");
+  assert.equal((globalThis as { localStorage?: Storage }).localStorage?.getItem("lia.sessao.embutida"), null,
+    "nunca em localStorage (não sobrevive à aba nem vaza para outras)");
+
+  // Sair também apaga a sessão da aba: ninguém fica logado depois de sair.
+  clicar(botaoCom("Sair", raizDoDocumento));
+  await esperarPor(
+    () => Boolean(raizDoDocumento.querySelector("#email")),
+    "voltar para a tela de entrada depois de sair",
+    5000,
+  );
+  assert.equal((globalThis as { sessionStorage?: Storage }).sessionStorage?.getItem("lia.sessao.embutida"), null);
 });

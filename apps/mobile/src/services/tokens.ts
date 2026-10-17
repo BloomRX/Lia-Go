@@ -9,6 +9,10 @@
  *
  * Prática de mercado seguida (ver docs/DECISIONS_AND_OPEN_QUESTIONS.md): token de sessão
  * nunca fica em armazenamento comum quando existe Keychain/Keystore.
+ *
+ * Existe um caso separado, no navegador: quando ele **recusa o cookie** (app embutido em outra
+ * página), a sessão de fallback por token fica em `sessionStorage` — ver `sessao-embutida.ts`.
+ * Nunca é `localStorage`, e este arquivo continua sem guardar nada na web.
  */
 import { Capacitor } from "@capacitor/core";
 import { Platform } from "./plataforma.ts";

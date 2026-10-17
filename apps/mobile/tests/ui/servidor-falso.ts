@@ -42,6 +42,12 @@ export interface ServidorFalso {
   guardaSessao: boolean;
   /** Sessão já aberta no servidor (o app pergunta em `/auth/sessao` ao abrir). */
   logado: boolean;
+  /**
+   * `false` simula o servidor que não aceita sessão por token. O caminho normal (`true`) é o que
+   * permite o app entrar quando o navegador recusa o cookie: login com `cliente: "nativo"` devolve
+   * tokens e `/auth/sessao` aceita `Authorization: Bearer`.
+   */
+  aceitaToken: boolean;
 }
 
 const PARTICIPANTE = { usuario_id: "u1", nome: "Ana", papel: "organizador", estado: "ativo" };
@@ -58,6 +64,7 @@ export function criarServidorFalso(
     encerrado: false,
     guardaSessao: true,
     logado: true,
+    aceitaToken: true,
     fetch: () => Promise.reject(new Error("não pronto")),
   };
 
@@ -91,22 +98,35 @@ export function criarServidorFalso(
     const caminho = url.pathname;
     const metodo = init?.method ?? "GET";
     estado.chamadas.push({ metodo, caminho: caminho + url.search });
+    const cabecalhos = new Headers(init?.headers);
+    const corpo = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+    const portadorDeToken = cabecalhos.get("authorization") === "Bearer token-de-acesso";
+    const USUARIO = { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" };
 
     if (caminho === "/api/auth/sessao") {
+      // Token só vale se o servidor aceitar e o cookie não tiver vindo (é o caso embutido).
+      if (estado.aceitaToken && portadorDeToken) return json({ usuario: USUARIO });
       if (!estado.logado || !estado.guardaSessao) {
         return json({ erro: "nao_autenticado", mensagem: "Entre para continuar." }, 401);
       }
-      return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } });
+      return json({ usuario: USUARIO });
     }
     if (caminho === "/api/auth/login" && metodo === "POST") {
       // O servidor aceita as credenciais; o **navegador** é que pode não guardar o cookie
       // (`guardaSessao: false`), e é isso que o app precisa detectar em vez de ficar mudo.
       estado.logado = true;
-      return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } });
+      if (corpo.cliente === "nativo" && estado.aceitaToken) {
+        return json({
+          usuario: USUARIO,
+          acesso: { token: "token-de-acesso", expiraEm: "2027-01-01T00:00:00.000Z" },
+          refresh: { token: "token-de-refresh", expiraEm: "2027-03-01T00:00:00.000Z" },
+        });
+      }
+      return json({ usuario: USUARIO });
     }
     if (caminho === "/api/auth/registro" && metodo === "POST") {
       estado.logado = true;
-      return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } }, 201);
+      return json({ usuario: USUARIO }, 201);
     }
     if (caminho === "/api/auth/logout") {
       estado.encerrado = true;

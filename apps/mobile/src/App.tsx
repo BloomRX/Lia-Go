@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Entrar } from "./telas/Entrar.tsx";
+import { Entrar, type Credenciais } from "./telas/Entrar.tsx";
 import { Inicio } from "./telas/Inicio.tsx";
 import { Notificacoes, type AbaDaViagem } from "./telas/Notificacoes.tsx";
 import { Viagem } from "./telas/Viagem.tsx";
@@ -182,11 +182,18 @@ export function App(): React.ReactElement {
    * dentro do painel de demonstração, que é um iframe: ali o cookie `SameSite=Lax` não volta).
    * Agora: usa o usuário que já veio, verifica a sessão e, se ela não pegou, explica o motivo.
    */
-  async function entrar(): Promise<void> {
-    const sessao = await api.sessao().catch((erro) => {
-      if (erro instanceof ErroApi && erro.status === 401) return null;
-      throw erro;
-    });
+  async function entrar({ modo, nome, email, senha }: Credenciais): Promise<void> {
+    if (modo === "criar") await api.registrar(nome, email, senha);
+    else await api.entrar(email, senha);
+
+    let sessao = await sessaoAtual();
+    if (!sessao) {
+      // O navegador recusou o cookie (app embutido em outra página). Segunda tentativa: sessão por
+      // token, guardada só nesta aba (`sessionStorage`) — some ao fechar, não vira cookie de terceiro.
+      // Se nem isso der certo, o erro explicativo abaixo aparece (nunca uma tela parada).
+      await api.entrarPorToken(email, senha).catch(() => undefined);
+      sessao = await sessaoAtual();
+    }
     if (!sessao) {
       throw new ErroApi(
         401,
@@ -198,6 +205,14 @@ export function App(): React.ReactElement {
     }
     setUsuario(sessao);
     void sincronizador?.sincronizarAgora().catch(() => undefined);
+  }
+
+  /** Sessão válida agora (cookie ou token da aba); `null` quando não há. */
+  async function sessaoAtual(): Promise<Usuario | null> {
+    return api.sessao().catch((erro) => {
+      if (erro instanceof ErroApi && erro.status === 401) return null;
+      throw erro;
+    });
   }
 
   if (!usuario) {

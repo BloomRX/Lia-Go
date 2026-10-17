@@ -37,6 +37,8 @@ for (const nome of [
   "getComputedStyle",
   "requestAnimationFrame",
   "localStorage",
+  // A sessão de fallback (navegador que recusa o cookie) mora na aba; no navegador é global.
+  "sessionStorage",
 ] as const) {
   definirGlobal(nome, janela[nome]);
 }

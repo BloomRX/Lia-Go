@@ -5,9 +5,17 @@
  * - WEB: cookie HttpOnly, enviado com `credentials: "include"`, via proxy /api do Vite.
  * - APP NATIVO: access token curto no cabeçalho Authorization e refresh token em
  *   armazenamento seguro do aparelho (Preferences). Nada de token em localStorage na web.
+ * - NAVEGADOR QUE RECUSA O COOKIE (app embutido em outra página): fallback explícito por token,
+ *   guardado em `sessionStorage` (morre com a aba) — ver `sessao-embutida.ts`.
  */
 import { Platform } from "./plataforma.ts";
 import { guardarTokens, lerTokens, limparTokens } from "./tokens.ts";
+import {
+  guardarSessaoEmbutida,
+  lerSessaoEmbutida,
+  limparSessaoEmbutida,
+  temSessaoEmbutida,
+} from "./sessao-embutida.ts";
 
 export class ErroApi extends Error {
   readonly status: number;
@@ -38,10 +46,8 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesRequisicao = {}, ten
   if (opcoes.corpo !== undefined) cabecalhos["content-type"] = "application/json";
   if (opcoes.idempotencia) cabecalhos["idempotency-key"] = opcoes.idempotencia;
 
-  if (Platform.ehNativo()) {
-    const tokens = await lerTokens();
-    if (tokens?.acesso) cabecalhos.authorization = `Bearer ${tokens.acesso}`;
-  }
+  const autorizacao = await tokenDeAcesso();
+  if (autorizacao) cabecalhos.authorization = `Bearer ${autorizacao}`;
 
   const resposta = await fetch(`${BASE}${caminho}`, {
     method: opcoes.metodo ?? "GET",
@@ -50,7 +56,7 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesRequisicao = {}, ten
     ...(opcoes.corpo === undefined ? {} : { body: JSON.stringify(opcoes.corpo) }),
   });
 
-  if (resposta.status === 401 && Platform.ehNativo() && !opcoes.semRenovacao && tentativa === 0) {
+  if (resposta.status === 401 && podeRenovar() && !opcoes.semRenovacao && tentativa === 0) {
     const renovado = await renovarToken();
     if (renovado) return requisitar<T>(caminho, opcoes, tentativa + 1);
   }
@@ -69,8 +75,19 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesRequisicao = {}, ten
   return dados as T;
 }
 
+/** Token do app nativo (Keychain/Keystore) ou, no fallback, o da aba (sessionStorage). */
+async function tokenDeAcesso(): Promise<string | null> {
+  if (Platform.ehNativo()) return (await lerTokens())?.acesso ?? null;
+  return lerSessaoEmbutida()?.acesso ?? null;
+}
+
+/** Só tenta renovar quem tem refresh guardado — nativo ou a aba com sessão de fallback. */
+function podeRenovar(): boolean {
+  return Platform.ehNativo() || temSessaoEmbutida();
+}
+
 async function renovarToken(): Promise<boolean> {
-  const tokens = await lerTokens();
+  const tokens = Platform.ehNativo() ? await lerTokens() : lerSessaoEmbutida();
   if (!tokens?.refresh) return false;
   try {
     const resposta = await fetch(`${BASE}/auth/token/renovar`, {
@@ -83,7 +100,9 @@ async function renovarToken(): Promise<boolean> {
       return false;
     }
     const dados = (await resposta.json()) as { acesso: { token: string }; refresh: { token: string } };
-    await guardarTokens({ acesso: dados.acesso.token, refresh: dados.refresh.token });
+    const novos = { acesso: dados.acesso.token, refresh: dados.refresh.token };
+    if (Platform.ehNativo()) await guardarTokens(novos);
+    else guardarSessaoEmbutida(novos);
     return true;
   } catch {
     await limparTokens();
@@ -387,10 +406,30 @@ export const api = {
     return resposta.usuario;
   },
 
+  /**
+   * Última saída quando o navegador **não guarda** o cookie de sessão (app embutido): o servidor
+   * emite os mesmos tokens do app nativo e eles ficam em `sessionStorage`, só nesta aba.
+   * O cookie continua sendo o caminho normal.
+   */
+  async entrarPorToken(email: string, senha: string): Promise<Usuario> {
+    const resposta = await requisitar<{
+      usuario: Usuario;
+      acesso: { token: string };
+      refresh: { token: string };
+    }>("/auth/login", {
+      metodo: "POST",
+      corpo: { email, senha, cliente: "nativo", dispositivo: "navegador-embutido" },
+      semRenovacao: true,
+    });
+    guardarSessaoEmbutida({ acesso: resposta.acesso.token, refresh: resposta.refresh.token });
+    return resposta.usuario;
+  },
+
   async sair(): Promise<void> {
     try {
       await requisitar<void>("/auth/logout", { metodo: "POST", semRenovacao: true });
     } finally {
+      limparSessaoEmbutida();
       await limparTokens();
     }
   },

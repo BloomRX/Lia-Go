@@ -1,36 +1,33 @@
 import { useRef, useState } from "react";
 import { Marca } from "../componentes/Marca.tsx";
-import { api, ErroApi } from "../services/api.ts";
+import { ErroApi } from "../services/api.ts";
+import { Platform } from "../services/plataforma.ts";
 
 // Dicas de autofill do navegador (ajudam o gerenciador de senhas; não guardam nada).
 const DICA_CONTA_NOVA = "new-password";
 const DICA_CONTA_EXISTENTE = "current-password";
 
+/** O que a tela entrega para o app: entrar ou criar conta, com as credenciais digitadas. */
+export interface Credenciais {
+  modo: "entrar" | "criar";
+  nome: string;
+  email: string;
+  senha: string;
+}
+
 interface Props {
   /**
-   * Entra de fato (confirma a sessão). Devolve uma promessa porque o app precisa **verificar** que o
-   * navegador guardou a sessão antes de sair desta tela — e, se não guardou, dizer o motivo em vez de
-   * deixar a tela parada (defeito relatado em 2026-10-17: "clico em Entrar e nada acontece").
+   * Entra de fato (faz o login, confirma a sessão e devolve o usuário à tela). Devolve uma promessa
+   * porque o app precisa **verificar** que o navegador guardou a sessão antes de sair desta tela — e, se
+   * não guardou, dizer o motivo em vez de deixar a tela parada (defeito de 2026-10-17: "clico em Entrar
+   * e nada acontece").
    */
-  aoEntrar: () => Promise<void>;
+  aoEntrar: (credenciais: Credenciais) => Promise<void>;
   /**
    * Já sabemos que o app está dentro de outra página? Por padrão é detectado aqui; o app pode
    * informar o valor (e os testes também, já que o DOM de teste sempre parece ser a janela do topo).
    */
   embutido?: boolean;
-}
-
-/**
- * O app está aberto **dentro de outra página** (painel de pré-visualização, portal)?
- * Nesse caso alguns navegadores bloqueiam o cookie de sessão, e a saída é abrir em aba própria.
- * Se o acesso a `window.top` for bloqueado, também estamos embutidos.
- */
-export function estaEmbutido(): boolean {
-  try {
-    return window.self !== window.top;
-  } catch {
-    return true;
-  }
 }
 
 /**
@@ -86,7 +83,7 @@ export function AvisoAbaPropria({ url }: { url: string }): React.ReactElement {
 }
 
 /** Boas-vindas + entrada/criação de conta. Métodos: e-mail e senha (decisão confirmada). */
-export function Entrar({ aoEntrar, embutido = estaEmbutido() }: Props): React.ReactElement {
+export function Entrar({ aoEntrar, embutido = Platform.embutido() }: Props): React.ReactElement {
   const [modo, setModo] = useState<"entrar" | "criar">("entrar");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
@@ -99,11 +96,9 @@ export function Entrar({ aoEntrar, embutido = estaEmbutido() }: Props): React.Re
     setErro(null);
     setOcupado(true);
     try {
-      // O servidor aceitar as credenciais não basta: `aoEntrar` confirma que a sessão ficou no
-      // navegador e lança erro (mostrado aqui) quando não ficou.
-      if (modo === "entrar") await api.entrar(email, senha);
-      else await api.registrar(nome, email, senha);
-      await aoEntrar();
+      // O servidor aceitar as credenciais não basta: `aoEntrar` faz o login, confirma que a sessão
+      // ficou (cookie ou, no caso embutido, token da aba) e lança erro — mostrado aqui — quando não ficou.
+      await aoEntrar({ modo, nome, email, senha });
     } catch (falha) {
       setErro(falha instanceof ErroApi ? falha.message : "Não foi possível conectar. Verifique sua rede.");
     } finally {

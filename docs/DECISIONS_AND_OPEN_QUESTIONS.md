@@ -363,6 +363,12 @@ last-write-wins para dinheiro).
    do sistema (Android Keystore / iOS Keychain). Se o aparelho não oferecer armazenamento seguro,
    o app usa o armazenamento comum **e diz isso na tela** ("Mais → Este aparelho") — nunca finge.
    Motivo: a recomendação de mercado é unânime em não guardar token em armazenamento comum.
+   **Exceção decidida em 2026-10-17:** quando o navegador **recusa o cookie** (app aberto dentro de
+   outra página, mesmo com `SameSite=None; Secure; Partitioned`), o app faz uma segunda tentativa pelo
+   caminho do app nativo e guarda os tokens em **`sessionStorage`** — só aquela aba, morre ao fechar,
+   nunca `localStorage`. Sem isso a pré-visualização embutida era inutilizável; a alternativa seria
+   não haver sessão nenhuma. O caminho normal segue cookie `HttpOnly` e o fallback só é acionado
+   depois de a verificação de sessão falhar.
 2. **Dados de viagem em cache:** arquivos internos do app (não há "cartão SD" no caminho). No iOS já são
    cifrados pela proteção de dados do sistema (classe padrão para apps de terceiros). No Android, o
    armazenamento é privado do app; em aparelho com root, um banco local cifrado é a proteção correta —
