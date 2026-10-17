@@ -173,15 +173,37 @@ export function App(): React.ReactElement {
     );
   }
 
+  /**
+   * Depois de o servidor aceitar e-mail e senha, confirma que o **navegador guardou a sessão**.
+   *
+   * Antes daqui esta função descartava o usuário recém-logado, pedia `/auth/sessao` e, se a resposta
+   * fosse `null` (cookie não guardado), chamava `setUsuario(null)` — a tela simplesmente continuava
+   * igual, sem mensagem nenhuma. Foi o "clico em Entrar e nada acontece" de 2026-10-17 (o app estava
+   * dentro do painel de demonstração, que é um iframe: ali o cookie `SameSite=Lax` não volta).
+   * Agora: usa o usuário que já veio, verifica a sessão e, se ela não pegou, explica o motivo.
+   */
+  async function entrar(): Promise<void> {
+    const sessao = await api.sessao().catch((erro) => {
+      if (erro instanceof ErroApi && erro.status === 401) return null;
+      throw erro;
+    });
+    if (!sessao) {
+      throw new ErroApi(
+        401,
+        "sessao_nao_guardada",
+        "O servidor aceitou seu e-mail e senha, mas o navegador não guardou a sessão. " +
+          "Isso acontece quando o app abre dentro de outra página (um painel embutido). " +
+          "Abra o endereço do app em uma aba própria e entre de novo.",
+      );
+    }
+    setUsuario(sessao);
+    void sincronizador?.sincronizarAgora().catch(() => undefined);
+  }
+
   if (!usuario) {
     return (
       <Entrar
-        aoEntrar={() => {
-          void api.sessao().then((sessao) => {
-            setUsuario(sessao);
-            void sincronizador.sincronizarAgora().catch(() => undefined);
-          });
-        }}
+        aoEntrar={entrar}
       />
     );
   }

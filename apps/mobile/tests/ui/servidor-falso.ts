@@ -34,6 +34,14 @@ export interface ServidorFalso {
   viagens: ViagemFalsa[];
   chamadas: { metodo: string; caminho: string }[];
   encerrado: boolean;
+  /**
+   * `false` simula o navegador que **não guarda a sessão** — o caso do app rodando dentro de outra
+   * página (iframe): o cookie `SameSite=Lax` não volta, então `/auth/sessao` responde 401 depois de
+   * um login que deu certo. Foi o "clico em Entrar e nada acontece" de 2026-10-17.
+   */
+  guardaSessao: boolean;
+  /** Sessão já aberta no servidor (o app pergunta em `/auth/sessao` ao abrir). */
+  logado: boolean;
 }
 
 const PARTICIPANTE = { usuario_id: "u1", nome: "Ana", papel: "organizador", estado: "ativo" };
@@ -44,7 +52,14 @@ export function criarServidorFalso(
   /** Convites que **eu** recebi e ainda não aceitei (vêm da lista de viagens). */
   convitesPendentes: Record<string, unknown>[] = [],
 ): ServidorFalso {
-  const estado: ServidorFalso = { viagens, chamadas: [], encerrado: false, fetch: () => Promise.reject(new Error("não pronto")) };
+  const estado: ServidorFalso = {
+    viagens,
+    chamadas: [],
+    encerrado: false,
+    guardaSessao: true,
+    logado: true,
+    fetch: () => Promise.reject(new Error("não pronto")),
+  };
 
   function resumo(viagem: ViagemFalsa) {
     return {
@@ -77,7 +92,22 @@ export function criarServidorFalso(
     const metodo = init?.method ?? "GET";
     estado.chamadas.push({ metodo, caminho: caminho + url.search });
 
-    if (caminho === "/api/auth/sessao") return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } });
+    if (caminho === "/api/auth/sessao") {
+      if (!estado.logado || !estado.guardaSessao) {
+        return json({ erro: "nao_autenticado", mensagem: "Entre para continuar." }, 401);
+      }
+      return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } });
+    }
+    if (caminho === "/api/auth/login" && metodo === "POST") {
+      // O servidor aceita as credenciais; o **navegador** é que pode não guardar o cookie
+      // (`guardaSessao: false`), e é isso que o app precisa detectar em vez de ficar mudo.
+      estado.logado = true;
+      return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } });
+    }
+    if (caminho === "/api/auth/registro" && metodo === "POST") {
+      estado.logado = true;
+      return json({ usuario: { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" } }, 201);
+    }
     if (caminho === "/api/auth/logout") {
       estado.encerrado = true;
       return new Response(null, { status: 204 });

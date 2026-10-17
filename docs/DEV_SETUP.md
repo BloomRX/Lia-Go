@@ -109,6 +109,23 @@ npm run db:down        # para o banco (não apaga dados)
 node tools/dev.mjs testes      # suíte completa + relatório em reports/
 ```
 
+### Login não "pega" quando o app roda dentro de outra página (iframe)
+O cookie de sessão (`lia_sessao`) é **`SameSite=Lax` por padrão** — é a proteção contra CSRF e não muda
+em produção. Quando o app é aberto **embutido** em outro site (painel de pré-visualização, portal),
+o navegador trata a chamada como terceira parte e **não devolve** o cookie: o login é aceito, mas a
+sessão seguinte vem vazia. Para esse caso existe uma opção explícita, só para ferramentas de
+desenvolvimento em HTTPS:
+
+```bash
+# API aceitando o cookie em contexto embutido (exige COOKIE_SEGURO=true — sem HTTPS o navegador
+# descarta o cookie, e a API cai para `lax` em vez de fingir que funcionou)
+COOKIE_SAMESITE=none COOKIE_SEGURO=true npm run dev:api
+```
+
+Se, mesmo assim, a sessão não ficar, o app **não fica mudo**: mostra "o servidor aceitou seu e-mail e
+senha, mas o navegador não guardou a sessão" e pede para abrir o endereço em uma aba própria. O caminho
+normal (aba própria, mesmo site, celular) segue com `Lax`, `HttpOnly` e sem `Secure` fora de produção.
+
 ## 4. Testando no celular (mesma rede Wi-Fi)
 
 1. Rode a opção 3 do `LiaGo.bat` (ou `npm run dev:web`).

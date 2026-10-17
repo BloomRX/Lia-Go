@@ -8,6 +8,18 @@ export interface Config {
   host: string;
   /** Cookies exigem Secure quando o acesso é HTTPS (produção/HTTPS local). */
   cookieSeguro: boolean;
+  /**
+   * `lax` (padrão, recomendado) ou `none`.
+   *
+   * `none` existe por um caso concreto: o app web rodando **dentro de outra página** (o painel de
+   * demonstração mostra o app num iframe). Nesse contexto o navegador trata o pedido como de outro
+   * site e **não envia** cookie `Lax` — o login parecia não fazer nada, porque a sessão sumia na
+   * chamada seguinte. `none` exige `Secure`, então só vale sobre HTTPS.
+   *
+   * O padrão continua `lax`: `none` enfraquece a proteção de CSRF e só deve ser ligado onde o app é
+   * embutido de propósito (`COOKIE_SAMESITE=none` + `COOKIE_SEGURO=true`).
+   */
+  cookieSameSite: "lax" | "none";
   nomeCookieSessao: string;
   sessaoWebHoras: number;
   tokenAcessoMinutos: number;
@@ -32,6 +44,7 @@ export function carregarConfig(env: NodeJS.ProcessEnv = process.env): Config {
     porta: Number(env.PORT ?? 3000),
     host: env.HOST ?? "0.0.0.0",
     cookieSeguro: producao || env.COOKIE_SEGURO === "true",
+    cookieSameSite: env.COOKIE_SAMESITE === "none" && (producao || env.COOKIE_SEGURO === "true") ? "none" : "lax",
     nomeCookieSessao: "lia_sessao",
     sessaoWebHoras: Number(env.SESSAO_WEB_HORAS ?? 24 * 14),
     tokenAcessoMinutos: Number(env.TOKEN_ACESSO_MINUTOS ?? 30),

@@ -204,7 +204,8 @@ export function rotasAuth(app: FastifyInstance, deps: { pool: pg.Pool; config: C
 function opcoesCookie(config: Config, maxAgeSegundos: number) {
   return {
     httpOnly: true,
-    sameSite: "lax" as const,
+    // `none` só é aceito pelo navegador junto de `Secure`; a config garante essa combinação.
+    sameSite: config.cookieSameSite,
     secure: config.cookieSeguro,
     path: "/",
     maxAge: maxAgeSegundos,

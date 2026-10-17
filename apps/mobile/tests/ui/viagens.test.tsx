@@ -264,3 +264,49 @@ test("a barra inferior tem ícone **e** rótulo, e diz qual aba está ativa por 
   assert.equal(itens[0]!.getAttribute("aria-current"), "true", "a aba ativa é anunciada, não só pintada");
   assert.equal(itens[1]!.getAttribute("aria-current"), "false");
 });
+
+// ---------------------------------------------------------------------------
+// Entrar: o "clico em Entrar e nada acontece" (2026-10-17)
+// ---------------------------------------------------------------------------
+
+test("login que o navegador não consegue guardar explica o motivo — nunca fica mudo", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  // Servidor aceita a senha, mas o navegador não guarda a sessão (app dentro de outra página/iframe:
+  // o cookie SameSite=Lax não volta na chamada seguinte). Antes disso a tela simplesmente não mudava.
+  servidor.logado = false;
+  servidor.guardaSessao = false;
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+
+  montar();
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#email")), "a tela de entrada aparecer");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#email")!, "demo@lia.go");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#senha")!, "lia-go-demo-2026");
+  clicar(botaoCom("Entrar", raizDoDocumento.querySelector("form")!));
+
+  await esperarPor(
+    () => textoDaTela().includes("não guardou a sessão"),
+    "a tela explicar que o navegador não guardou a sessão (em vez de não fazer nada)",
+    4000,
+  );
+  const tela = textoDaTela();
+  assert.match(tela, /servidor aceitou seu e-mail e senha/i, "deixa claro que a credencial está certa");
+  assert.match(tela, /aba própria/i, "diz o que fazer para resolver");
+  assert.ok(servidor.chamadas.some((c) => c.caminho === "/api/auth/login"), "o login chegou ao servidor");
+});
+
+test("login normal: entra e mostra as viagens", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  servidor.logado = false;
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+
+  montar();
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#email")), "a tela de entrada aparecer");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#email")!, "demo@lia.go");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#senha")!, "lia-go-demo-2026");
+  clicar(botaoCom("Entrar", raizDoDocumento.querySelector("form")!));
+
+  await esperarPor(() => textoDaTela().includes("Praia antiga"), "a lista de viagens aparecer depois do login", 5000);
+  assert.match(textoDaTela(), /Conectado como Ana/);
+});

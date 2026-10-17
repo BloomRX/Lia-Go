@@ -1,6 +1,8 @@
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
-import { temBanco, prepararAmbiente, type AmbienteTeste, proximoEmail, registrarUsuario } from "./helpers.ts";
+import { temBanco, prepararAmbiente, configDeTeste, type AmbienteTeste, proximoEmail, registrarUsuario } from "./helpers.ts";
+import { carregarConfig } from "../src/config.ts";
+import { construirServidor } from "../src/server.ts";
 
 const disponivel = temBanco();
 let ambiente: AmbienteTeste;
@@ -168,4 +170,35 @@ test("saúde da API responde e exige banco de verdade", { skip: !disponivel && "
   const resposta = await ambiente.app.inject({ method: "GET", url: "/saude" });
   assert.equal(resposta.statusCode, 200);
   assert.equal(resposta.json().ok, true);
+});
+
+
+test("cookie de sessão: Lax por padrão, None+Secure só quando configurado (app embutido)", { skip: !disponivel && "sem banco de teste" }, async () => {
+  const padrao = configDeTeste();
+  assert.equal(padrao.cookieSameSite, "lax", "o padrão não enfraquece CSRF");
+
+  // `COOKIE_SAMESITE=none` sem HTTPS (COOKIE_SEGURO) é recusado: o navegador descartaria o cookie.
+  const semSeguro = carregarConfig({ DATABASE_URL: "postgres://x", COOKIE_SAMESITE: "none" });
+  assert.equal(semSeguro.cookieSameSite, "lax");
+  assert.equal(semSeguro.cookieSeguro, false);
+
+  const embutido = carregarConfig({ DATABASE_URL: "postgres://x", COOKIE_SAMESITE: "none", COOKIE_SEGURO: "true" });
+  assert.equal(embutido.cookieSameSite, "none");
+  assert.equal(embutido.cookieSeguro, true);
+
+  // E o servidor montado com essa configuração realmente manda o cookie que o navegador precisa.
+  const app = await construirServidor({
+    pool: ambiente.pool,
+    config: { ...configDeTeste(), cookieSameSite: "none", cookieSeguro: true },
+  });
+  await app.ready();
+  try {
+    const { resposta } = await registrarUsuario(app);
+    const cookie = resposta.cookies.find((item) => item.name === "lia_sessao");
+    assert.equal(cookie?.sameSite, "None");
+    assert.equal(cookie?.secure, true);
+    assert.equal(cookie?.httpOnly, true, "continua fora do alcance de JavaScript");
+  } finally {
+    await app.close();
+  }
 });

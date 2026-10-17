@@ -7,7 +7,12 @@ const DICA_CONTA_NOVA = "new-password";
 const DICA_CONTA_EXISTENTE = "current-password";
 
 interface Props {
-  aoEntrar: (nome: string) => void;
+  /**
+   * Entra de fato (confirma a sessão). Devolve uma promessa porque o app precisa **verificar** que o
+   * navegador guardou a sessão antes de sair desta tela — e, se não guardou, dizer o motivo em vez de
+   * deixar a tela parada (defeito relatado em 2026-10-17: "clico em Entrar e nada acontece").
+   */
+  aoEntrar: () => Promise<void>;
 }
 
 /** Boas-vindas + entrada/criação de conta. Métodos: e-mail e senha (decisão confirmada). */
@@ -24,8 +29,11 @@ export function Entrar({ aoEntrar }: Props): React.ReactElement {
     setErro(null);
     setOcupado(true);
     try {
-      const usuario = modo === "entrar" ? await api.entrar(email, senha) : await api.registrar(nome, email, senha);
-      aoEntrar(usuario.nome);
+      // O servidor aceitar as credenciais não basta: `aoEntrar` confirma que a sessão ficou no
+      // navegador e lança erro (mostrado aqui) quando não ficou.
+      if (modo === "entrar") await api.entrar(email, senha);
+      else await api.registrar(nome, email, senha);
+      await aoEntrar();
     } catch (falha) {
       setErro(falha instanceof ErroApi ? falha.message : "Não foi possível conectar. Verifique sua rede.");
     } finally {

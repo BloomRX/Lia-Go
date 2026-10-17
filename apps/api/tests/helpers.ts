@@ -29,6 +29,7 @@ export function configDeTeste(): Config {
     porta: 0,
     host: "127.0.0.1",
     cookieSeguro: false,
+    cookieSameSite: "lax",
     nomeCookieSessao: "lia_sessao",
     sessaoWebHoras: 24 * 14,
     tokenAcessoMinutos: 30,
