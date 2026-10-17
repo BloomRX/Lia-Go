@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Marca } from "../componentes/Marca.tsx";
 import { api, ErroApi } from "../services/api.ts";
 
@@ -31,6 +31,58 @@ export function estaEmbutido(): boolean {
   } catch {
     return true;
   }
+}
+
+/**
+ * Aviso de página embutida. O link "abrir em aba própria" pode ser barrado quando o painel abre o app
+ * num iframe restrito (sem permissão de abrir janela) — então o **endereço** também aparece, legível e
+ * copiável, que é a saída que funciona em qualquer navegador.
+ */
+export function AvisoAbaPropria({ url }: { url: string }): React.ReactElement {
+  const campo = useRef<HTMLInputElement>(null);
+  const [copiado, setCopiado] = useState<"nao" | "sim" | "manual">("nao");
+
+  async function copiar(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiado("sim");
+    } catch {
+      // Sem permissão de área de transferência (comum dentro de iframe): deixa o endereço
+      // selecionado para o usuário copiar no teclado, em vez de não fazer nada.
+      campo.current?.focus();
+      campo.current?.select();
+      setCopiado("manual");
+    }
+  }
+
+  return (
+    <div className="aviso atencao">
+      <p>
+        Este app está aberto dentro de outra página, e alguns navegadores bloqueiam o cookie de sessão nesse
+        caso. Abra o endereço abaixo em uma aba do navegador e entre de novo:
+      </p>
+      <div className="endereco-app">
+        <input
+          ref={campo}
+          readOnly
+          value={url}
+          aria-label="Endereço do app"
+          onFocus={(evento) => evento.currentTarget.select()}
+        />
+        <button type="button" className="compacto" onClick={() => void copiar()}>
+          {copiado === "sim" ? "Copiado" : "Copiar"}
+        </button>
+      </div>
+      {copiado === "manual" ? (
+        <p role="status" className="dica-copia">
+          O navegador não deixou copiar sozinho: o endereço já está selecionado — use Ctrl+C.
+        </p>
+      ) : null}
+      <a className="aba-propria" href={url} target="_blank" rel="noreferrer">
+        Abrir o app em uma aba própria
+      </a>
+    </div>
+  );
 }
 
 /** Boas-vindas + entrada/criação de conta. Métodos: e-mail e senha (decisão confirmada). */
@@ -99,17 +151,7 @@ export function Entrar({ aoEntrar, embutido = estaEmbutido() }: Props): React.Re
         </div>
       </form>
 
-      {embutido ? (
-        <div className="aviso atencao">
-          <p>
-            Este app está aberto dentro de outra página. Alguns navegadores bloqueiam o cookie de sessão nesse
-            caso — se o login não entrar, use o link abaixo.
-          </p>
-          <a className="aba-propria" href={window.location.href} target="_blank" rel="noreferrer">
-            Abrir o app em uma aba própria
-          </a>
-        </div>
-      ) : null}
+      {embutido ? <AvisoAbaPropria url={window.location.href} /> : null}
 
       <div className="aviso info">
         Sua senha é protegida com scrypt e a sessão fica em cookie seguro na web. Não guardamos dados de cartão e não

@@ -207,6 +207,10 @@ function opcoesCookie(config: Config, maxAgeSegundos: number) {
     // `none` só é aceito pelo navegador junto de `Secure`; a config garante essa combinação.
     sameSite: config.cookieSameSite,
     secure: config.cookieSeguro,
+    // `Partitioned` (CHIPS) é o que o Chrome exige hoje para aceitar cookie de terceira parte:
+    // sem ele, mesmo `SameSite=None; Secure` é descartado dentro de um iframe. Cada site de topo
+    // recebe uma cópia isolada do cookie — não vira cookie compartilhado entre sites.
+    partitioned: config.cookieSameSite === "none",
     path: "/",
     maxAge: maxAgeSegundos,
   };

@@ -122,9 +122,16 @@ desenvolvimento em HTTPS:
 COOKIE_SAMESITE=none COOKIE_SEGURO=true npm run dev:api
 ```
 
+Com `SameSite=None` o cookie também vai marcado como **`Partitioned`** (CHIPS): sem isso o Chrome
+descarta cookie de terceira parte mesmo com `None; Secure`, e cada site de topo recebe uma cópia
+isolada (não é cookie compartilhado entre sites).
+
 Se, mesmo assim, a sessão não ficar, o app **não fica mudo**: mostra "o servidor aceitou seu e-mail e
-senha, mas o navegador não guardou a sessão" e pede para abrir o endereço em uma aba própria. O caminho
-normal (aba própria, mesmo site, celular) segue com `Lax`, `HttpOnly` e sem `Secure` fora de produção.
+senha, mas o navegador não guardou a sessão" e exibe o **endereço do app** para abrir em outra aba —
+o link direto pode ser barrado quando o painel abre o app num iframe restrito, então o endereço fica
+visível e copiável (com seleção automática quando o navegador nega a área de transferência).
+O caminho normal (aba própria, mesmo site, celular) segue com `Lax`, `HttpOnly` e sem `Secure` fora de
+produção.
 
 ## 4. Testando no celular (mesma rede Wi-Fi)
 

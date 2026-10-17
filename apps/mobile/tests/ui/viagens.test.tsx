@@ -324,6 +324,23 @@ test("app dentro de outra página oferece o link para abrir em aba própria", as
   assert.equal(link.target, "_blank");
   assert.equal(link.getAttribute("rel"), "noreferrer");
   assert.match(textoDaTela(), /bloqueiam o cookie de sessão/i, "explica por que pode falhar");
+
+  // O link pode ser barrado pelo iframe do painel: o endereço também precisa estar na tela,
+  // legível e copiável, porque é a saída que funciona em qualquer navegador.
+  const campo = raizDoDocumento.querySelector<HTMLInputElement>(".endereco-app input");
+  assert.ok(campo, "o endereço do app aparece para copiar");
+  assert.equal(campo.readOnly, true);
+  assert.match(campo.value, /^https?:\/\//, "é o endereço completo, não um texto qualquer");
+  assert.equal(link.href, campo.value, "o link e o endereço apontam para o mesmo lugar");
+
+  // Sem área de transferência disponível (caso do iframe), o app seleciona o endereço e avisa.
+  clicar(botaoCom("Copiar", raizDoDocumento));
+  await esperarPor(
+    () => textoDaTela().includes("use Ctrl+C"),
+    "avisar para copiar manualmente quando o navegador não deixa copiar",
+  );
+  assert.equal(campo.selectionStart, 0, "o endereço fica selecionado para o usuário copiar");
+  assert.equal(campo.selectionEnd, campo.value.length);
 });
 
 test("fora de outra página, o aviso de aba própria não aparece", async () => {

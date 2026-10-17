@@ -198,6 +198,10 @@ test("cookie de sessão: Lax por padrão, None+Secure só quando configurado (ap
     assert.equal(cookie?.sameSite, "None");
     assert.equal(cookie?.secure, true);
     assert.equal(cookie?.httpOnly, true, "continua fora do alcance de JavaScript");
+    // Chrome descarta cookie de terceira parte sem `Partitioned` (CHIPS), mesmo com None+Secure:
+    // era mais um motivo para o login do painel embutido não "pegar".
+    assert.match(String(resposta.headers["set-cookie"]), /Partitioned/, "cookie embutido precisa de CHIPS");
+    assert.equal(cookie?.partitions, undefined, "o parser não vê Partitoned; o cabeçalho acima confirma");
   } finally {
     await app.close();
   }

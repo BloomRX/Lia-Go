@@ -267,6 +267,15 @@ a.aba-propria {
 }
 a.aba-propria:hover { border-color: var(--magenta); }
 
+.endereco-app { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+.endereco-app input {
+  flex: 1; min-width: 0; font: inherit; font-size: 0.85rem;
+  background: #180f26; color: var(--texto); border: 1px solid var(--borda);
+  border-radius: 12px; padding: 10px 12px; min-height: 44px;
+}
+.endereco-app button { flex: none; min-height: 44px; }
+.dica-copia { margin: 6px 0 0; font-size: 0.85rem; }
+
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:focus-visible {
   outline: 3px solid var(--magenta);
   outline-offset: 2px;
