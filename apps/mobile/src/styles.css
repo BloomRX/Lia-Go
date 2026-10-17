@@ -260,7 +260,14 @@ button.sutil.pequeno { font-size: 0.78rem; }
 .suave.pequeno { font-size: 0.8rem; }
 
 /* Acessibilidade (§4): foco sempre visível e alvos de toque confortáveis. */
-button:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:focus-visible {
+a.aba-propria {
+  display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px;
+  padding: 10px 14px; border-radius: 14px; border: 1px solid var(--borda);
+  background: #2a1843; color: var(--texto); font-weight: 600; text-decoration: none;
+}
+a.aba-propria:hover { border-color: var(--magenta); }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [role="tab"]:focus-visible {
   outline: 3px solid var(--magenta);
   outline-offset: 2px;
 }

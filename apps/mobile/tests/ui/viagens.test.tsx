@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "../../src/App.tsx";
+import { Entrar } from "../../src/telas/Entrar.tsx";
 import { CHAVE_CARGA, criarArmazenamentoIndexedDB } from "../../src/offline/armazenamento.ts";
 
 const ANTIGA = {
@@ -35,7 +36,7 @@ async function aparelhoComViagemAntiga(): Promise<void> {
 
 let raizMontada: ReturnType<typeof createRoot> | null = null;
 
-function montar(): void {
+function montar(conteudo: React.ReactElement = createElement(App)): void {
   // Cada teste monta o app do zero: desmonta o anterior e usa um ponto novo, para a tela de um
   // teste não vazar para o outro (o texto lido é o que está de fato na tela).
   raizMontada?.unmount();
@@ -44,7 +45,7 @@ function montar(): void {
   conteiner.id = "raiz";
   raizDoDocumento.body.append(conteiner);
   raizMontada = createRoot(conteiner);
-  raizMontada.render(createElement(App));
+  raizMontada.render(conteudo);
 }
 
 /**
@@ -309,4 +310,28 @@ test("login normal: entra e mostra as viagens", async () => {
 
   await esperarPor(() => textoDaTela().includes("Praia antiga"), "a lista de viagens aparecer depois do login", 5000);
   assert.match(textoDaTela(), /Conectado como Ana/);
+});
+
+test("app dentro de outra página oferece o link para abrir em aba própria", async () => {
+  await limparAparelho();
+  // O DOM de teste sempre parece ser a janela do topo; a tela recebe o aviso por prop, do mesmo
+  // jeito que o app informa quando detecta o painel embutido.
+  montar(createElement(Entrar, { aoEntrar: async () => undefined, embutido: true }));
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#email")), "a tela de entrada aparecer");
+  const link = raizDoDocumento.querySelector<HTMLAnchorElement>("a.aba-propria");
+  assert.ok(link, "existe um caminho de saída quando o login não pega dentro de outra página");
+  assert.match(link.textContent ?? "", /aba própria/i);
+  assert.equal(link.target, "_blank");
+  assert.equal(link.getAttribute("rel"), "noreferrer");
+  assert.match(textoDaTela(), /bloqueiam o cookie de sessão/i, "explica por que pode falhar");
+});
+
+test("fora de outra página, o aviso de aba própria não aparece", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([ANTIGA]);
+  servidor.logado = false;
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+  montar();
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#email")), "a tela de entrada aparecer");
+  assert.equal(raizDoDocumento.querySelector("a.aba-propria"), null);
 });

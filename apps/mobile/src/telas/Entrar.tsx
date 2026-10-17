@@ -13,10 +13,28 @@ interface Props {
    * deixar a tela parada (defeito relatado em 2026-10-17: "clico em Entrar e nada acontece").
    */
   aoEntrar: () => Promise<void>;
+  /**
+   * Já sabemos que o app está dentro de outra página? Por padrão é detectado aqui; o app pode
+   * informar o valor (e os testes também, já que o DOM de teste sempre parece ser a janela do topo).
+   */
+  embutido?: boolean;
+}
+
+/**
+ * O app está aberto **dentro de outra página** (painel de pré-visualização, portal)?
+ * Nesse caso alguns navegadores bloqueiam o cookie de sessão, e a saída é abrir em aba própria.
+ * Se o acesso a `window.top` for bloqueado, também estamos embutidos.
+ */
+export function estaEmbutido(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
 }
 
 /** Boas-vindas + entrada/criação de conta. Métodos: e-mail e senha (decisão confirmada). */
-export function Entrar({ aoEntrar }: Props): React.ReactElement {
+export function Entrar({ aoEntrar, embutido = estaEmbutido() }: Props): React.ReactElement {
   const [modo, setModo] = useState<"entrar" | "criar">("entrar");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
@@ -80,6 +98,18 @@ export function Entrar({ aoEntrar }: Props): React.ReactElement {
           </button>
         </div>
       </form>
+
+      {embutido ? (
+        <div className="aviso atencao">
+          <p>
+            Este app está aberto dentro de outra página. Alguns navegadores bloqueiam o cookie de sessão nesse
+            caso — se o login não entrar, use o link abaixo.
+          </p>
+          <a className="aba-propria" href={window.location.href} target="_blank" rel="noreferrer">
+            Abrir o app em uma aba própria
+          </a>
+        </div>
+      ) : null}
 
       <div className="aviso info">
         Sua senha é protegida com scrypt e a sessão fica em cookie seguro na web. Não guardamos dados de cartão e não
