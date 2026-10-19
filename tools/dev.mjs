@@ -574,11 +574,11 @@ function gravarRelatorio(resultadoTestes) {
 
   gravarSaidaCompleta(resultadoTestes, falhas);
 
-  // Mantém os 20 relatórios mais recentes: histórico suficiente sem acumular arquivos no Git.
+  // Mantém os 3 relatórios mais recentes: histórico suficiente sem acumular arquivos no Git.
   const todos = readdirSync(DIR_RELATORIOS)
     .filter((nome) => /^relatorio-.*\.md$/.test(nome))
     .sort();
-  for (const antigo of todos.slice(0, -20)) unlinkSync(path.join(DIR_RELATORIOS, antigo));
+  for (const antigo of todos.slice(0, -3)) unlinkSync(path.join(DIR_RELATORIOS, antigo));
 
   console.log(`Relatório gravado em ${path.relative(RAIZ, caminho)}`);
   return caminho;

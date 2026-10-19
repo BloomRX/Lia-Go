@@ -86,36 +86,6 @@ Profissional, moderna e confiável; base escura com roxo/magenta, efeitos lumino
 
 Referências de conceito fornecidas no planejamento devem ser tratadas como direção visual, não como especificação pixel-perfect. A identidade deve permanecer consistente entre mobile e web, com o celular como prioridade.
 
-## Próxima rodada de implementação — instruções ao agent
+## Regras de execução e ordem de entrega
+As instruções de execução para agentes, validação por fatia e ordem de entrega (`Roteiro → detalhes da atividade → identidade visual → responsividade/acessibilidade → refinamento financeiro`) estão consolidadas em [`UI_V1_DECISIONS.md`](UI_V1_DECISIONS.md) §14–§16.
 
-A partir deste ponto, o planejamento visual **não deve bloquear o desenvolvimento por novas decisões cosméticas menores**. O agent deve usar os conceitos, `UI_VISUAL_GUIDELINES.md` e `UI_V1_DECISIONS.md` como referência suficiente para entregar uma primeira versão visual navegável.
-
-### Escopo prioritário
-
-1. **Roteiro completo:** timeline vertical, resumo diário adaptativo, cartões equilibrados, estados híbridos, custos contextuais, atividades flexíveis, deslocamentos adaptativos, concluídas recolhíveis e conflitos com explicação/ação.
-2. **Detalhes da atividade:** tela própria com horário/duração, local, deslocamento, custo/natureza do valor, reserva/evidência, acessibilidade/observações, documentos/links, histórico e ações autorizadas.
-3. **Identidade visual:** aplicar os assets oficiais em `assets/references/`; não criar identidade paralela; manter glow moderado e legibilidade como prioridade.
-4. **Responsividade e acessibilidade:** mobile-first, Android como prioridade, tablet/web reaproveitando componentes, safe areas, teclado, áreas de toque, foco, fonte ampliada e redução de movimento.
-5. **Regras já estabilizadas:** preservar permissões, confirmações financeiras, offline/outbox, conflitos de sincronização e histórico. A UI não pode duplicar nem enfraquecer essas regras.
-
-### Regras de execução
-
-- Não criar telas, abstrações ou efeitos apenas por estética.
-- Reutilizar componentes existentes sempre que possível.
-- Detalhes cosméticos não definidos devem ser resolvidos pragmaticamente pela alternativa mais simples, acessível e consistente com as diretrizes.
-- Não inventar dados, estados ou confirmações para preencher conceitos.
-- Uma tela só é considerada pronta quando fluxo, permissões, estados de erro/offline e ações continuam coerentes.
-
-### Validação de cada fatia
-
-- Rodar a suíte de testes existente e os testes de interface aplicáveis.
-- Corrigir regressões introduzidas pela implementação.
-- Se um teste precisar mudar por alteração legítima de UI/comportamento, registrar o motivo separadamente.
-- Verificar ao menos uma largura de celular estreita e uma largura maior antes de concluir a fatia.
-- Reportar objetivamente: implementado, pendente, testes/resultados e qualquer nova decisão que altere arquitetura ou regra de negócio.
-
-### Ordem de entrega
-
-**Roteiro → detalhes da atividade → identidade visual → responsividade/acessibilidade → refinamento financeiro.**
-
-Depois da primeira versão navegável, fazer auditoria visual/funcional contra os conceitos e estes documentos antes de ampliar o escopo.

@@ -59,155 +59,62 @@ e fatia aprovada. O que já roda de verdade está descrito em §12.1.
 o WebView exige atenção a *mixed content*. Em desenvolvimento a solução é origem `http` no Capacitor;
 **dados reais exigem HTTPS** (ver §10).
 
-## 4. Arquitetura proposta
+## 4. Arquitetura implementada
 
 Monorepo com **npm workspaces**, uma única linguagem (TypeScript) e regras de domínio compartilhadas:
 
 ```
 Lia-Go/
 ├─ apps/
-│  ├─ api/          # servidor: HTTP + Postgres + autenticação + autorização + sync
-│  └─ mobile/       # React + TS + Vite + Capacitor (web e app no MESMO código)
+│  ├─ api/          # servidor: Fastify 5 + PostgreSQL (pg + SQL versionado) + auth + sync
+│  └─ mobile/       # React 19 + TS + Vite 8 + Capacitor 8 (web e app no MESMO código)
 ├─ packages/
-│  ├─ domain/       # regras puras: dinheiro, rateio, estados, validações — SEM I/O e SEM UI
-│  └─ contracts/    # tipos/schemas (zod) de entrada e saída da API
-├─ tools/           # DevKit existente (git seguro + validação)
+│  ├─ domain/       # regras puras: dinheiro, rateio, estados, roteiro, orçamento, fechamento — SEM I/O e SEM UI
+│  └─ sync/         # motor offline local-first: fila outbox, conflito, carga e idempotência — SEM HTTP
+├─ tools/           # automação de desenvolvimento, testes e DevKit
 ├─ docs/            # fonte de verdade
-└─ LiaGo.bat        # automação de desenvolvimento (a criar junto da 1ª fatia)
+└─ LiaGo.bat        # automação de um clique no Windows
 ```
 
 ### Regra de ouro do domínio compartilhado
 
 `packages/domain` é usado pelos **dois lados**, mas **o servidor é a única autoridade**:
-
-- no servidor: valida, autoriza e grava;
+- no servidor: valida, autoriza e grava em PostgreSQL;
 - no app: calcula prévia/otimista para a interface e para o modo offline;
 - o resultado do app **nunca** é aceito como verdade — o servidor recalcula e pode rejeitar.
 
-Isso preserva as regras já confirmadas: IA não calcula saldo, permissão é validada no servidor,
-e offline não confirma saldo oficial.
-
-### Backend proposto
-
-| Camada | Escolha proposta | Motivo |
+| Camada | Escolha implementada | Motivo |
 |---|---|---|
-| HTTP | **Fastify 5** | leve, tipado, validação por schema, testes com `inject()` sem abrir porta |
-| Validação | **zod 4** (compartilhado em `contracts`) | mesma validação no app e no servidor, sem duplicar regra |
-| Banco | **PostgreSQL** (driver `pg`) | transações e concorrência reais para dinheiro; **não** SQLite central |
-| Acesso a dados | **Drizzle ORM** + migrations SQL versionadas | SQL explícito e auditável, sem engine binária surpresa; Prisma está em RC |
-| Senhas | `node:crypto` **scrypt** (stdlib) | sem dependência nativa; parâmetros versionados no banco |
-| Testes | `node --test` (domínio/API) + Vitest (UI) | domínio testável sem build |
+| HTTP | **Fastify 5** | leve, tipado, testes com `inject()` sem abrir porta |
+| Banco central | **PostgreSQL** (`pg` + migrações SQL `0001`–`0008`) | transações reais para dinheiro; SQL explícito e auditável sem ORM |
+| Senhas e sessão | `node:crypto` **scrypt** + cookie `HttpOnly` na web / tokens no app | sem dependência nativa; fallback em `sessionStorage`/headers quando embutido em iframe |
+| Testes | `node --test` (domínio, sync, API, app e UI em jsdom) | ver `memory-bank/padroes.md` |
 
-*Alternativa rejeitada por ora:* NestJS + Prisma — mais estrutura pronta, porém mais peso, mais abstração e
-dependência de RC; nada impede migrar depois, pois o domínio é independente.
-
-### Banco central (regra explícita atendida)
-
-- Banco **central compartilhado = PostgreSQL no servidor**, único lugar onde saldos oficiais existem.
-- No dispositivo existe apenas **cache offline** (SQLite nativo / IndexedDB) que: nunca é fonte oficial,
-  guarda operações pendentes em fila e é revalidado ao sincronizar.
-- SQLite **não** substitui o banco central em nenhum cenário multiusuário.
-
-## 5. API HTTP proposta (esboço)
-
-```
-POST   /auth/register            POST /auth/login        POST /auth/logout
-GET    /auth/session             POST /auth/revoke-all   # encerrar todas as sessões
-
-GET    /trips                    POST /trips             # criar (vira rascunho)
-GET    /trips/:id                PATCH /trips/:id        # com version (concorrência otimista)
-POST   /trips/:id/transition     # Em andamento/Concluída/Pendente/Cancelada (regras + auditoria)
-GET    /trips/:id/members        POST /trips/:id/invites  POST /trips/:id/invites/:iid/cancel
-
-GET    /trips/:id/changes?since=<cursor>                 # pull de mudanças para offline
-POST   /trips/:id/sync                                   # push do outbox (idempotente)
-```
-
-- Toda escrita carrega `Idempotency-Key` (evita duplicação ao sincronizar).
-- Toda alteração devolve `version` novo; `version` divergente = conflito **preservado para revisão**
-  (nunca resolvido pelo relógio do dispositivo).
-- Erros padronizados: `400` entrada inválida · `401` sem sessão · `403` sem permissão · `404` inexistente
-  ou sem acesso · `409` conflito de versão/idempotência · `429` limite de tentativas.
-- Respostas nunca incluem dados de outras viagens nem detalhes internos em mensagem de erro.
-
-## 6. Autenticação (decisão: e-mail + senha)
-
-- Senha com **scrypt** + salt por usuário; parâmetros e versão do algoritmo gravados na linha do usuário
-  (permite endurecer depois sem invalidar contas).
-- Sessão em **cookie HttpOnly** (`Secure` em HTTPS, `SameSite=Lax` na web); na web não há token em JS.
-- Registro/login com **limite de tentativas** e mensagens genéricas (não revelar se o e-mail existe).
-- Recuperação de senha e verificação de e-mail **não** entram nesta etapa (sem provedor de e-mail).
-- No app nativo, a mesma mecânica depende de `CapacitorCookies` (ponte nativa) **ou** de token de acesso
-  curto + refresh em armazenamento seguro. É uma das decisões pendentes de §12.
-
-## 7. Offline e sincronização (estratégia)
-
-- IDs gerados no cliente em **UUIDv7** (ordenação aproximada, sem depender do relógio para conflito).
-- Fila local (**outbox**) com estado por operação: `pendente → enviada → aplicada | rejeitada | conflito`.
-- Sincronização = *pull* incremental por cursor + *push* em lote do outbox.
-- Regras atendidas: sem descarte silencioso, revalidação de permissões no servidor durante o sync,
-  última sincronização visível, conflito vira item **“a revisar”** na interface.
-- Sensíveis (documentos, localização) **não** entram no cache offline em claro.
-
-## 8. Dinheiro (não negociável)
+## 5. Dinheiro e segurança (não negociáveis)
 
 - Valores em **centavos inteiros** (`bigint`/`BIGINT` no Postgres); **nunca** float na verdade oficial.
-- Rateio: métodos igualitário, participantes específicos, valores fixos e percentual; distribuição de
-  centavos pelo método do resto, garantindo **soma exata** igual ao total.
-- Moeda estrangeira preserva valor original, moeda, taxa, referência temporal e valor convertido.
-- Tudo coberto por testes de limite (0, 1 centavo, resto grande, percentuais que não fecham).
+- Rateio pelo método do maior resto garantindo **soma exata** igual ao total; `calcularResumoFinanceiro` rejeita somar despesas de moedas diferentes sem conversão explícita.
+- Mudanças em `packages/domain` que toquem `money`, `expense`, `split`, `balances`, `orcamento` ou `fechamento` exigem revisão humana obrigatória (`ALTO` para o `reviewer`).
+- Autorização em **toda** leitura/escrita no servidor, com testes negativos entre viagens (404 para quem nunca teve vínculo; 403 para quem saiu/foi removido).
+- HTTPS obrigatório antes de qualquer dado real de terceiros; em rede local, apenas dados sintéticos.
 
-## 9. Riscos
+## 6. Riscos e mitigações
 
 | # | Risco | Gravidade | Mitigação |
 |---|---|---|---|
-| 1 | Perda de tempo com stack nativa (Android/iOS) | alta | build nativo só quando houver fatia web funcionando; Android primeiro |
+| 1 | Perda de tempo com stack nativa (Android/iOS) | alta | build nativo no Windows apenas quando a fatia web/testes estão verdes |
 | 2 | iOS exige macOS + US$ 99/ano | alta (custo) | decidir antes de qualquer trabalho de iOS |
-| 3 | Banco central + hospedagem com custo recorrente | alta (custo) | free tier/PC local até haver uso real; decidir antes de expor na internet |
-| 4 | Offline/sync é o módulo mais complexo | alta | implementar depois do núcleo financeiro web; testar conflito e idempotência |
-| 5 | Divergência de comportamento web × app (WebView) | média | uma base de código, revisão de segurança antes de dados reais |
-| 6 | Migração para Postgres paga/limites de free tier | média | migrations versionadas e backup testado desde o início |
-| 7 | Complexidade do monorepo para manutenção | média | workspaces simples, sem Turborepo/Nx nesta fase |
-| 8 | HMR/preview no Arena | baixa | configuração validada nesta análise (403 → 200) |
-| 9 | LGPD/retenção (documentos, localização) | alta | definir política antes de guardar dados reais de terceiros |
-| 10 | Dependência de serviço de IA pago | média | IA entra **depois**, com limite de custo e fallback local |
+| 3 | Banco central + hospedagem com custo recorrente | alta (custo) | decisão aberta em `DECISIONS_AND_OPEN_QUESTIONS.md` (4 opções) |
+| 4 | LGPD/retenção (documentos, localização) | alta | documentos privados por padrão; definir política antes de dados reais |
+| 5 | Dependência de serviço de IA pago | média | V1 sem cliente de IA; 3 regras de provedor registradas |
 
-## 10. Segurança e privacidade (regras que a implementação deve cumprir)
-
-- Autorização em **toda** leitura/escrita, no servidor; testes negativos entre viagens (usuário A nunca vê B).
-- HTTPS obrigatório antes de qualquer dado real de terceiros; em rede local, apenas dados sintéticos.
-- Nenhum segredo no cliente ou no repositório; configuração por variável de ambiente (`.env` fora do Git —
-  o DevKit já bloqueia).
-- Logs sem PII, sem valores financeiros sensíveis e sem tokens; notificação de tela bloqueada sem detalhes.
-- Trilha de auditoria para toda alteração financeira (autor, instante, antes/depois, motivo).
-- Exclusão de conta ≠ exclusão de registros financeiros compartilhados (preservar histórico e pendências).
-
-## 11. Decisões que ainda precisam de confirmação
-
-Bloqueiam a próxima fatia: banco/ambiente de desenvolvimento, transporte de sessão no app nativo,
-armazenamento offline e confirmação da primeira fatia. Registradas em
-`DECISIONS_AND_OPEN_QUESTIONS.md`.
-
-Podem esperar (não bloqueiam a primeira fatia): hospedagem definitiva, provedor de e-mail transacional,
-observabilidade, publicação nas lojas (custos Apple/Google), fonte de câmbio, política de retenção,
-provedor de IA e limites de custo, exportação PDF/planilha.
-
-## 12. Próxima fatia (após aprovação)
-
-1. Monorepo + `devkit.json` + `.gitignore` + configuração de Vite validada.
-2. `packages/domain` com dinheiro, rateio (soma exata) e transições de estado + testes reais.
-3. `apps/api` com autenticação, viagens, papéis/convites, autorização server-side e auditoria.
-4. `apps/mobile` com login, lista/criação de viagem e troca de estado (dados reais da API).
-5. `LiaGo.bat`: instala se faltar, roda testes, grava relatório em `reports/`, faz commit/rebase/push da
-   branch de trabalho e abre PR quando pedido — tudo em um duplo clique.
-
-## 12.1 O que já está implementado (verificado com testes)
+## 7. O que está implementado e verificado com testes
 
 | Área | Estado real | Evidência |
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento, notificações) | ✅ **157 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado (migrações `0001`–`0008`) | ✅ **92 testes** | `npm run test:api` (banco real) |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento, notificações) | ✅ **158 testes** | `npm run test:domain` |
+| API Fastify + PostgreSQL + SQL versionado (migrações `0001`–`0008`) | ✅ **94 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
