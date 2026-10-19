@@ -152,7 +152,8 @@ export function Notificacoes({ usuarioId, sincronizador, viagemIdInicial = null,
   const minhas = comEstado.filter((notificacao) => notificacao.estado === "nova").length;
 
   return (
-    <section className="cartao" aria-labelledby="titulo-notificacoes">
+    <main className="app">
+      <section className="cartao" aria-labelledby="titulo-notificacoes">
       <div className="linha entre">
         <h2 id="titulo-notificacoes">Notificações</h2>
         <button className="sutil" onClick={voltar}>Voltar</button>
@@ -301,7 +302,8 @@ export function Notificacoes({ usuarioId, sincronizador, viagemIdInicial = null,
       )}
 
       <p className="suave pequeno">{alcanceDaCentral(estado)}</p>
-    </section>
+      </section>
+    </main>
   );
 }
 

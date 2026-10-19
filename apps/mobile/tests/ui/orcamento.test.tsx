@@ -148,3 +148,49 @@ test("participante não define o limite do grupo: a tela diz de quem é a ação
   await esperarPor(() => textoDaTela().includes("Só quem organiza define o limite do grupo"), "a explicação aparecer");
   assert.ok(!raizDoDocumento.querySelector("#orcamento-coletivo"), "nem mostramos o campo que o servidor negaria");
 });
+
+test("despesas mostram natureza explícita (no saldo oficial × fora) e só oferecem Confirmar quando autorizado", async () => {
+  await abrirGastos({
+    id: "v1",
+    nome: "Serra",
+    destino: "Campos do Jordão",
+    estado: "planejada",
+    versao: 1,
+    papel: "organizador",
+    atividades: ATIVIDADES,
+    despesas: [
+      {
+        id: "d-minha",
+        descricao: "Táxi da rodoviária",
+        valorCentavos: "4500",
+        moeda: "BRL",
+        data: "2026-11-20",
+        tipo: "compartilhada",
+        estado: "pendente",
+        pagadorId: "u1",
+        autorId: "u1",
+        rateio: { metodo: "igualitario", explicacao: "R$ 22,50 por pessoa", cotas: [] },
+      },
+      {
+        id: "d-oficial",
+        descricao: "Jantar de sexta",
+        valorCentavos: "12000",
+        moeda: "BRL",
+        data: "2026-11-20",
+        tipo: "compartilhada",
+        estado: "confirmada",
+        pagadorId: "u1",
+        autorId: "u1",
+        rateio: { metodo: "igualitario", explicacao: "R$ 60,00 por pessoa", cotas: [] },
+      },
+    ],
+  });
+
+  await esperarPor(() => textoDaTela().includes("Táxi da rodoviária"), "as despesas aparecerem");
+  const tela = textoDaTela();
+  assert.match(tela, /aguardando confirmação \(fora do saldo oficial\)/, "despesa pendente diz que está fora do saldo oficial");
+  assert.match(tela, /no saldo oficial/, "despesa confirmada diz que já conta no saldo oficial");
+  assert.match(tela, /Quem lançou não confirma o próprio lançamento/, "explica em texto na tela quem pode confirmar e por quê");
+  assert.equal(botaoCom("Confirmar"), null, "não mostra botão Confirmar para quem lançou a própria despesa (§8)");
+});
+

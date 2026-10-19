@@ -249,3 +249,35 @@ O que foi aplicado, sem identidade paralela e sem inventar dado:
 
 Nada disso mudou regra de negócio, permissão, dinheiro ou sincronização: a fatia é de apresentação, e
 os testes de interface que existiam continuam valendo sem alteração.
+
+## 19. Registro da fatia "responsividade e acessibilidade" (2026-10-18)
+
+O que foi entregue e validado (inclusive em navegador Chromium real nas larguras 390×844 e 1280×800):
+
+- **Navegação responsiva sem duplicar componente (§9)**: no celular (`< 900px`), `<nav className="barra">`
+  continua fixa no rodapé com alvos de 48 px e `safe-area-inset-bottom`. No tablet/web (`>= 900px`), o
+  mesmo `<nav className="barra">` vira navegação lateral fixa à esquerda e `.app` amplia (`1080px`).
+- **Alvos de toque e teclado (§3, §10)**: campos (`input`, `select`, `textarea`), caixas de marcação
+  (`.caixa-marcacao`, `.filtro-minhas`) e botões compactos têm `min-height: 44px`; foco visível (`3px`
+  magenta) cobre também `textarea` e `summary`; a central de notificações também vive dentro de
+  `<main className="app">`.
+- **Fonte ampliada e tela estreita sem corte (§2, §10)**: `overflow-wrap: anywhere` em títulos,
+  parágrafos e cartões e `flex-wrap: wrap` nas linhas de resumo.
+- **Transparência sobre a sessão na web (§13)**: em "Mais → Este aparelho", quando o navegador recusou o
+  cookie e entrou pelo fallback da aba, a tela informa `"sessão desta aba (sessionStorage)"` em vez de
+  afirmar `"cookie HttpOnly do navegador"`, e o aviso de abrir em aba própria só aparece se a sessão
+  realmente não puder ser guardada.
+
+## 20. Registro da fatia "refinamento das telas financeiras" (2026-10-18)
+
+O que foi entregue e testado (§8 e §13):
+
+- **Natureza explícita em cada despesa e acerto**: toda despesa informa no texto do cartão se está
+  `"no saldo oficial"`, `"aguardando confirmação (fora do saldo oficial)"` ou
+  `"contestada (fora do saldo oficial)"`; todo acerto informa `"Confirmado"` (`no saldo oficial`) ou
+  `"Aguardando confirmação"` (`aguardando quem recebeu (fora do saldo oficial)`).
+- **Ação apenas quando autorizada e explicação em texto no celular**: quem lançou a própria despesa não
+  vê mais um botão `Confirmar` desabilitado dependendo de `title` (invisível no toque); vê a explicação
+  direta no cartão (`"Quem lançou não confirma o próprio lançamento — outra pessoa da viagem precisa confirmar"`).
+
+

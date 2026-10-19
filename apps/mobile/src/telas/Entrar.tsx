@@ -83,13 +83,17 @@ export function AvisoAbaPropria({ url }: { url: string }): React.ReactElement {
 }
 
 /** Boas-vindas + entrada/criação de conta. Métodos: e-mail e senha (decisão confirmada). */
-export function Entrar({ aoEntrar, embutido = Platform.embutido() }: Props): React.ReactElement {
+export function Entrar({ aoEntrar, embutido = false }: Props): React.ReactElement {
   const [modo, setModo] = useState<"entrar" | "criar">("entrar");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  // A saída em aba própria só aparece quando pedida explicitamente (testes/incorporador) ou
+  // se a sessão realmente falhar (nem cookie nem sessionStorage funcionarem). Mostrar antes de
+  // tentar entrar induzia a abrir a URL do painel em aba avulsa, onde o proxy devolve 403/Unavailable.
+  const [mostrarSaidaAba, setMostrarSaidaAba] = useState(embutido);
 
   async function enviar(evento: React.FormEvent): Promise<void> {
     evento.preventDefault();
@@ -100,6 +104,9 @@ export function Entrar({ aoEntrar, embutido = Platform.embutido() }: Props): Rea
       // ficou (cookie ou, no caso embutido, token da aba) e lança erro — mostrado aqui — quando não ficou.
       await aoEntrar({ modo, nome, email, senha });
     } catch (falha) {
+      if (falha instanceof ErroApi && falha.codigo === "sessao_nao_guardada" && Platform.embutido()) {
+        setMostrarSaidaAba(true);
+      }
       setErro(falha instanceof ErroApi ? falha.message : "Não foi possível conectar. Verifique sua rede.");
     } finally {
       setOcupado(false);
@@ -146,7 +153,7 @@ export function Entrar({ aoEntrar, embutido = Platform.embutido() }: Props): Rea
         </div>
       </form>
 
-      {embutido ? <AvisoAbaPropria url={window.location.href} /> : null}
+      {mostrarSaidaAba ? <AvisoAbaPropria url={window.location.href} /> : null}
 
       <div className="aviso info">
         Sua senha é protegida com scrypt e a sessão fica em cookie seguro na web. Não guardamos dados de cartão e não

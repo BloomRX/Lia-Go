@@ -21,6 +21,7 @@ import { Documentos } from "./Documentos.tsx";
 import { Fechamento } from "./Fechamento.tsx";
 import { resumirOrcamentoDoRoteiro } from "@lia-go/domain";
 import { rotuloDeArmazenamento } from "../services/tokens.ts";
+import { temSessaoEmbutida } from "../services/sessao-embutida.ts";
 import {
   atividadesDoDominio,
   checklistDoDominio,
@@ -600,7 +601,12 @@ export function Viagem({
                     <h3>{despesa.descricao}</h3>
                     <p>
                       {formatarBRL(despesa.valorCentavos)} · pago por {nome(despesa.pagadorId)} · {formatarData(despesa.data)} ·{" "}
-                      {despesa.tipo === "pessoal" ? "pessoal" : "compartilhada"}
+                      {despesa.tipo === "pessoal" ? "pessoal" : "compartilhada"} ·{" "}
+                      {despesa.estado === "confirmada"
+                        ? "no saldo oficial"
+                        : despesa.estado === "contestada"
+                          ? "contestada (fora do saldo oficial)"
+                          : "aguardando confirmação (fora do saldo oficial)"}
                     </p>
                     <p><small className="suave">{despesa.rateio.explicacao || `Lançado por ${nome(despesa.autorId)}`}</small></p>
                   </div>
@@ -610,25 +616,25 @@ export function Viagem({
                 {despesa.motivoContestacao ? <div className="aviso atencao">Contestação: {despesa.motivoContestacao}</div> : null}
 
                 {despesa.estado !== "confirmada" ? (
-                  <div className="acoes">
-                    <button
-                      disabled={sou(despesa)}
-                      title={sou(despesa) ? "Quem lançou não confirma o próprio lançamento" : "Confirmar esta despesa"}
-                      onClick={() =>
-                        void enfileirar(
-                          { tipo: "confirmar_despesa", viagemId, despesaId: despesa.id, descricao: `Confirmar: ${despesa.descricao}` },
-                          "Despesa confirmada. Ela passa a contar nos saldos oficiais.",
-                        )
-                      }
-                    >
-                      Confirmar
-                    </button>
-                    {!sou(despesa) ? (
+                  sou(despesa) ? (
+                    <p><small className="suave">Quem lançou não confirma o próprio lançamento — outra pessoa da viagem precisa confirmar.</small></p>
+                  ) : (
+                    <div className="acoes">
+                      <button
+                        onClick={() =>
+                          void enfileirar(
+                            { tipo: "confirmar_despesa", viagemId, despesaId: despesa.id, descricao: `Confirmar: ${despesa.descricao}` },
+                            "Despesa confirmada. Ela passa a contar nos saldos oficiais.",
+                          )
+                        }
+                      >
+                        Confirmar
+                      </button>
                       <button className="sutil" onClick={() => setMotivoContestacao({ id: despesa.id, texto: motivoContestacao?.texto ?? "" })}>
                         Contestar
                       </button>
-                    ) : null}
-                  </div>
+                    </div>
+                  )
                 ) : null}
 
                 {motivoContestacao?.id === despesa.id ? (
@@ -669,9 +675,14 @@ export function Viagem({
                 <div className="linha entre">
                   <div>
                     <h3>{movimento.de_nome} → {movimento.para_nome}</h3>
-                    <p>{formatarBRL(movimento.valor_centavos)} · {formatarData(movimento.criado_em.slice(0, 10))}</p>
+                    <p>
+                      {formatarBRL(movimento.valor_centavos)} · {formatarData(movimento.criado_em.slice(0, 10))} ·{" "}
+                      {movimento.estado === "confirmado" ? "no saldo oficial" : "aguardando quem recebeu (fora do saldo oficial)"}
+                    </p>
                   </div>
-                  <span className="etiqueta">{movimento.estado}</span>
+                  <span className={`etiqueta estado-${movimento.estado === "confirmado" ? "confirmada" : "pendente"}`}>
+                    {movimento.estado === "confirmado" ? "Confirmado" : "Aguardando confirmação"}
+                  </span>
                 </div>
                 {movimento.estado !== "confirmado" ? (
                   <div className="acoes">
@@ -779,7 +790,13 @@ export function Viagem({
             <div className="linha"><span>Alterações na fila</span><span>{estado.resumo.total}</span></div>
             <div className="linha">
               <span>Sua sessão fica em</span>
-              <span>{Platform.ehWeb() ? "cookie HttpOnly do navegador" : rotuloDeArmazenamento()}</span>
+              <span>
+                {Platform.ehWeb()
+                  ? temSessaoEmbutida()
+                    ? "sessão desta aba (sessionStorage)"
+                    : "cookie HttpOnly do navegador"
+                  : rotuloDeArmazenamento()}
+              </span>
             </div>
             <p><small className="suave">
               Guardamos apenas o que você já pode ver nesta viagem, para o app funcionar sem sinal.

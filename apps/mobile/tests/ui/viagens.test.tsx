@@ -380,6 +380,15 @@ test("navegador que recusa o cookie: entra pela sessão da aba e mostra as viage
   assert.equal((globalThis as { localStorage?: Storage }).localStorage?.getItem("lia.sessao.embutida"), null,
     "nunca em localStorage (não sobrevive à aba nem vaza para outras)");
 
+  // Na aba Mais → Este aparelho, a tela diz a verdade sobre onde a sessão ficou (§13).
+  clicar(botaoCom("Praia antiga", raizDoDocumento));
+  await esperarPor(() => Boolean(botaoCom("Mais", raizDoDocumento)), "a viagem abrir");
+  clicar(botaoCom("Mais", raizDoDocumento));
+  await esperarPor(
+    () => textoDaTela().includes("sessão desta aba (sessionStorage)"),
+    "Este aparelho informar que a sessão ficou na aba (sessionStorage)",
+  );
+
   // Sair também apaga a sessão da aba: ninguém fica logado depois de sair.
   clicar(botaoCom("Sair", raizDoDocumento));
   await esperarPor(
