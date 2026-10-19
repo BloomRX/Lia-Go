@@ -55,6 +55,7 @@ export function Orcamento({
   permissoes,
 }: Props): React.ReactElement {
   const [doServidor, setDoServidor] = useState<OrcamentoApi | null>(null);
+  const [limiteColetivoLocal, setLimiteColetivoLocal] = useState<string | null>(null);
   /** Por que o número do servidor não chegou: a tela explica o caso certo, sem culpar a rede à toa. */
   const [motivoSemServidor, setMotivoSemServidor] = useState<"sem_rede" | "sem_resposta" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -71,11 +72,17 @@ export function Orcamento({
         const resposta = await api.orcamento(viagemId);
         if (!vivo) return;
         setDoServidor(resposta);
+        setLimiteColetivoLocal(resposta.limiteColetivo?.centavos ?? null);
         setMotivoSemServidor(null);
+        await sincronizador.guardarOrcamento(viagemId, resposta);
       } catch (falha) {
-        // Sem rede o orçamento continua útil com o previsto do aparelho; o erro só aparece se a
-        // pessoa tentar mexer no limite.
+        // Sem rede o orçamento continua útil com o previsto e o último limite conhecido no aparelho.
         if (!vivo) return;
+        const salvo = await sincronizador.lerOrcamento(viagemId);
+        if (!vivo) return;
+        if (salvo?.orcamento.limiteColetivo?.centavos) {
+          setLimiteColetivoLocal(salvo.orcamento.limiteColetivo.centavos);
+        }
         setMotivoSemServidor(falha instanceof ErroApi ? "sem_resposta" : "sem_rede");
       }
     });
@@ -103,7 +110,7 @@ export function Orcamento({
   }, [atividades, reservas]);
 
   const situacao: SituacaoDoOrcamento = useMemo(() => {
-    if (doServidor) {
+    if (doServidor && limiteColetivoLocal === (doServidor.limiteColetivo?.centavos ?? null)) {
       return {
         temLimite: doServidor.situacao.temLimite,
         limiteCentavos: doServidor.situacao.limiteCentavos === null ? null : BigInt(doServidor.situacao.limiteCentavos),
@@ -121,16 +128,18 @@ export function Orcamento({
         resumo: doServidor.situacao.resumo,
       };
     }
-    // Offline: sem limite conhecido e sem gasto oficial do momento — o que dá para calcular aqui é
-    // o previsto. O texto da tela explica isso.
+    // Sem rede (ou com limite ajustado neste aparelho enquanto espera conexão): recalcula a situação
+    // pelo domínio com o previsto local e o último gasto conhecido.
+    const gasto = doServidor ? BigInt(doServidor.situacao.gastoConfirmadoCentavos) : gastoConfirmadoCentavos === null ? 0n : BigInt(gastoConfirmadoCentavos);
+    const aguardando = doServidor ? BigInt(doServidor.situacao.aguardandoCentavos) : aguardandoCentavos === null ? 0n : BigInt(aguardandoCentavos);
     return situacaoDoOrcamento({
-      limiteCentavos: null,
+      limiteCentavos: limiteColetivoLocal === null ? null : BigInt(limiteColetivoLocal),
       previstoCentavos: previstoLocal.previstoCentavos,
-      gastoConfirmadoCentavos: gastoConfirmadoCentavos === null ? 0n : BigInt(gastoConfirmadoCentavos),
-      aguardandoCentavos: aguardandoCentavos === null ? 0n : BigInt(aguardandoCentavos),
+      gastoConfirmadoCentavos: gasto,
+      aguardandoCentavos: aguardando,
       custosAVerificar: previstoLocal.custosAVerificar,
     });
-  }, [doServidor, previstoLocal, gastoConfirmadoCentavos, aguardandoCentavos]);
+  }, [doServidor, limiteColetivoLocal, previstoLocal, gastoConfirmadoCentavos, aguardandoCentavos]);
 
   const comServidor = doServidor !== null;
   // Custo sem valor informado: vem do servidor quando há rede; senão do que o aparelho calculou.
@@ -153,20 +162,50 @@ export function Orcamento({
     }
     setEnviando(true);
     try {
+      let textoAviso: string;
       if (escopo === "coletivo") {
         const resposta = await api.definirLimiteColetivo(viagemId, centavos);
-        setAviso(`Limite da viagem: ${formatarBRL(resposta.limite.centavos)}. Vale como planejamento do grupo.`);
+        textoAviso = `Limite da viagem: ${formatarBRL(resposta.limite.centavos)}. Vale como planejamento do grupo.`;
+        setLimiteColetivoLocal(resposta.limite.centavos);
         setColetivo("");
       } else {
         const resposta = await api.definirLimiteIndividual(viagemId, usuarioId, centavos);
-        setAviso(`Seu limite nesta viagem: ${formatarBRL(resposta.limite.centavos)}.`);
+        textoAviso = `Seu limite nesta viagem: ${formatarBRL(resposta.limite.centavos)}.`;
         setIndividual("");
       }
       const atualizado = await api.orcamento(viagemId);
       setDoServidor(atualizado);
+      setLimiteColetivoLocal(atualizado.limiteColetivo?.centavos ?? null);
       setEditando(false);
+      setAviso(textoAviso);
+      void sincronizador.guardarOrcamento(viagemId, atualizado);
     } catch (falha) {
-      setErro(falha instanceof ErroApi ? falha.message : "Não foi possível salvar o limite agora.");
+      if (falha instanceof ErroApi) {
+        setErro(falha.message);
+      } else {
+        await sincronizador.enfileirar({
+          tipo: "definir_limite_orcamento",
+          viagemId,
+          escopo,
+          ...(escopo === "individual" ? { usuarioId } : {}),
+          centavos,
+          descricao:
+            escopo === "coletivo"
+              ? `Definir limite da viagem: ${formatarBRL(centavos)}`
+              : `Definir meu limite individual: ${formatarBRL(centavos)}`,
+        });
+        if (escopo === "coletivo") {
+          setLimiteColetivoLocal(centavos);
+          setColetivo("");
+          setAviso(
+            `Limite da viagem: ${formatarBRL(centavos)}. Vale como planejamento do grupo (guardado neste aparelho; será enviado quando houver conexão).`,
+          );
+        } else {
+          setIndividual("");
+          setAviso(`Seu limite nesta viagem: ${formatarBRL(centavos)} (guardado neste aparelho; será enviado quando houver conexão).`);
+        }
+        setEditando(false);
+      }
     } finally {
       setEnviando(false);
     }

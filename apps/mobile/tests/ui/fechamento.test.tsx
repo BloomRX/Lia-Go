@@ -132,13 +132,39 @@ test("exportar gera o arquivo no navegador e não muda nada nos registros", asyn
   }
 });
 
-test("sem servidor, a tela diz que o fechamento precisa dele (nada de conta velha)", async () => {
+test("sem servidor, a tela diz que o fechamento precisa dele (nada de conta velha) e permite exportar a cópia deste aparelho", async () => {
   await abrirMais(VIAGEM_COM_DESPESA);
   await esperarPor(() => Boolean(botaoCom("Ver fechamento")), "o botão de montar o fechamento aparecer");
 
-  (globalThis as Record<string, unknown>).fetch = () => Promise.reject(new Error("sem rede"));
-  clicar(botaoCom("Ver fechamento"));
-  await esperarPor(() => textoDaTela().includes("Não foi possível montar o fechamento"), "o aviso de falha aparecer");
-  assert.match(textoDaTela(), /é calculado no servidor/, "explica por que não dá sem conexão");
-  assert.ok(!textoDaTela().includes("R$ 200,00"), "não mostra número oficial velho como se fosse atual");
+  const gerados: { blob: Blob; nome: string }[] = [];
+  const url = URL as unknown as { createObjectURL?: (blob: Blob) => string; revokeObjectURL?: (endereco: string) => void };
+  const original = url.createObjectURL;
+  url.createObjectURL = (blob: Blob) => {
+    gerados.push({ blob, nome: `blob:local-${gerados.length}` });
+    return `blob:local-${gerados.length - 1}`;
+  };
+  url.revokeObjectURL = () => undefined;
+
+  try {
+    (globalThis as Record<string, unknown>).fetch = () => Promise.reject(new Error("sem rede"));
+    clicar(botaoCom("Ver fechamento"));
+    await esperarPor(() => textoDaTela().includes("Não foi possível montar o fechamento"), "o aviso de falha aparecer");
+    assert.match(textoDaTela(), /é calculado no servidor/, "explica por que não dá sem conexão");
+    assert.ok(!textoDaTela().includes("R$ 200,00"), "não mostra número oficial velho como se fosse atual");
+
+    clicar(botaoCom("Baixar cópia deste aparelho (.txt)"));
+    await esperarPor(() => gerados.length === 1, "a cópia local em .txt ser gerada sem rede");
+    const txtLocal = await gerados[0]!.blob.text();
+    assert.match(txtLocal, /cópia guardada neste aparelho de Serra/, "identifica a cópia local");
+    assert.match(txtLocal, /não substitui o fechamento oficial/, "deixa claro que não veio do servidor");
+
+    clicar(botaoCom("Baixar cópia deste aparelho (.csv)"));
+    await esperarPor(() => gerados.length === 2, "a cópia local em .csv ser gerada sem rede");
+    const csvLocal = await gerados[1]!.blob.text();
+    assert.match(csvLocal, /copia_deste_aparelho_sem_servidor/, "marca a origem local no CSV");
+    assert.match(csvLocal, /Jantar/, "inclui as despesas guardadas no aparelho");
+  } finally {
+    url.createObjectURL = original;
+  }
 });
+

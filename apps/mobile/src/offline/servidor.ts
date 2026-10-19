@@ -90,6 +90,10 @@ async function enviarOperacao(operacao: Operacao, idempotencia: string): Promise
       return api.reabrirItemChecklist(operacao.viagemId, operacao.itemId, operacao.motivo, operacao.versao);
     case "criar_documento":
       return api.criarDocumento(operacao.viagemId, operacao.corpo as Parameters<typeof api.criarDocumento>[1], idempotencia);
+    case "definir_limite_orcamento":
+      return operacao.escopo === "coletivo"
+        ? api.definirLimiteColetivo(operacao.viagemId, operacao.centavos)
+        : api.definirLimiteIndividual(operacao.viagemId, operacao.usuarioId ?? "", operacao.centavos);
   }
 }
 

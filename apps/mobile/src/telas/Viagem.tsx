@@ -19,7 +19,7 @@ import { Orcamento } from "./Orcamento.tsx";
 import { Checklist } from "./Checklist.tsx";
 import { Documentos } from "./Documentos.tsx";
 import { Fechamento } from "./Fechamento.tsx";
-import { resumirOrcamentoDoRoteiro } from "@lia-go/domain";
+import { impactosDeCancelamento, resumirOrcamentoDoRoteiro } from "@lia-go/domain";
 import { rotuloDeArmazenamento } from "../services/tokens.ts";
 import { temSessaoEmbutida } from "../services/sessao-embutida.ts";
 import {
@@ -314,7 +314,20 @@ export function Viagem({
                         void api
                           .impactosCancelamento(viagemId)
                           .then((r) => setImpactos(r.impactos))
-                          .catch(() => setErro("Não foi possível ver os impactos."));
+                          .catch((falha) => {
+                            if (falha instanceof ErroApi) {
+                              setErro(falha.message);
+                              return;
+                            }
+                            const despesasPendentes = despesas.filter(
+                              (d) => d.estado === "pendente" || d.estado === "contestada",
+                            ).length;
+                            const reservasRegistradas = reservasDoDominio.filter((r) => r.estado !== "cancelada").length;
+                            setImpactos([
+                              ...impactosDeCancelamento({ despesasPendentes, reservasRegistradas }),
+                              "Sem conexão agora: os impactos acima foram calculados com o que está guardado neste aparelho; o cancelamento entrará na fila para envio assim que houver internet.",
+                            ]);
+                          });
                         return;
                       }
                       void enfileirar(
@@ -782,7 +795,17 @@ export function Viagem({
             avisoDePrivacidade={null}
           />
 
-          <Fechamento viagemId={viagemId} nomeDaViagem={String(viagem.nome ?? "viagem")} />
+          <Fechamento
+            viagemId={viagemId}
+            nomeDaViagem={String(viagem.nome ?? "viagem")}
+            copiaLocal={{
+              destino: viagem.destino === null || viagem.destino === undefined ? null : String(viagem.destino),
+              estado: String(viagem.estado ?? "planejada"),
+              despesas,
+              atividades,
+              reservas: reservasDoDominio,
+            }}
+          />
 
           <section className="cartao">
             <h2>Este aparelho</h2>

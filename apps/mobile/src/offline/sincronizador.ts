@@ -32,7 +32,7 @@ import {
 import { criarPortaServidor } from "./servidor.ts";
 import { MARCAS_VAZIAS, podarMarcas, type MarcasDeNotificacao } from "@lia-go/domain";
 import { Platform } from "../services/plataforma.ts";
-import type { SaldosApi } from "../services/api.ts";
+import type { OrcamentoApi, SaldosApi } from "../services/api.ts";
 
 export interface EstadoSincronizacao {
   resumo: ResumoFila;
@@ -50,6 +50,7 @@ export interface EstadoSincronizacao {
 type Ouvinte = (estado: EstadoSincronizacao) => void;
 
 const CHAVE_SALDOS = "saldos";
+const CHAVE_ORCAMENTO = "orcamento";
 const CHAVE_NOTIFICACOES = "notificacoes";
 
 export class Sincronizador {
@@ -279,6 +280,15 @@ export class Sincronizador {
 
   async lerSaldos(viagemId: string): Promise<{ saldos: SaldosApi; em: string } | null> {
     return this.armazemLocal.ler<{ saldos: SaldosApi; em: string }>(`${CHAVE_SALDOS}:${viagemId}`);
+  }
+
+  /** Limites do orçamento conhecidos no aparelho para consulta e edição mesmo sem internet. */
+  async guardarOrcamento(viagemId: string, orcamento: OrcamentoApi): Promise<void> {
+    await this.armazemLocal.gravar(`${CHAVE_ORCAMENTO}:${viagemId}`, { orcamento, em: new Date().toISOString() });
+  }
+
+  async lerOrcamento(viagemId: string): Promise<{ orcamento: OrcamentoApi; em: string } | null> {
+    return this.armazemLocal.ler<{ orcamento: OrcamentoApi; em: string }>(`${CHAVE_ORCAMENTO}:${viagemId}`);
   }
 
   /**

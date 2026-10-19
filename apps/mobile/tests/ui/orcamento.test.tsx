@@ -130,6 +130,19 @@ test("sem limite, a tela explica que o teto é planejamento e oferece definir", 
   clicar(botaoCom("Salvar limite do grupo"));
   await esperarPor(() => textoDaTela().includes("Limite da viagem: R$ 5.000,00"), "o limite novo ser confirmado na tela");
   assert.match(textoDaTela(), /Vale como planejamento do grupo/, "a tela deixa claro o que o limite vale");
+
+  // Sem conexão, ajustar o limite entra na fila e atualiza o planejamento local imediatamente.
+  (globalThis as Record<string, unknown>).fetch = () => Promise.reject(new Error("sem rede"));
+  clicar(botaoCom("Ajustar limite"));
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#orcamento-coletivo")), "o formulário do limite reabrir");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#orcamento-coletivo")!, "6000,00");
+  clicar(botaoCom("Salvar limite do grupo"));
+  await esperarPor(
+    () => textoDaTela().includes("Limite da viagem: R$ 6.000,00"),
+    "o limite ajustado sem rede aparecer na tela",
+  );
+  assert.match(textoDaTela(), /será enviado quando houver conexão/, "informa que entrou na fila offline");
+  assert.match(textoDaTela(), /R\$ 3\.000,00 de R\$ 6\.000,00/, "atualiza a barra local para 50% do novo teto");
 });
 
 test("participante não define o limite do grupo: a tela diz de quem é a ação", async () => {

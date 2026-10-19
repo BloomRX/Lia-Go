@@ -27,7 +27,15 @@ export type Operacao =
   | { tipo: "criar_item_checklist"; viagemId: string; corpo: Record<string, unknown>; descricao: string }
   | { tipo: "concluir_item_checklist"; viagemId: string; itemId: string; versao?: number; descricao: string }
   | { tipo: "reabrir_item_checklist"; viagemId: string; itemId: string; motivo: string; versao?: number; descricao: string }
-  | { tipo: "criar_documento"; viagemId: string; corpo: Record<string, unknown>; descricao: string };
+  | { tipo: "criar_documento"; viagemId: string; corpo: Record<string, unknown>; descricao: string }
+  | {
+      tipo: "definir_limite_orcamento";
+      viagemId: string;
+      escopo: "coletivo" | "individual";
+      usuarioId?: string;
+      centavos: string;
+      descricao: string;
+    };
 
 export type TipoOperacao = Operacao["tipo"];
 

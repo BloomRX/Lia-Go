@@ -7,18 +7,29 @@
  *  - no app nativo não finge que baixou arquivo: mostra o texto para copiar e explica o porquê.
  */
 import { useState } from "react";
-import { api, ErroApi, type FechamentoApi } from "../services/api.ts";
-import { formatarBRL, formatarData } from "../services/formato.ts";
+import { campoCsv, type Atividade, type Reserva } from "@lia-go/domain";
+import { api, ErroApi, type DespesaApi, type FechamentoApi } from "../services/api.ts";
+import { formatarBRL } from "../services/formato.ts";
 import { exportarArquivo, nomeDoArquivo } from "../services/exportacao.ts";
 import { Platform } from "../services/plataforma.ts";
+
+export interface CopiaLocalFechamento {
+  destino: string | null;
+  estado: string;
+  despesas: readonly DespesaApi[];
+  atividades: readonly Atividade[];
+  reservas: readonly Reserva[];
+}
 
 interface Props {
   viagemId: string;
   /** Nome da viagem, só para compor o nome do arquivo. */
   nomeDaViagem: string;
+  /** Dados já guardados neste aparelho para exportar mesmo sem internet. */
+  copiaLocal?: CopiaLocalFechamento;
 }
 
-export function Fechamento({ viagemId, nomeDaViagem }: Props): React.ReactElement {
+export function Fechamento({ viagemId, nomeDaViagem, copiaLocal }: Props): React.ReactElement {
   const [dados, setDados] = useState<FechamentoApi | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -55,6 +66,23 @@ export function Fechamento({ viagemId, nomeDaViagem }: Props): React.ReactElemen
     }
   }
 
+  function exportarCopiaDoAparelho(extensao: "txt" | "csv"): void {
+    if (!copiaLocal) return;
+    const nome = nomeDoArquivo(`lia-go-${nomeDaViagem}-aparelho`, extensao);
+    const conteudo =
+      extensao === "csv"
+        ? montarCsvDoAparelho(nomeDaViagem, copiaLocal)
+        : montarTextoDoAparelho(nomeDaViagem, copiaLocal);
+    const resultado = exportarArquivo(nome, conteudo, extensao === "csv" ? "text/csv" : "text/plain");
+    if (resultado.tipo === "baixado") {
+      setAviso(`Arquivo ${nome} gerado no navegador (cópia guardada neste aparelho).`);
+      setParaCopiar(null);
+    } else {
+      setParaCopiar({ nome: resultado.nome, conteudo: resultado.conteudo });
+      setAviso("Neste aparelho não existe download de arquivo: copie o texto abaixo e envie como quiser.");
+    }
+  }
+
   return (
     <section className="cartao" aria-labelledby="titulo-fechamento">
       <h2 id="titulo-fechamento">Fechamento da viagem</h2>
@@ -64,12 +92,44 @@ export function Fechamento({ viagemId, nomeDaViagem }: Props): React.ReactElemen
       </p>
 
       {!dados ? (
-        <div className="acoes">
-          <button className="principal" disabled={carregando} onClick={() => void carregar()}>
-            {carregando ? "Montando o fechamento…" : "Ver fechamento"}
-          </button>
-          <small className="suave">Precisa de conexão: é o servidor que fecha as contas.</small>
-        </div>
+        <>
+          <div className="acoes">
+            <button className="principal" disabled={carregando} onClick={() => void carregar()}>
+              {carregando ? "Montando o fechamento…" : "Ver fechamento"}
+            </button>
+            <small className="suave">Precisa de conexão: é o servidor que fecha as contas.</small>
+          </div>
+          {copiaLocal ? (
+            <div style={{ marginTop: 12 }}>
+              <p className="suave pequeno">
+                Mesmo sem internet, você pode exportar agora a cópia guardada neste aparelho (roteiro, reservas e
+                despesas lançadas — sem confirmação atual do servidor):
+              </p>
+              <div className="acoes">
+                <button className="sutil" onClick={() => exportarCopiaDoAparelho("txt")}>
+                  Baixar cópia deste aparelho (.txt)
+                </button>
+                <button className="sutil" onClick={() => exportarCopiaDoAparelho("csv")}>
+                  Baixar cópia deste aparelho (.csv)
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {paraCopiar ? (
+            <>
+              <label htmlFor="fechamento-texto">{paraCopiar.nome}</label>
+              <textarea id="fechamento-texto" readOnly rows={10} value={paraCopiar.conteudo} />
+              <div className="acoes">
+                <button className="sutil" onClick={() => void navigator.clipboard?.writeText(paraCopiar.conteudo).then(() => setAviso("Texto copiado.")).catch(() => setAviso("Selecione o texto acima e copie."))}>
+                  Copiar texto
+                </button>
+                <button className="sutil" onClick={() => setParaCopiar(null)}>
+                  Fechar
+                </button>
+              </div>
+            </>
+          ) : null}
+        </>
       ) : (
         <>
           <div className="linha entre">
@@ -175,3 +235,59 @@ export function Fechamento({ viagemId, nomeDaViagem }: Props): React.ReactElemen
     </section>
   );
 }
+
+function montarTextoDoAparelho(nomeDaViagem: string, copia: CopiaLocalFechamento): string {
+  const linhas: string[] = [
+    `Lia Go — cópia guardada neste aparelho de ${nomeDaViagem}${copia.destino ? ` (${copia.destino})` : ""}`,
+    "ATENÇÃO: este arquivo foi gerado sem consultar o servidor. Ele mostra o que está guardado neste aparelho e não substitui o fechamento oficial.",
+    `Estado conhecido no aparelho: ${copia.estado}`,
+    "",
+    `Atividades no roteiro (${copia.atividades.length}):`,
+  ];
+  if (copia.atividades.length === 0) {
+    linhas.push("  (nenhuma atividade)");
+  } else {
+    for (const a of copia.atividades) {
+      linhas.push(`  - ${a.dia}${a.hora ? ` ${a.hora}` : ""} · ${a.titulo} (${a.estado})`);
+    }
+  }
+  linhas.push("");
+  linhas.push(`Reservas (${copia.reservas.length}):`);
+  if (copia.reservas.length === 0) {
+    linhas.push("  (nenhuma reserva)");
+  } else {
+    for (const r of copia.reservas) {
+      linhas.push(`  - ${r.titulo} · ${r.tipo} (${r.estado})`);
+    }
+  }
+  linhas.push("");
+  linhas.push(`Despesas conhecidas neste aparelho (${copia.despesas.length}):`);
+  if (copia.despesas.length === 0) {
+    linhas.push("  (nenhuma despesa)");
+  } else {
+    for (const d of copia.despesas) {
+      linhas.push(`  - ${d.data} · ${d.descricao} · ${d.tipo} (${d.estado})`);
+    }
+  }
+  return linhas.join("\n");
+}
+
+function montarCsvDoAparelho(nomeDaViagem: string, copia: CopiaLocalFechamento): string {
+  const cabecalho = ["viagem", "origem", "data", "descricao", "tipo", "estado", "valor_centavos"];
+  const registros = [cabecalho.map(campoCsv).join(";")];
+  for (const d of copia.despesas) {
+    registros.push(
+      [
+        campoCsv(nomeDaViagem),
+        campoCsv("copia_deste_aparelho_sem_servidor"),
+        campoCsv(d.data),
+        campoCsv(d.descricao),
+        campoCsv(d.tipo),
+        campoCsv(d.estado),
+        campoCsv(String(d.valorCentavos)),
+      ].join(";"),
+    );
+  }
+  return registros.join("\n");
+}
+
