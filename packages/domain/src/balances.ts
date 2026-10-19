@@ -62,9 +62,17 @@ export function calcularResumoFinanceiro(
 
   let realizado = 0n;
   let comprometido = 0n;
+  let moedaBase: string | null = null;
 
   for (const despesa of despesas) {
     if (despesa.estado === "cancelada") continue;
+    if (moedaBase === null) {
+      moedaBase = despesa.moeda;
+    } else if (despesa.moeda !== moedaBase) {
+      throw new ErroDeDominio(
+        `Não é possível somar despesas de moedas diferentes (${moedaBase} e ${despesa.moeda}) sem conversão explícita.`,
+      );
+    }
     if (!entraNoSaldoOficial(despesa)) {
       comprometido += despesa.valorCentavos;
       continue;

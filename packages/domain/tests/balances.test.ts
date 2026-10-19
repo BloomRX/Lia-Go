@@ -132,3 +132,45 @@ test("saldo zerado não sugere transferências", () => {
   assert.deepEqual(sugerirTransferencias(resumo.saldos), []);
   assert.equal(resumo.haDivergencia, false);
 });
+
+test("rejeita somar despesas de moedas diferentes sem conversão explícita", () => {
+  const emReais = despesaConfirmada("d1", "ana", 10000n, ["ana", "bruno"]);
+  const emDolares = confirmarDespesa(
+    criarDespesa({
+      id: "d2",
+      viagemId: "v1",
+      autorId: "ana",
+      pagadorId: "bruno",
+      tipo: "compartilhada",
+      valorCentavos: 5000n,
+      moeda: "USD",
+      data: "2026-12-21",
+      descricao: "Ingresso em dólar",
+      participantes: ["ana", "bruno"],
+    }),
+    { usuarioId: "bruno", contexto },
+  );
+  assert.throws(
+    () => calcularResumoFinanceiro([emReais, emDolares]),
+    /moedas diferentes \(BRL e USD\)/,
+  );
+
+  const pendenteEmEuros = criarDespesa({
+    id: "d3",
+    viagemId: "v1",
+    autorId: "ana",
+    pagadorId: "bruno",
+    tipo: "compartilhada",
+    valorCentavos: 3000n,
+    moeda: "EUR",
+    data: "2026-12-21",
+    descricao: "Táxi em euro",
+    participantes: ["ana", "bruno"],
+  });
+  assert.throws(
+    () => calcularResumoFinanceiro([emReais, pendenteEmEuros]),
+    /moedas diferentes \(BRL e EUR\)/,
+    "comprometido também não mistura moedas em silêncio",
+  );
+});
+
