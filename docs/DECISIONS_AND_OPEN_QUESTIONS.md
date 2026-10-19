@@ -394,10 +394,43 @@ last-write-wins para dinheiro).
    estiver mais completo** (dados reais continuam proibidos até lá).
 
 ### Interpretação de "o app funciona sem sinal"
-Funciona **ler e escrever**: criar viagem, lançar/confirmar/contestar despesa, registrar e confirmar
-acerto e trocar o estado da viagem entram na fila e sobem depois. Continuam exigindo internet (o servidor
-é quem decide): login/cadastro, aceitar convite (o token só existe no servidor), gerar convite,
-ver saldos atualizados e sair da viagem.
+Funciona **ler e escrever**: criar viagem, editar roteiro/reservas/checklist/documentos, lançar/confirmar/contestar
+despesa, registrar e confirmar acerto, definir/ajustar limite de orçamento, consultar prévia local de impactos e
+cancelar viagem assistida entram na fila e sobem depois; além disso, é sempre possível exportar a cópia guardada
+no aparelho (`.txt` e `.csv`) sem internet. Continuam exigindo internet (o servidor é quem decide entre pessoas):
+login/cadastro inicial, aceitar convite (o token só existe no servidor), gerar convite, ver saldos/fechamento
+oficiais confirmados pelo servidor e sair da viagem.
+
+### Decisões de governança, offline, IA e integração com a Lia Waifu (2026-10-19)
+
+1. **Revisão obrigatória de cálculos financeiros (`ALTO`):** mudanças em `packages/domain` que toquem `money`,
+   `expense`, `split`, `balances`, `orcamento` ou `fechamento` **nunca** são aplicadas sem revisão humana —
+   são sempre classificadas como nível `ALTO` para o `reviewer`. `calcularResumoFinanceiro` rejeita somar
+   despesas de moedas diferentes sem conversão explícita (`ErroDeDominio`).
+2. **Duas regras de sobrevivência offline:** (a) todas as funções centrais da viagem leem e escrevem sem
+   internet; (b) se qualquer provedor de IA ou o servidor cair, o app não para.
+3. **Três regras de provedor de IA:** a V1 não possui cliente de IA nem chama LLM externo; quando qualquer
+   integração entrar, obrigatoriamente terá (a) endereço configurável com "Testar conexão" e "Listar modelos",
+   (b) `localhost` nunca fixo no código e (c) zero chave de API do autor embarcada no app ou repositório.
+4. **Contrato em escada para conexão futura com a Lia Waifu:**
+   - **V1 (atual):** nenhuma integração de rede; cada projeto roda independente.
+   - **V2 (mesma rede local):** descoberta/endereço informado pelo usuário na LAN + pareamento explícito por
+     código curto temporário exibido na Lia Waifu e digitado no Lia Go.
+   - **V3 (fora de casa sem nuvem paga):** comunicação pela rede privada do próprio usuário (ex.: Tailscale /
+     WireGuard), mantendo o mesmo protocolo da V2 sem servidor central pago.
+   - **Relay na nuvem:** somente se e quando houver plano explícito de custo, autenticação mútua e revogação.
+   - **6 cláusulas invioláveis ("conversa não é autorização"):**
+     1. Transporte HTTP JSON autenticado por token de pareamento exclusivo, revogável a qualquer momento em
+        `Mais → Este aparelho`.
+     2. Escopo por viagem: a Lia Waifu só enxerga viagens que o usuário autorizou explicitamente no pareamento.
+     3. Leitura permitida: resumo da viagem, próximos compromissos do roteiro, pendências do checklist e totais
+        já calculados.
+     4. Escrita permitida (sempre como proposta/rascunho): sugerir atividade no roteiro (`planejada`), sugerir
+        item de checklist ou rascunho de nota.
+     5. **Proibição financeira e destrutiva:** a Lia Waifu **nunca** cria despesa confirmada, **nunca** confirma
+        nem contesta despesa ou acerto, **nunca** altera limite de orçamento e **nunca** transiciona nem cancela
+        viagem. No máximo propõe um rascunho pendente que exige toque humano explícito na tela do Lia Go.
+     6. Independência: se a Lia Waifu estiver desligada ou inacessível, o Lia Go funciona 100% igual.
 
 ## Questões que podem ser resolvidas durante a implementação
 - Pequenos detalhes de layout, microcopy e organização visual, desde que não alterem regras.
@@ -413,6 +446,22 @@ ver saldos atualizados e sair da viagem.
 - Transporte de sessão no app nativo: mesmo cookie via `CapacitorCookies` ou token + armazenamento seguro.
 - Armazenamento offline no dispositivo: SQLite nativo, IndexedDB ou online-first nesta fase.
 - Confirmação da primeira fatia proposta em `ARCHITECTURE.md` §12.
+
+**Decisão humana aberta e prioritária antes de uso fora da máquina de desenvolvimento — Quem hospeda e quem paga o servidor do Lia Go (`apps/api` + PostgreSQL):**
+Hoje o Lia Go tem um servidor central real (`apps/api` + PostgreSQL) que guarda contas, viagens compartilhadas,
+convites, permissões, fila de sincronização e cálculo oficial de saldos. Antes de publicar um APK ou abrir para
+grupos reais, é preciso escolher **um** dos 4 caminhos abaixo:
+1. **Servidor próprio na máquina de quem organiza (auto-hospedado / LAN / Tailscale):** custo zero de nuvem;
+   o grupo depende de a máquina do organizador estar ligada para sincronizar mudanças entre aparelhos.
+2. **Servidor hospedado pelo autor do projeto:** experiência imediata para qualquer grupo, mas gera custo
+   mensal recorrente de servidor + banco PostgreSQL + backups + responsabilidade direta por dados de terceiros
+   (LGPD), exigindo teto rígido de gasto.
+3. **Endereço do servidor configurável no app (cada grupo aponta para o seu):** o app permanece gratuito e sem
+   custo central para o autor; **exige** campo "Endereço do servidor" na tela de entrada/configuração (já que no
+   APK nativo do Capacitor o caminho relativo `/api` não aponta para um servidor externo sem URL base).
+4. **Modo 100% local para viagem individual (sem conta e sem servidor):** permite planejar viagem sozinho e
+   exportar `.txt`/`.csv` direto após instalar o APK sem criar conta nem configurar servidor, pedindo servidor
+   apenas quando a pessoa quiser compartilhar a viagem com outros participantes.
 
 **Não bloqueiam a primeira fatia:**
 - Hospedagem definitiva da API e do banco; política de backup e restauração.

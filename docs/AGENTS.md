@@ -115,5 +115,11 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 - Testar regras de cálculo, permissões, estados e sincronização.
 - Cobrir casos de erro, loading, vazio, offline, conflito e sucesso.
 - Usar valores monetários decimais exatos (centavos/unidades mínimas), nunca ponto flutuante binário como fonte oficial de dinheiro.
+- **Regra de revisão de dinheiro (`ALTO`):** mudanças em `packages/domain` que toquem `money`, `expense`, `split`, `balances`, `orcamento` ou `fechamento` **nunca** são aplicadas sem revisão humana — são sempre classificadas como nível `ALTO` para o `reviewer`.
+- **Duas regras de sobrevivência offline:**
+  1. As funções centrais da viagem (criar viagem, editar roteiro, reservas, checklist, documentos, lançar/confirmar/contestar despesas, acertos, ajustar limite de orçamento, prévia de impacto de cancelamento e exportar cópia local) leem e escrevem sem internet.
+  2. Se qualquer provedor de IA ou servidor cair, o app não para — degrada para o fluxo manual/local com aviso explícito.
+- **Divisão git × máquina e honestidade sobre build nativa:** o que é versionado no git precisa valer em Windows e Linux (origem de skills em `.agents/skills/`, `.claude/` no `.gitignore`). Build nativa, emulador e teste em aparelho são executados no Windows — um agente em Linux sem Android SDK / Xcode nunca afirma nada sobre Android ou iOS além de `"testes verdes; build nativa não executada"`.
 - Datas e horários devem ter fuso explícito quando relevante.
 - Nenhuma ação destrutiva ou irreversível sem confirmação e explicação dos impactos.
+

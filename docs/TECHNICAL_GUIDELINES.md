@@ -30,15 +30,18 @@ ou confirma fatos externos. Não duplicar regra de negócio na interface: import
 ## Dinheiro e câmbio
 - Valores em **centavos inteiros** (`bigint` no domínio, `BIGINT` no Postgres), nunca float binário.
 - Documentar escala, moeda, arredondamento e alocação de centavos (método do resto garante soma exata).
+- Rejeitar soma de despesas em moedas diferentes sem conversão explícita (`calcularResumoFinanceiro` lança `ErroDeDominio`).
 - Preservar dados de origem e taxa histórica; atualização de taxa não reescreve registros.
-- Cálculos reproduzíveis, cobertos por testes de casos-limite (0, 1 centavo, restos grandes, percentuais).
+- Cálculos reproduzíveis, cobertos por testes de casos-limite (0, 1 centavo, restos grandes, percentuais, múltiplas moedas).
 - Separar valores provisórios dos confirmados.
+- **Regra de revisão de dinheiro (`ALTO`):** qualquer alteração em `packages/domain` que toque `money`, `expense`, `split`, `balances`, `orcamento` ou `fechamento` exige revisão humana obrigatória (`ALTO` para o `reviewer`).
 
 ## Concorrência e sincronização
 - Não resolver conflito apenas por timestamp do dispositivo.
 - Toda entidade sincronizável carrega `version`; escrita com version divergente = conflito preservado.
 - Revalidar permissões no momento da sincronização.
 - Operações offline ficam pendentes em fila (**outbox**) até validação e confirmação.
+- **Sobrevivência offline:** as funções centrais da viagem leem e escrevem sem internet (incluindo definir limite de orçamento na fila, prévia local de cancelamento e exportação da cópia local em `.txt`/`.csv`); queda de servidor ou de IA nunca derruba o app.
 - Idempotência obrigatória (`Idempotency-Key` por operação, IDs gerados no cliente em UUIDv7).
 - Mostrar ao usuário o último sync e o estado desatualizado; conflito aparece como item “a revisar”.
 
@@ -80,6 +83,11 @@ ou confirma fatos externos. Não duplicar regra de negócio na interface: import
 ## IA e integrações
 - IA retorna propostas estruturadas sujeitas a validação; nunca escreve diretamente saldos oficiais.
 - Tratar saída do modelo como conteúdo não confiável.
+- **Três regras de provedor de IA (obrigatórias quando entrar qualquer integração):**
+  1. Endereço configurável pelo usuário, com botões **"Testar conexão"** e **"Listar modelos"**;
+  2. `localhost` nunca fixo no código do app;
+  3. Nunca embarcar chave de API paga do autor no cliente nem no repositório.
+- **Conexão futura com a Lia Waifu:** segue a escada V1 (nada) → V2 (mesma rede com pareamento por código) → V3 (rede privada tipo Tailscale) → relay na nuvem só com plano de custo aprovado, sempre sob a cláusula de que **conversa não é autorização** (ver `DECISIONS_AND_OPEN_QUESTIONS.md`).
 - Ter limites, monitoramento de custo, timeout, fallback e possibilidade de desligar a integração.
 - Não alegar status em tempo real sem fonte atualizada.
 - Integrações externas devem expor estado de conexão, falha e última atualização.
@@ -87,6 +95,7 @@ ou confirma fatos externos. Não duplicar regra de negócio na interface: import
 
 ## Qualidade
 - Testes unitários para regras e cálculos; integração para autorização/persistência; interface para fluxos críticos.
+- Suítes estreitas por camada mapeadas em `memory-bank/padroes.md` (`test:domain`, `test:sync`, `test:api`, `test:app`, `test:ui`, `test:tools`; portão completo `npm test && npm run typecheck`).
 - Cobrir estados: loading, vazio, erro, offline, conflito, sucesso e não autorizado.
 - Usar dados sintéticos em desenvolvimento e testes.
 - Documentar como configurar, executar, testar e compilar.
