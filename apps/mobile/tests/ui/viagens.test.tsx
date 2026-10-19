@@ -15,6 +15,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "../../src/App.tsx";
 import { Entrar } from "../../src/telas/Entrar.tsx";
 import { CHAVE_CARGA, criarArmazenamentoIndexedDB } from "../../src/offline/armazenamento.ts";
+import { limparSessaoEmbutida } from "../../src/services/sessao-embutida.ts";
 
 const ANTIGA = {
   id: "v1",
@@ -58,6 +59,7 @@ async function limparAparelho(): Promise<void> {
   (globalThis as { localStorage?: Storage }).localStorage?.clear();
   // A sessão de fallback (navegador que recusa o cookie) mora na aba: precisa sumir entre testes.
   (globalThis as { sessionStorage?: Storage }).sessionStorage?.clear();
+  limparSessaoEmbutida();
 }
 
 test("abrir a viagem nova mostra a viagem nova, não a que estava aberta antes", async () => {

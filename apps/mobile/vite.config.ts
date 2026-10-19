@@ -18,7 +18,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    allowedHosts: [".e2b.app", "localhost", "127.0.0.1"],
+    allowedHosts: [".e2b.app", ".arena.site", "localhost", "127.0.0.1"],
     ...(atrasDeProxyHttps ? { hmr: { protocol: "wss", clientPort: 443 } } : {}),
     port: 5273,
     strictPort: true,

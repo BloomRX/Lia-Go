@@ -104,7 +104,9 @@ export function Entrar({ aoEntrar, embutido = false }: Props): React.ReactElemen
       // ficou (cookie ou, no caso embutido, token da aba) e lança erro — mostrado aqui — quando não ficou.
       await aoEntrar({ modo, nome, email, senha });
     } catch (falha) {
-      if (falha instanceof ErroApi && falha.codigo === "sessao_nao_guardada" && Platform.embutido()) {
+      const host = window.location?.hostname ?? "";
+      const bloqueiaAbaAvulsa = host.endsWith(".arena.site") || host.endsWith(".e2b.app");
+      if (falha instanceof ErroApi && falha.codigo === "sessao_nao_guardada" && Platform.embutido() && !bloqueiaAbaAvulsa) {
         setMostrarSaidaAba(true);
       }
       setErro(falha instanceof ErroApi ? falha.message : "Não foi possível conectar. Verifique sua rede.");

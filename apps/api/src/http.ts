@@ -18,11 +18,23 @@ export interface OpcoesHttp {
   nomeCookieSessao: string;
 }
 
-export async function autenticar(request: FastifyRequest, opcoes: OpcoesHttp): Promise<UsuarioAutenticado | null> {
-  const doCookie = request.cookies?.[opcoes.nomeCookieSessao];
+export function tokenDaRequisicao(request: FastifyRequest, nomeCookieSessao: string): string | undefined {
+  const doCookie = request.cookies?.[nomeCookieSessao];
+  if (doCookie) return doCookie;
   const cabecalho = request.headers.authorization;
-  const doCabecalho = cabecalho?.startsWith("Bearer ") ? cabecalho.slice(7).trim() : undefined;
-  const token = doCookie ?? doCabecalho;
+  if (cabecalho?.startsWith("Bearer ")) {
+    const token = cabecalho.slice(7).trim();
+    if (token) return token;
+  }
+  const daAba = request.headers["x-lia-sessao"];
+  if (typeof daAba === "string" && daAba.trim()) return daAba.trim();
+  const daQuery = (request.query as Record<string, unknown> | undefined)?._sessao;
+  if (typeof daQuery === "string" && daQuery.trim()) return daQuery.trim();
+  return undefined;
+}
+
+export async function autenticar(request: FastifyRequest, opcoes: OpcoesHttp): Promise<UsuarioAutenticado | null> {
+  const token = tokenDaRequisicao(request, opcoes.nomeCookieSessao);
   if (!token) return null;
 
   const { rows } = await opcoes.pool.query<{ id: string; usuario_id: string; origem: string; ultimo_uso_em: string | null }>(

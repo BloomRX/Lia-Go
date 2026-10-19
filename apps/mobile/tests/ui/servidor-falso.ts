@@ -97,10 +97,17 @@ export function criarServidorFalso(
     const url = new URL(String(entrada), "http://localhost:5273");
     const caminho = url.pathname;
     const metodo = init?.method ?? "GET";
-    estado.chamadas.push({ metodo, caminho: caminho + url.search });
+    const params = new URLSearchParams(url.search);
+    const tokenQuery = params.get("_sessao");
+    params.delete("_sessao");
+    const buscaLimpa = params.toString() ? `?${params.toString()}` : "";
+    estado.chamadas.push({ metodo, caminho: caminho + buscaLimpa });
     const cabecalhos = new Headers(init?.headers);
     const corpo = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
-    const portadorDeToken = cabecalhos.get("authorization") === "Bearer token-de-acesso";
+    const portadorDeToken =
+      cabecalhos.get("authorization") === "Bearer token-de-acesso" ||
+      cabecalhos.get("x-lia-sessao") === "token-de-acesso" ||
+      tokenQuery === "token-de-acesso";
     const USUARIO = { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" };
 
     if (caminho === "/api/auth/sessao") {

@@ -206,3 +206,44 @@ test("cookie de sessão: Lax por padrão, None+Secure só quando configurado (ap
     await app.close();
   }
 });
+
+test("proxy embutido que remove Cookie e Authorization: aceita x-lia-sessao e ?_sessao", { skip: !disponivel && "sem banco de teste" }, async () => {
+  const { usuario } = await registrarUsuario(ambiente.app);
+
+  const login = await ambiente.app.inject({
+    method: "POST",
+    url: "/auth/login",
+    payload: { email: usuario.email, senha: usuario.senha, cliente: "nativo", dispositivo: "navegador-embutido" },
+  });
+  assert.equal(login.statusCode, 200);
+  const { acesso } = login.json<{ acesso: { token: string } }>();
+
+  // 1. Cabeçalho alternativo `x-lia-sessao` (sem Cookie e sem Authorization):
+  const porCabecalho = await ambiente.app.inject({
+    method: "GET",
+    url: "/auth/sessao",
+    headers: { "x-lia-sessao": acesso.token },
+  });
+  assert.equal(porCabecalho.statusCode, 200);
+
+  // 2. Parâmetro `?_sessao=` (último recurso quando o proxy remove também cabeçalhos customizados):
+  const porQuery = await ambiente.app.inject({
+    method: "GET",
+    url: `/auth/sessao?_sessao=${encodeURIComponent(acesso.token)}`,
+  });
+  assert.equal(porQuery.statusCode, 200);
+
+  // 3. Logout também revoga quando o token vem por `_sessao`:
+  const logout = await ambiente.app.inject({
+    method: "POST",
+    url: `/auth/logout?_sessao=${encodeURIComponent(acesso.token)}`,
+  });
+  assert.equal(logout.statusCode, 204);
+
+  const depois = await ambiente.app.inject({
+    method: "GET",
+    url: `/auth/sessao?_sessao=${encodeURIComponent(acesso.token)}`,
+  });
+  assert.equal(depois.statusCode, 401);
+});
+

@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { Config } from "../config.ts";
 import { emTransacao } from "../db.ts";
 import { ErroHttp, entradaInvalida, naoAutenticado } from "../errors.ts";
-import { exigirAutenticacao, registrarTentativa, tratarErroDeValidacao, verificarLimiteDeTentativas } from "../http.ts";
+import { exigirAutenticacao, registrarTentativa, tokenDaRequisicao, tratarErroDeValidacao, verificarLimiteDeTentativas } from "../http.ts";
 import { criarSenha, verificarSenha } from "../password.ts";
 import { gerarToken, hashDados, hashToken, novoId, somarDias, somarMinutos } from "../tokens.ts";
 
@@ -147,9 +147,7 @@ export function rotasAuth(app: FastifyInstance, deps: { pool: pg.Pool; config: C
   });
 
   app.post("/auth/logout", async (request, reply) => {
-    const token = request.cookies?.[config.nomeCookieSessao];
-    const cabecalho = request.headers.authorization;
-    const tokenAcesso = token ?? (cabecalho?.startsWith("Bearer ") ? cabecalho.slice(7).trim() : undefined);
+    const tokenAcesso = tokenDaRequisicao(request, config.nomeCookieSessao);
     if (tokenAcesso) {
       await pool.query("UPDATE sessoes SET revogada_em = now() WHERE token_hash = $1 AND revogada_em IS NULL", [
         hashToken(tokenAcesso),

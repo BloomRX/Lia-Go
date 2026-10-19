@@ -47,9 +47,20 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesRequisicao = {}, ten
   if (opcoes.idempotencia) cabecalhos["idempotency-key"] = opcoes.idempotencia;
 
   const autorizacao = await tokenDeAcesso();
-  if (autorizacao) cabecalhos.authorization = `Bearer ${autorizacao}`;
+  if (autorizacao) {
+    cabecalhos.authorization = `Bearer ${autorizacao}`;
+    cabecalhos["x-lia-sessao"] = autorizacao;
+  }
 
-  const resposta = await fetch(`${BASE}${caminho}`, {
+  // Alguns proxies de pré-visualização (ex.: `*.arena.site`) removem tanto `Cookie` quanto
+  // `Authorization` ao encaminhar para o sandbox. No modo de sessão embutida, enviamos o token
+  // também em `x-lia-sessao` e no parâmetro `_sessao` da chamada `/api` (sempre sobre HTTPS/local).
+  const url =
+    autorizacao && !Platform.ehNativo() && temSessaoEmbutida()
+      ? `${BASE}${caminho}${caminho.includes("?") ? "&" : "?"}_sessao=${encodeURIComponent(autorizacao)}`
+      : `${BASE}${caminho}`;
+
+  const resposta = await fetch(url, {
     method: opcoes.metodo ?? "GET",
     headers: cabecalhos,
     credentials: "include",

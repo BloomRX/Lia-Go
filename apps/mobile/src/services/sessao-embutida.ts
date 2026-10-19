@@ -16,13 +16,14 @@
  */
 
 const CHAVE = "lia.sessao.embutida";
+let memoriaDaAba: TokensDaAba | null = null;
 
 export interface TokensDaAba {
   acesso: string;
   refresh: string;
 }
 
-/** `sessionStorage` pode não existir (SSR/teste) ou estar bloqueado (modo privado). */
+/** `sessionStorage` pode não existir (SSR/teste) ou estar bloqueado (modo privado / iframe). */
 function armazem(): Storage | null {
   try {
     const s = globalThis.sessionStorage;
@@ -33,23 +34,36 @@ function armazem(): Storage | null {
 }
 
 export function lerSessaoEmbutida(): TokensDaAba | null {
-  const bruto = armazem()?.getItem(CHAVE);
-  if (!bruto) return null;
   try {
-    const dados = JSON.parse(bruto) as Partial<TokensDaAba>;
-    if (typeof dados.acesso !== "string" || typeof dados.refresh !== "string") return null;
-    return { acesso: dados.acesso, refresh: dados.refresh };
+    const bruto = armazem()?.getItem(CHAVE);
+    if (bruto) {
+      const dados = JSON.parse(bruto) as Partial<TokensDaAba>;
+      if (typeof dados.acesso === "string" && typeof dados.refresh === "string") {
+        return { acesso: dados.acesso, refresh: dados.refresh };
+      }
+    }
   } catch {
-    return null;
+    /* sessionStorage bloqueado ou corrompido: usa a cópia em memória da aba */
   }
+  return memoriaDaAba;
 }
 
 export function guardarSessaoEmbutida(tokens: TokensDaAba): void {
-  armazem()?.setItem(CHAVE, JSON.stringify(tokens));
+  memoriaDaAba = { acesso: tokens.acesso, refresh: tokens.refresh };
+  try {
+    armazem()?.setItem(CHAVE, JSON.stringify(memoriaDaAba));
+  } catch {
+    /* quando o iframe bloqueia até sessionStorage, a sessão segue viva em memoriaDaAba */
+  }
 }
 
 export function limparSessaoEmbutida(): void {
-  armazem()?.removeItem(CHAVE);
+  memoriaDaAba = null;
+  try {
+    armazem()?.removeItem(CHAVE);
+  } catch {
+    /* nada a limpar no storage */
+  }
 }
 
 /** Há sessão por token nesta aba? (usado para decidir se vale tentar renovar). */
