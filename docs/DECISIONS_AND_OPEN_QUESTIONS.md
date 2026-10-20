@@ -42,8 +42,7 @@ Arquitetura técnica detalhada, medidas de viabilidade e riscos ficam em `ARCHIT
   + transições de estado + início de finanças (despesa pendente/confirmada e rateio determinístico com soma exata).**
 - Ferramentas/versões verificadas no ambiente: Node 22, Vite 8, React 19, Capacitor 8.5.3 (ver `ARCHITECTURE.md` §2).
 - **Consolidação de documentos:** `PLANEJAMENTO_MESTRE.md` é a única fonte do planejamento mestre (a antiga cópia duplicada `Lia_Go_Planejamento_Completo_e_Continuidade.md` foi removida).
-- **Consolidação de instruções:** `docs/AGENTS.md` é a fonte das instruções permanentes; o `AGENTS.md`
-  da raiz apenas aponta para ela.
+- **Consolidação de instruções:** o `AGENTS.md` da raiz traz o núcleo das regras permanentes em texto literal (carregado em qualquer sessão e subpasta, sem depender de link ou `@import`), enquanto `docs/AGENTS.md` guarda os detalhes operacionais e de diagnóstico.
 
 ### Implementação (2026-10-12) — hipóteses reversíveis registradas
 - **Interpretação de valor digitado em pt-BR:** vírgula é sempre decimal; ponto com 1–2 dígitos depois é
