@@ -9,6 +9,7 @@
  *   guardado em `sessionStorage` (morre com a aba) — ver `sessao-embutida.ts`.
  */
 import { Platform } from "./plataforma.ts";
+import { baseDaApi, normalizarEnderecoServidor } from "./configuracoes.ts";
 import { guardarTokens, lerTokens, limparTokens } from "./tokens.ts";
 import {
   guardarSessaoEmbutida,
@@ -29,9 +30,13 @@ export class ErroApi extends Error {
   }
 }
 
-// No navegador/app sempre é a própria origem (`/api`) — o Vite faz o proxy para a API local,
-// então nunca existe "localhost" no código que roda no navegador. Em testes (Node) cai no /api.
-const BASE = (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL ?? "/api";
+// No navegador/app sempre é a própria origem (`/api`) por padrão, podendo ser ajustado pela
+// pessoa em Configurações (ex.: celular apontando para o servidor na rede local).
+const BASE_PADRAO = (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL ?? "/api";
+
+function obterBase(): string {
+  return baseDaApi(BASE_PADRAO);
+}
 
 interface OpcoesRequisicao {
   metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -42,6 +47,7 @@ interface OpcoesRequisicao {
 }
 
 async function requisitar<T>(caminho: string, opcoes: OpcoesRequisicao = {}, tentativa = 0): Promise<T> {
+  const base = obterBase();
   const cabecalhos: Record<string, string> = {};
   if (opcoes.corpo !== undefined) cabecalhos["content-type"] = "application/json";
   if (opcoes.idempotencia) cabecalhos["idempotency-key"] = opcoes.idempotencia;
@@ -57,8 +63,8 @@ async function requisitar<T>(caminho: string, opcoes: OpcoesRequisicao = {}, ten
   // também em `x-lia-sessao` e no parâmetro `_sessao` da chamada `/api` (sempre sobre HTTPS/local).
   const url =
     autorizacao && !Platform.ehNativo() && temSessaoEmbutida()
-      ? `${BASE}${caminho}${caminho.includes("?") ? "&" : "?"}_sessao=${encodeURIComponent(autorizacao)}`
-      : `${BASE}${caminho}`;
+      ? `${base}${caminho}${caminho.includes("?") ? "&" : "?"}_sessao=${encodeURIComponent(autorizacao)}`
+      : `${base}${caminho}`;
 
   const resposta = await fetch(url, {
     method: opcoes.metodo ?? "GET",
@@ -101,7 +107,7 @@ async function renovarToken(): Promise<boolean> {
   const tokens = Platform.ehNativo() ? await lerTokens() : lerSessaoEmbutida();
   if (!tokens?.refresh) return false;
   try {
-    const resposta = await fetch(`${BASE}/auth/token/renovar`, {
+    const resposta = await fetch(`${obterBase()}/auth/token/renovar`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ refreshToken: tokens.refresh }),
@@ -391,6 +397,29 @@ export interface FechamentoApi {
 }
 
 export const api = {
+  /** Testa se o servidor responde no endereço informado (ou no endereço atual). */
+  async testarConexao(enderecoOpcional?: string): Promise<{ ok: boolean; mensagem: string }> {
+    const base =
+      enderecoOpcional !== undefined
+        ? normalizarEnderecoServidor(enderecoOpcional) || BASE_PADRAO
+        : obterBase();
+    try {
+      const resposta = await fetch(`${base}/saude`, { method: "GET", credentials: "include" });
+      if (resposta.ok) {
+        return { ok: true, mensagem: `Conexão com o servidor confirmada (${base}).` };
+      }
+      return {
+        ok: false,
+        mensagem: `O servidor respondeu com erro (${resposta.status}) em ${base}.`,
+      };
+    } catch {
+      return {
+        ok: false,
+        mensagem: `Não foi possível alcançar o servidor em ${base}. Confira o endereço e a conexão.`,
+      };
+    }
+  },
+
   async registrar(nome: string, email: string, senha: string): Promise<Usuario> {
     const resposta = await requisitar<{ usuario: Usuario }>("/auth/registro", {
       metodo: "POST",
@@ -503,6 +532,20 @@ export const api = {
     return requisitar(`/viagens/${viagemId}/convites`, { metodo: "POST", corpo: { email } });
   },
 
+  async listarConvites(
+    viagemId: string,
+  ): Promise<{ convites: { id: string; email: string; papel: string; estado: string; expira_em: string }[] }> {
+    return requisitar(`/viagens/${viagemId}/convites`);
+  },
+
+  async cancelarConvite(viagemId: string, conviteId: string): Promise<void> {
+    await requisitar(`/viagens/${viagemId}/convites/${conviteId}/cancelar`, { metodo: "POST" });
+  },
+
+  async removerParticipante(viagemId: string, usuarioId: string): Promise<void> {
+    await requisitar(`/viagens/${viagemId}/participantes/${usuarioId}/remover`, { metodo: "POST" });
+  },
+
   async aceitarConvite(token: string): Promise<{ viagemId: string }> {
     return requisitar("/convites/aceitar", { metodo: "POST", corpo: { token } });
   },
@@ -520,6 +563,10 @@ export const api = {
       descricao: string;
       pagadorId: string;
       participantes: string[];
+      rateio?:
+        | { metodo: "igualitario"; participantes: string[] }
+        | { metodo: "valores"; partes: { participanteId: string; valorCentavos: string }[] }
+        | { metodo: "percentual"; partes: { participanteId: string; bps: number }[] };
     },
     idempotencia: string = crypto.randomUUID(),
   ): Promise<DespesaApi> {

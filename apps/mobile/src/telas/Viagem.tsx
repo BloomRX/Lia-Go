@@ -17,11 +17,10 @@ import { Platform } from "../services/plataforma.ts";
 import { Reservas } from "./Reservas.tsx";
 import { Orcamento } from "./Orcamento.tsx";
 import { Checklist } from "./Checklist.tsx";
+import { Configuracoes } from "./Configuracoes.tsx";
 import { Documentos } from "./Documentos.tsx";
 import { Fechamento } from "./Fechamento.tsx";
 import { impactosDeCancelamento, resumirOrcamentoDoRoteiro } from "@lia-go/domain";
-import { rotuloDeArmazenamento } from "../services/tokens.ts";
-import { temSessaoEmbutida } from "../services/sessao-embutida.ts";
 import {
   atividadesDoDominio,
   checklistDoDominio,
@@ -807,38 +806,15 @@ export function Viagem({
             }}
           />
 
-          <section className="cartao">
-            <h2>Este aparelho</h2>
-            <div className="linha"><span>Dados guardados para uso sem internet</span><span>{estado.armazenamento}</span></div>
-            <div className="linha"><span>Alterações na fila</span><span>{estado.resumo.total}</span></div>
-            <div className="linha">
-              <span>Sua sessão fica em</span>
-              <span>
-                {Platform.ehWeb()
-                  ? temSessaoEmbutida()
-                    ? "sessão desta aba (sessionStorage)"
-                    : "cookie HttpOnly do navegador"
-                  : rotuloDeArmazenamento()}
-              </span>
-            </div>
-            <p><small className="suave">
-              Guardamos apenas o que você já pode ver nesta viagem, para o app funcionar sem sinal.
-              Os saldos oficiais são sempre calculados no servidor.
-            </small></p>
-            <div className="acoes">
-              <button
-                className="sutil"
-                onClick={() => {
-                  void sincronizador.limparDadosLocais().then(() => {
-                    setAviso("Dados locais apagados. O app vai baixar de novo quando você usar com internet.");
-                    voltar();
-                  });
-                }}
-              >
-                Apagar dados deste aparelho
-              </button>
-            </div>
-          </section>
+          <Configuracoes
+            sincronizador={sincronizador}
+            armazenamento={estado.armazenamento}
+            alteracoesNaFila={estado.resumo.total}
+            aoLimparDados={() => {
+              setAviso("Dados locais apagados. O app vai baixar de novo quando você usar com internet.");
+              voltar();
+            }}
+          />
         </>
       ) : null}
 

@@ -110,6 +110,10 @@ export function criarServidorFalso(
       tokenQuery === "token-de-acesso";
     const USUARIO = { id: usuarioId, nome: "Ana", email: "ana@exemplo.com" };
 
+    if (caminho.endsWith("/saude")) {
+      return json({ ok: true, servico: "lia-go-api", versao: "0.1.0" });
+    }
+
     if (caminho === "/api/auth/sessao") {
       // Token só vale se o servidor aceitar e o cookie não tiver vindo (é o caso embutido).
       if (estado.aceitaToken && portadorDeToken) return json({ usuario: USUARIO });

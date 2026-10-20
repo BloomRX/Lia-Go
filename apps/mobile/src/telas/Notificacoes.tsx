@@ -31,6 +31,7 @@ import {
   type PrioridadeNotificacao,
 } from "@lia-go/domain";
 import { api } from "../services/api.ts";
+import { lerConfiguracoes } from "../services/configuracoes.ts";
 import { alcanceDaCentral } from "../services/notificacoes-locais.ts";
 import { useNotificacoes } from "../services/use-notificacoes.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
@@ -74,9 +75,14 @@ interface Props {
 }
 
 export function Notificacoes({ usuarioId, sincronizador, viagemIdInicial = null, abrirViagem, voltar }: Props): React.ReactElement {
+  const configInicial = lerConfiguracoes();
   const [orcamento, setOrcamento] = useState<OrcamentoParaNotificar | null>(null);
-  const [filtros, setFiltros] = useState<FiltrosDeNotificacao>({ viagemId: viagemIdInicial });
+  const [filtros, setFiltros] = useState<FiltrosDeNotificacao>({
+    viagemId: viagemIdInicial,
+    ...(configInicial.notificacoesApenasAltaPrioridade ? { prioridade: "alta" } : {}),
+  });
   const [filtroEstado, setFiltroEstado] = useState<FiltroDaTela>("abertas");
+  const ocultarValores = configInicial.ocultarValoresNaCentral;
 
   // A viagem aberta pode mudar enquanto a central está na tela (a pessoa abre outra viagem).
   const [viagemAbertaId, setViagemAbertaId] = useState(sincronizador.obter().viagemAtiva);
@@ -289,6 +295,7 @@ export function Notificacoes({ usuarioId, sincronizador, viagemIdInicial = null,
             <CartaoDeNotificacao
               key={notificacao.chave}
               notificacao={notificacao}
+              ocultarValores={ocultarValores}
               aoAbrir={() => {
                 if (!notificacao.viagemId) return;
                 abrirViagem(notificacao.viagemId, abaDoDestino(notificacao.destino));
@@ -309,13 +316,18 @@ export function Notificacoes({ usuarioId, sincronizador, viagemIdInicial = null,
 
 interface PropsCartao {
   notificacao: NotificacaoComEstado;
+  ocultarValores: boolean;
   aoAbrir: () => void;
   aoMarcarLida: () => void;
   aoMarcarNaoLida: () => void;
   aoDispensar: () => void;
 }
 
-function CartaoDeNotificacao({ notificacao, aoAbrir, aoMarcarLida, aoMarcarNaoLida, aoDispensar }: PropsCartao): React.ReactElement {
+function mascararValoresMonetarios(texto: string): string {
+  return texto.replace(/R\$\s*[\d.,]+/g, "R$ •••");
+}
+
+function CartaoDeNotificacao({ notificacao, ocultarValores, aoAbrir, aoMarcarLida, aoMarcarNaoLida, aoDispensar }: PropsCartao): React.ReactElement {
   const dispensada = notificacao.estado === "dispensada";
   const naoLida = notificacao.estado === "nova";
   const classes = [
@@ -327,7 +339,7 @@ function CartaoDeNotificacao({ notificacao, aoAbrir, aoMarcarLida, aoMarcarNaoLi
     <li className={classes || undefined}>
       <div className="linha entre">
         <span>
-          <strong>{notificacao.titulo}</strong>
+          <strong>{ocultarValores ? mascararValoresMonetarios(notificacao.titulo) : notificacao.titulo}</strong>
           <br />
           <small className="suave">
             {ROTULO_CATEGORIA_NOTIFICACAO[notificacao.categoria]}
@@ -339,7 +351,7 @@ function CartaoDeNotificacao({ notificacao, aoAbrir, aoMarcarLida, aoMarcarNaoLi
         <span className={`etiqueta prioridade-${notificacao.prioridade}`}>{ROTULO_PRIORIDADE_NOTIFICACAO[notificacao.prioridade]}</span>
       </div>
 
-      <p>{notificacao.detalhe}</p>
+      <p>{ocultarValores ? mascararValoresMonetarios(notificacao.detalhe) : notificacao.detalhe}</p>
 
       <div className="acoes">
         {notificacao.viagemId ? (

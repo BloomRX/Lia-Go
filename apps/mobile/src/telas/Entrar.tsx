@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Marca } from "../componentes/Marca.tsx";
-import { ErroApi } from "../services/api.ts";
+import { api, ErroApi } from "../services/api.ts";
+import { guardarConfiguracoes, lerConfiguracoes } from "../services/configuracoes.ts";
 import { Platform } from "../services/plataforma.ts";
 
 // Dicas de autofill do navegador (ajudam o gerenciador de senhas; não guardam nada).
@@ -94,6 +95,8 @@ export function Entrar({ aoEntrar, embutido = false }: Props): React.ReactElemen
   // se a sessão realmente falhar (nem cookie nem sessionStorage funcionarem). Mostrar antes de
   // tentar entrar induzia a abrir a URL do painel em aba avulsa, onde o proxy devolve 403/Unavailable.
   const [mostrarSaidaAba, setMostrarSaidaAba] = useState(embutido);
+  const [enderecoServidor, setEnderecoServidor] = useState(() => lerConfiguracoes().enderecoServidor);
+  const [avisoServidor, setAvisoServidor] = useState<string | null>(null);
 
   async function enviar(evento: React.FormEvent): Promise<void> {
     evento.preventDefault();
@@ -156,6 +159,50 @@ export function Entrar({ aoEntrar, embutido = false }: Props): React.ReactElemen
       </form>
 
       {mostrarSaidaAba ? <AvisoAbaPropria url={window.location.href} /> : null}
+
+      <details className="cartao">
+        <summary>Servidor do Lia Go (celular / rede local)</summary>
+        <p className="suave pequeno" style={{ marginTop: 8 }}>
+          Na web o padrão (<code>/api</code>) já aponta para o servidor. No celular, informe o endereço do servidor
+          da sua rede local ou Tailscale.
+        </p>
+        <label htmlFor="entrar-endereco-servidor">Endereço do servidor</label>
+        <input
+          id="entrar-endereco-servidor"
+          type="url"
+          value={enderecoServidor}
+          onChange={(evento) => setEnderecoServidor(evento.target.value)}
+          placeholder="Ex.: http://192.168.1.10:3000/api"
+        />
+        <div className="acoes">
+          <button
+            type="button"
+            className="sutil"
+            onClick={() => {
+              setAvisoServidor(null);
+              void api.testarConexao(enderecoServidor).then((r) => setAvisoServidor(r.mensagem));
+            }}
+          >
+            Testar conexão
+          </button>
+          <button
+            type="button"
+            className="principal"
+            onClick={() => {
+              const salvo = guardarConfiguracoes({ enderecoServidor });
+              setEnderecoServidor(salvo.enderecoServidor);
+              setAvisoServidor(
+                salvo.enderecoServidor
+                  ? `Servidor salvo: ${salvo.enderecoServidor}.`
+                  : "Servidor restaurado para o padrão (/api).",
+              );
+            }}
+          >
+            Salvar servidor
+          </button>
+        </div>
+        {avisoServidor ? <div className="aviso info">{avisoServidor}</div> : null}
+      </details>
 
       <div className="aviso info">
         Sua senha é protegida com scrypt e a sessão fica em cookie seguro na web. Não guardamos dados de cartão e não

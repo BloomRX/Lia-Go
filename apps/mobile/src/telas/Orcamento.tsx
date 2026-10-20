@@ -20,6 +20,7 @@ import {
   type SituacaoDoOrcamento,
 } from "@lia-go/domain";
 import { api, ErroApi, type OrcamentoApi } from "../services/api.ts";
+import { assinarConfiguracoes, lerConfiguracoes, type LimiarOrcamento } from "../services/configuracoes.ts";
 import { formatarBRL, paraCentavos } from "../services/formato.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 import { pode } from "../services/viagem-local.ts";
@@ -56,6 +57,7 @@ export function Orcamento({
 }: Props): React.ReactElement {
   const [doServidor, setDoServidor] = useState<OrcamentoApi | null>(null);
   const [limiteColetivoLocal, setLimiteColetivoLocal] = useState<string | null>(null);
+  const [limiarAtencao, setLimiarAtencao] = useState<LimiarOrcamento>(() => lerConfiguracoes().limiarOrcamentoPercentual);
   /** Por que o número do servidor não chegou: a tela explica o caso certo, sem culpar a rede à toa. */
   const [motivoSemServidor, setMotivoSemServidor] = useState<"sem_rede" | "sem_resposta" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -64,6 +66,10 @@ export function Orcamento({
   const [individual, setIndividual] = useState("");
   const [editando, setEditando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    return assinarConfiguracoes((nova) => setLimiarAtencao(nova.limiarOrcamentoPercentual));
+  }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -110,8 +116,9 @@ export function Orcamento({
   }, [atividades, reservas]);
 
   const situacao: SituacaoDoOrcamento = useMemo(() => {
+    let base: SituacaoDoOrcamento;
     if (doServidor && limiteColetivoLocal === (doServidor.limiteColetivo?.centavos ?? null)) {
-      return {
+      base = {
         temLimite: doServidor.situacao.temLimite,
         limiteCentavos: doServidor.situacao.limiteCentavos === null ? null : BigInt(doServidor.situacao.limiteCentavos),
         previstoCentavos: BigInt(doServidor.situacao.previstoCentavos),
@@ -124,22 +131,32 @@ export function Orcamento({
         percentualPrevisto: doServidor.situacao.percentualPrevisto,
         percentualGasto: doServidor.situacao.percentualGasto,
         estado: doServidor.situacao.estado,
-        alertas: doServidor.situacao.alertas,
+        alertas: [...doServidor.situacao.alertas],
         resumo: doServidor.situacao.resumo,
       };
+    } else {
+      // Sem rede (ou com limite ajustado neste aparelho enquanto espera conexão): recalcula a situação
+      // pelo domínio com o previsto local e o último gasto conhecido.
+      const gasto = doServidor ? BigInt(doServidor.situacao.gastoConfirmadoCentavos) : gastoConfirmadoCentavos === null ? 0n : BigInt(gastoConfirmadoCentavos);
+      const aguardando = doServidor ? BigInt(doServidor.situacao.aguardandoCentavos) : aguardandoCentavos === null ? 0n : BigInt(aguardandoCentavos);
+      base = situacaoDoOrcamento({
+        limiteCentavos: limiteColetivoLocal === null ? null : BigInt(limiteColetivoLocal),
+        previstoCentavos: previstoLocal.previstoCentavos,
+        gastoConfirmadoCentavos: gasto,
+        aguardandoCentavos: aguardando,
+        custosAVerificar: previstoLocal.custosAVerificar,
+      });
     }
-    // Sem rede (ou com limite ajustado neste aparelho enquanto espera conexão): recalcula a situação
-    // pelo domínio com o previsto local e o último gasto conhecido.
-    const gasto = doServidor ? BigInt(doServidor.situacao.gastoConfirmadoCentavos) : gastoConfirmadoCentavos === null ? 0n : BigInt(gastoConfirmadoCentavos);
-    const aguardando = doServidor ? BigInt(doServidor.situacao.aguardandoCentavos) : aguardandoCentavos === null ? 0n : BigInt(aguardandoCentavos);
-    return situacaoDoOrcamento({
-      limiteCentavos: limiteColetivoLocal === null ? null : BigInt(limiteColetivoLocal),
-      previstoCentavos: previstoLocal.previstoCentavos,
-      gastoConfirmadoCentavos: gasto,
-      aguardandoCentavos: aguardando,
-      custosAVerificar: previstoLocal.custosAVerificar,
-    });
-  }, [doServidor, limiteColetivoLocal, previstoLocal, gastoConfirmadoCentavos, aguardandoCentavos]);
+    if (base.temLimite && base.estado !== "estourado" && limiarAtencao !== 80) {
+      const maiorPercentual = Math.max(base.percentualPrevisto ?? 0, base.percentualGasto ?? 0);
+      const emAtencao = maiorPercentual >= limiarAtencao;
+      return {
+        ...base,
+        estado: emAtencao ? "atencao" : "dentro",
+      };
+    }
+    return base;
+  }, [doServidor, limiteColetivoLocal, limiarAtencao, previstoLocal, gastoConfirmadoCentavos, aguardandoCentavos]);
 
   const comServidor = doServidor !== null;
   // Custo sem valor informado: vem do servidor quando há rede; senão do que o aparelho calculou.

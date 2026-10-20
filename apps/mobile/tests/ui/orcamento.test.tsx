@@ -207,3 +207,41 @@ test("despesas mostram natureza explícita (no saldo oficial × fora) e só ofer
   assert.equal(botaoCom("Confirmar"), null, "não mostra botão Confirmar para quem lançou a própria despesa (§8)");
 });
 
+test("configurações (tela 18): limiar do orçamento configurável (70%/80%/90%) e teste de conexão com o servidor", async () => {
+  await abrirGastos({
+    id: "v1",
+    nome: "Serra",
+    destino: "Campos do Jordão",
+    estado: "planejada",
+    versao: 1,
+    papel: "organizador",
+    atividades: ATIVIDADES,
+    limiteColetivoCentavos: "400000",
+    realizado: "0",
+    comprometido: "0",
+  });
+  await esperarPor(() => textoDaTela().includes("Dentro do limite"), "75% estar dentro do limite padrão (80%)");
+
+  clicar(botaoCom("Mais"));
+  await esperarPor(() => textoDaTela().includes("Configurações e este aparelho"), "a tela 18 aparecer na aba Mais");
+
+  clicar(botaoCom("Testar conexão"));
+  await esperarPor(
+    () => textoDaTela().includes("Conexão com o servidor confirmada"),
+    "o botão Testar conexão responder com o estado do servidor",
+  );
+
+  const seletorLimiar = raizDoDocumento.querySelector<HTMLSelectElement>("#config-limiar-orcamento")!;
+  await digitar(seletorLimiar, "70");
+  await esperarPor(() => textoDaTela().includes("Alerta do orçamento ajustado para 70%"), "confirmar a mudança de limiar");
+
+  clicar(botaoCom("Gastos"));
+  await esperarPor(() => textoDaTela().includes("Perto do limite"), "75% passar a Perto do limite quando o limiar é 70%");
+
+  // Restaura o padrão (80%) para não afetar outros testes.
+  clicar(botaoCom("Mais"));
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#config-limiar-orcamento")), "seletor reaparecer");
+  await digitar(raizDoDocumento.querySelector<HTMLSelectElement>("#config-limiar-orcamento")!, "80");
+});
+
+
