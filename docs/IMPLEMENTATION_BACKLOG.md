@@ -1,6 +1,6 @@
 # Backlog — Lia Go
 
-Atualizado em **2026-10-16** (décima quinta rodada — dependências e "o app abriu?"), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
+Atualizado em **2026-10-19** (entrega das Fatias A, B, C e D da V1 — telas 7, 8, 9, 11, 13, 17 e 18 completas), alinhado à stack decidida (React + TypeScript + Capacitor) e a `docs/ARCHITECTURE.md`.
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 
 ## Fase 0 — Reconhecimento e base executável
@@ -16,7 +16,7 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Barra com Visão geral, Roteiro, Gastos e Mais; identidade escura roxo/magenta, referências oficiais
   aplicadas (hero da viagem com a Lia, próximo compromisso em destaque, orçamento com barra) e estados
   carregando/vazio/erro/sem permissão. Documentos e checklist vivem na aba Mais por ora.
-- 🔄 Placar de testes da rodada: ferramentas 53 · domínio 157 · sincronização 49 · app 49 + 45 (jsdom) · API 92 = **445**.
+- 🔄 Placar de testes da rodada: ferramentas 53 · domínio 158 · sincronização 49 · app 53 + 54 (jsdom) · API 94 = **461**.
 
 ## Fase 1 — Contas, viagens e acesso (primeira etapa)
 - ✅ `packages/domain` com **157 testes** cobrindo dinheiro, rateio, estados, papéis, despesas, saldos,
@@ -30,22 +30,21 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ Testes negativos: acesso cruzado, convite de outra pessoa, membro que saiu, rateio com não-membro.
 
 ## Fase 2 — Núcleo financeiro determinístico (início já na primeira etapa)
-- ✅ Rateio igualitário, por valores e percentual (bps), com soma exata e explicação do centavo.
+- ✅ Rateio igualitário (com seleção de quem participa), por valores fixos e percentual (bps) na API, no domínio e na interface (tela 11), com soma exata e prévia do centavo de resto.
 - ✅ Ciclo completo implementado e testado, inclusive correção com motivo e histórico antes/depois.
 - ✅ Orçamento coletivo/individual com limite (planejamento, nunca saldo oficial), barra com estado em
-  texto e atenção a partir de 80%; o previsto continua separado do gasto confirmado.
-  ⬜ Tornar o limiar de atenção configurável (hoje fixo em 80% no domínio).
-- ⬜ Moeda estrangeira com valor original, taxa, referência temporal e convertido (histórico preservado).
+  texto e limiar de atenção configurável (`70%`, `80%`, `90%` na tela 18); o previsto continua separado do gasto confirmado.
+- ✅ Moeda estrangeira (`USD`, `EUR`, `GBP`, `ARS`) na tela 13 com valor original, taxa histórica inteira determinística (escala 10.000, sem float), data de cotação e valor convertido em `BRL` preservando o histórico.
 - ✅ Saldos, transferências sugeridas e acertos (informado → confirmado por quem recebeu) na tela e na API.
   Pagamento parcial e reembolso ligado à despesa ficam para a próxima fatia.
 - ⬜ Reembolsos e correções auditáveis com motivo e revisão independente.
-- 🔄 157 testes de domínio + 92 de API cobrem limites, restos, permissões, orçamento, checklist, documentos,
-  fechamento e notificações; câmbio entra com o módulo de moedas.
+- 🔄 158 testes de domínio + 94 de API + 107 do app cobrem limites, restos, permissões, orçamento, checklist, documentos,
+  fechamento, notificações, rateio e câmbio.
 
 ## Fase 3 — Roteiro, reservas e documentos
 - ✅ Roteiro por dia (timeline), atividades com estados manuais e versões anteriores.
-- ✅ Revisão de impacto antes de concluir/cancelar atividade e antes de compartilhar/remover documento.
-  ⬜ Revisão de impacto antes de **substituir o roteiro vigente** (comparação de versões do roteiro).
+- ✅ Revisão de impacto antes de concluir/cancelar atividade, antes de compartilhar/remover documento e
+  **antes de substituir o roteiro vigente do dia** (tela 8: diferenças, conflitos de horário e impacto no orçamento previsto).
 - ✅ Reservas manuais assistidas, checklist (prazo não conclui; reabertura com motivo) e documentos privados
   por padrão com compartilhamento revogável, remoção lógica com motivo e limpeza da cópia local de quem
   perdeu acesso.
@@ -64,11 +63,10 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ pendente.
 - ✅ **Corrigido (2026-10-16)**: o teste do "próximo compromisso" fazia a conta de "amanhã" em UTC e
   falhava depois das 21h (horário de São Paulo). Agora app e teste usam a mesma função
   (`amanhaIso`), no fuso das viagens.
-- ✅ A ficha da atividade guarda o que **não é horário**: observações (também usadas para acessibilidade) e
-  o vínculo com a reserva da viagem, mostrando a **evidência** que já existe (localizador) quando ela está
-  confirmada. Vincular não confirma nada nem muda a natureza do dinheiro (§13).
-  ⬜ Documentos/links vinculados à atividade — o vínculo precisa carregar a mesma regra de privacidade do
-  documento (quem perdeu acesso não pode descobrir pelo vínculo); próxima fatia do roteiro.
+- ✅ A ficha da atividade guarda o que **não é horário**: observações (também usadas para acessibilidade),
+  o vínculo com a reserva da viagem (mostrando a evidência que já existe quando confirmada) e o **vínculo com
+  documento da viagem** (tela 7), respeitando a privacidade `404` (quem não tem acesso ou perdeu acesso não
+  descobre a existência de documento privado pelo vínculo).
 - ✅ **Identidade visual das referências (2026-10-16)**: marca oficial (pino em SVG no app + imagem
   oficial como ícone/favicon), barra inferior com ícone **e** rótulo (Lucide), etiquetas com ponto +
   palavra, glow como acento e cartões com profundidade discreta. Nenhuma identidade paralela e nenhum

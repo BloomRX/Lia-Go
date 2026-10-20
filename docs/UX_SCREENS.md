@@ -55,17 +55,17 @@ Isto é o que **existe no app hoje**, não o que está planejado — conferido r
 | 4 | Convites e participantes | ✅ convite com token mostrado uma vez; participação por token | `telas/Viagem.tsx` |
 | 5 | Dashboard da viagem | ✅ destino, datas, estado, saldos e pendências | `telas/Viagem.tsx` (aba Visão) |
 | 6 | Roteiro | ✅ timeline por dia, dias com conflito, resumo adaptativo, concluídas recolhíveis, criar atividade | `telas/Roteiro.tsx` |
-| 7 | Detalhes da atividade | ✅ ficha, custo com natureza, concluir/cancelar/corrigir com motivo, histórico, **revisão de impacto antes de concluir/cancelar** | `telas/Atividade.tsx` |
-| 8 | Revisão de mudanças | 🟡 impacto conhecido antes de concluir/cancelar/abrir outra viagem; falta a prévia para **substituir o roteiro vigente** | `telas/Atividade.tsx`, `packages/domain/src/roteiro.ts` (`revisarImpacto`) |
-| 9 | Orçamento | ✅ limite coletivo (organizador) e individual, barra com estado em texto, gasto oficial e "aguardando confirmação" separados do previsto; atenção a partir de 80% e alerta na central | `telas/Orcamento.tsx` (aba Gastos), `packages/domain/src/orcamento.ts` |
-| 10–11 | Nova despesa / rateio | ✅ despesa com rateio igualitário, soma exata | `telas/Viagem.tsx` (aba Gastos) |
+| 7 | Detalhes da atividade | ✅ ficha, custo com natureza, vínculo com reserva e com documento (respeitando privacidade `404`), concluir/cancelar/corrigir com motivo, histórico, **revisão de impacto antes de concluir/cancelar** | `telas/Atividade.tsx`, `services/roteiro-revisao.ts` |
+| 8 | Revisão de mudanças | ✅ impacto conhecido antes de concluir/cancelar e **prévia de diferenças, conflitos e impacto no previsto antes de substituir o roteiro do dia** | `telas/Atividade.tsx`, `telas/Roteiro.tsx`, `services/roteiro-revisao.ts` |
+| 9 | Orçamento | ✅ limite coletivo (organizador) e individual, barra com estado em texto, gasto oficial e "aguardando confirmação" separados do previsto; limiar de atenção configurável (`70%`, `80%`, `90%`) e alerta na central | `telas/Orcamento.tsx` (aba Gastos), `packages/domain/src/orcamento.ts` |
+| 10–11 | Nova despesa / rateio | ✅ despesa com rateio igualitário (com seleção de quem participa), valores fixos e percentual (`bps`), prévia em tempo real e soma exata | `telas/Viagem.tsx` (aba Gastos), `services/cambio.ts` |
 | 12 | Saldos e acertos | ✅ saldo oficial do servidor + acertos sugeridos | `telas/Viagem.tsx` (aba Gastos) |
-| 13 | Moedas | ⬜ (BRL hoje; estrutura de dinheiro já é por moeda) | — |
+| 13 | Moedas | ✅ lançamento em moeda estrangeira (`USD`, `EUR`, `GBP`, `ARS`) com taxa de câmbio inteira determinística e data da cotação, preservando valor/moeda/taxa originais e convertendo para `BRL` | `telas/Viagem.tsx` (aba Gastos), `services/cambio.ts` |
 | 14 | Reservas e checklist | ✅ reserva nasce prevista e confirmar exige evidência; checklist com prazo que não conclui nada e reabertura com motivo | `telas/Reservas.tsx` e `telas/Checklist.tsx` (aba **Mais**) |
 | 15 | Documentos | ✅ privados por padrão, compartilhar/revogar, remoção lógica com motivo; o app guarda link e descrição, não o arquivo | `telas/Documentos.tsx` (aba **Mais**) |
 | 16 | Central de notificações | ✅ contagem igual à da tela inicial, filtros, ler ≠ dispensar ≠ resolver, dispensa que não esconde piora, ação leva à aba certa, histórico | `telas/Notificacoes.tsx`, `packages/domain/src/notificacao.ts` |
-| 17 | Participantes e permissões | 🟡 papéis e convite existem; tela administrativa não | `telas/Viagem.tsx` |
-| 18 | Configurações | 🟡 "Este aparelho" (dados locais, fila, sair) na aba Mais; preferências de notificação e moeda ainda não | `telas/Viagem.tsx` (aba **Mais**) |
+| 17 | Participantes e permissões | ✅ papéis, convites pendentes com cancelamento (organizador), remoção de participante (organizador) e saída da viagem com `consequenciasDeSaida()` preservando histórico financeiro | `telas/Participantes.tsx` (aba **Mais**) |
+| 18 | Configurações | ✅ limiar de atenção do orçamento (`70%`, `80%`, `90%`), preferências locais de notificação (prioridade + ocultar valores sensíveis), endereço do servidor (`URL da API` + testar conexão), dados locais e sessão | `telas/Configuracoes.tsx` (aba **Mais**), `telas/Entrar.tsx` |
 | 19 | Cancelar viagem | ✅ prévia de impactos (`impactos-cancelamento`) + confirmação explícita na tela da viagem | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
 | 20 | Concluir viagem | ✅ transições com permissão por destino (bloqueia criar atividade/reserva depois de concluída) | `telas/Viagem.tsx`, `packages/domain/src/trip-state.ts` |
 | 21 | Fechamento / exportação | ✅ previsto × realizado com números do servidor, acertos como sugestão, `.txt` e `.csv`; no celular sem download o texto aparece para copiar | `telas/Fechamento.tsx` (aba **Mais**), `packages/domain/src/fechamento.ts` |
