@@ -554,6 +554,16 @@ export function criarServidorFalso(
       return json({ dia: atividade["dia"], atividades: [atividade], resumo: {}, conflitos: [] });
     }
 
+    if (caminho.includes("/atividades/") && caminho.endsWith("/cancelar")) {
+      const id = caminho.split("/").at(-2);
+      const atividade = (viagem.atividades ?? []).find((item) => item["id"] === id);
+      if (!atividade) return json({ erro: "nao_encontrada", mensagem: "Atividade não encontrada." }, 404);
+      atividade["estado"] = "cancelada";
+      atividade["versao"] = Number(atividade["versao"] ?? 1) + 1;
+      viagem.versao += 1;
+      return json({ dia: atividade["dia"], atividades: [atividade], resumo: {}, conflitos: [] });
+    }
+
     if (caminho.endsWith("/despesas") && metodo === "POST") {
       const nova = {
         id: `d${(viagem.despesas ?? []).length + 1}`,

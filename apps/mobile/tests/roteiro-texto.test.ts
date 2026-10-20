@@ -9,6 +9,12 @@ import {
   textoDoHorario,
   tituloDoConflito,
 } from "../src/services/roteiro-texto.ts";
+import {
+  analisarPropostaDeDia,
+  documentoVinculadoDaAtividade,
+  revisarSubstituicaoDoDia,
+  vincularDocumentoNaAtividade,
+} from "../src/services/roteiro-revisao.ts";
 
 /**
  * Regras de exibição do roteiro (`docs/UI_VISUAL_GUIDELINES.md` §2 e `docs/UI_V1_DECISIONS.md` §7).
@@ -162,3 +168,73 @@ test("custoDoCartao: forma do servidor, forma do domínio e nada — sem inventa
   assert.deepEqual(custoDoCartao({ custoCentavos: null, custoNatureza: null, custoAVerificar: true }), { centavos: null, natureza: null, aVerificar: true });
   assert.deepEqual(custoDoCartao({}), { centavos: null, natureza: null, aVerificar: false });
 });
+
+test("vínculo de documento na atividade respeita privacidade 404 (não vaza documento sem acesso)", () => {
+  vincularDocumentoNaAtividade("v1", "a1", "doc-privado");
+  // Quem não tem acesso recebe lista sem o documento privado -> retorna null sem vazar existência
+  assert.equal(documentoVinculadoDaAtividade("v1", "a1", []), null);
+  // Quem tem acesso vê o documento ativo
+  const visivel = documentoVinculadoDaAtividade("v1", "a1", [
+    {
+      id: "doc-privado",
+      viagemId: "v1",
+      autorId: "u1",
+      tipo: "ingresso",
+      nome: "Voucher Museu",
+      descricao: "Entrada prioritária",
+      link: "https://exemplo.com/voucher",
+      visibilidade: "privado",
+      compartilhadoCom: [],
+      estado: "ativo",
+      removidoPor: null,
+      removidoEm: null,
+      motivoRemocao: null,
+      versao: 1,
+    },
+  ]);
+  assert.equal(visivel?.nome, "Voucher Museu");
+  vincularDocumentoNaAtividade("v1", "a1", null);
+});
+
+test("revisarSubstituicaoDoDia (tela 8) calcula diferenças, conflitos e impacto no orçamento previsto", () => {
+  const propostas = analisarPropostaDeDia(
+    "09:00 | Passeio de barco | 120 | 150,00\n10:00 | Mergulho | 60 | 80,00",
+  );
+  assert.equal(propostas.length, 2);
+
+  const revisao = revisarSubstituicaoDoDia({
+    viagemId: "v1",
+    usuarioId: "u1",
+    dia: "2026-12-20",
+    atuaisDoDia: [
+      {
+        id: "a1",
+        viagemId: "v1",
+        autorId: "u1",
+        dia: "2026-12-20",
+        ordem: 1,
+        titulo: "Trilha matinal",
+        hora: "09:00",
+        duracaoMinutos: 90,
+        local: null,
+        custoCentavos: 5000n,
+        custoNatureza: "estimativa",
+        custoAVerificar: false,
+        estado: "planejada",
+        concluidaPor: null,
+        concluidaEm: null,
+        observacao: null,
+        reservaId: "r1",
+        deslocamento: null,
+        versao: 1,
+      },
+    ],
+    propostas,
+  });
+
+  assert.equal(revisao.aCancelar.length, 1);
+  assert.equal(revisao.conflitosPropostos.length, 1, "detecta sobreposição entre 09:00 (120m) e 10:00");
+  assert.equal(revisao.diferencaPrevistoCentavos, 18000n, "de R$ 50,00 para R$ 230,00 (+R$ 180,00)");
+  assert.ok(revisao.avisos.some((a) => a.includes("reserva vinculada")));
+});
+

@@ -174,3 +174,60 @@ test("criar reserva entra como prevista, com o valor combinado separado da estim
   );
   await esperarPor(() => textoDaTela().includes("R$ 350,00"), "o valor da reserva nova aparecer");
 });
+
+test("revisão de substituição do dia no roteiro (tela 8) mostra diferenças e impacto antes de aplicar", async () => {
+  await limparAparelho();
+  const servidor = criarServidorFalso([
+    {
+      id: "v1",
+      nome: "Serra",
+      destino: "Campos do Jordão",
+      estado: "planejada",
+      versao: 1,
+      papel: "organizador",
+      atividades: [
+        {
+          id: "a1",
+          viagemId: "v1",
+          autorId: "u1",
+          dia: "2026-12-20",
+          ordem: 1,
+          titulo: "Trilha na mata",
+          hora: "09:00",
+          duracaoMinutos: 90,
+          local: null,
+          custo: { centavos: "5000", natureza: "estimativa", aVerificar: false },
+          estado: "planejada",
+          concluidaPor: null,
+          concluidaEm: null,
+          observacao: null,
+          reservaId: null,
+          deslocamento: null,
+          versao: 1,
+        },
+      ],
+    },
+  ]);
+  (globalThis as Record<string, unknown>).fetch = servidor.fetch;
+  montar();
+  await esperarPor(() => Boolean(botaoCom("Serra")), "a viagem aparecer");
+  clicar(botaoCom("Serra"));
+  await esperarPor(() => Boolean(botaoCom("Roteiro")), "as abas aparecerem");
+  clicar(botaoCom("Roteiro"));
+  await esperarPor(() => textoDaTela().includes("Trilha na mata"), "a atividade do dia carregar");
+
+  clicar(botaoCom("Substituir dia"));
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#proposta-roteiro-dia")), "abrir revisão de substituição");
+  await digitar(
+    raizDoDocumento.querySelector<HTMLTextAreaElement>("#proposta-roteiro-dia")!,
+    "10:00 | Visita ao museu coberto | 120 | 90,00",
+  );
+  await esperarPor(
+    () => textoDaTela().includes("Aumenta o previsto do dia em R$ 40,00"),
+    "mostrar prévia do impacto no previsto do dia",
+  );
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#motivo-substituicao-dia")!, "Chuva forte pela manhã");
+  clicar(botaoCom("Confirmar substituição do dia"));
+  await esperarPor(() => textoDaTela().includes("Visita ao museu coberto"), "aplicar o novo plano do dia");
+});
+

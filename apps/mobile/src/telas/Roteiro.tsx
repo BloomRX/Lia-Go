@@ -24,6 +24,7 @@ import { api, ErroApi, type AtividadeApi, type ConflitoApi } from "../services/a
 import { formatarDiaCurto, formatarDiaLongo, hojeIso, paraCentavos, ROTULO_ESTADO } from "../services/formato.ts";
 import { linhasDoResumoDoDia } from "../services/roteiro-texto.ts";
 import { atividadesDoDominio, reservasDaViagem } from "../services/viagem-local.ts";
+import { analisarPropostaDeDia, revisarSubstituicaoDoDia } from "../services/roteiro-revisao.ts";
 import { CartaoAtividade } from "../componentes/CartaoAtividade.tsx";
 import type { Sincronizador } from "../offline/sincronizador.ts";
 
@@ -50,6 +51,9 @@ export function Roteiro({
   const [diaEscolhido, setDiaEscolhido] = useState<string | null>(null);
   const [recolherConcluidas, setRecolherConcluidas] = useState(false);
   const [formularioAberto, setFormularioAberto] = useState(false);
+  const [substituindoDia, setSubstituindoDia] = useState(false);
+  const [textoSubstituicao, setTextoSubstituicao] = useState("");
+  const [motivoSubstituicao, setMotivoSubstituicao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -167,13 +171,167 @@ export function Roteiro({
       <div className="linha entre">
         <h2>Roteiro</h2>
         {!criarBloqueada ? (
-          <button className="principal compacto" onClick={() => setFormularioAberto((aberto) => !aberto)}>
-            {formularioAberto ? "Fechar" : "Nova atividade"}
-          </button>
+          <div className="acoes" style={{ marginTop: 0 }}>
+            {diaAberto ? (
+              <button
+                type="button"
+                className="sutil compacto"
+                onClick={() => {
+                  setSubstituindoDia((aberto) => {
+                    if (!aberto && !textoSubstituicao.trim()) {
+                      const padrao = diaAberto.atividades
+                        .filter((a) => a.estado === "planejada")
+                        .map((a) => `${a.hora ?? "Flexível"} | ${a.titulo}${a.duracaoMinutos ? ` | ${a.duracaoMinutos}` : ""}`)
+                        .join("\n");
+                      setTextoSubstituicao(padrao);
+                    }
+                    return !aberto;
+                  });
+                }}
+              >
+                {substituindoDia ? "Fechar revisão" : "Substituir dia"}
+              </button>
+            ) : null}
+            <button className="principal compacto" onClick={() => setFormularioAberto((aberto) => !aberto)}>
+              {formularioAberto ? "Fechar" : "Nova atividade"}
+            </button>
+          </div>
         ) : (
           <span className="suave pequeno">{estadoViagem === "cancelada" ? "Viagem cancelada" : "Viagem concluída"}</span>
         )}
       </div>
+
+      {substituindoDia && diaAberto ? (
+        <section className="cartao" aria-labelledby="titulo-revisao-substituicao">
+          <h3 id="titulo-revisao-substituicao">Revisar substituição do dia ({formatarDiaCurto(diaAberto.dia)})</h3>
+          <p className="suave pequeno">
+            Informe uma atividade por linha no formato <code>HH:MM | Título | Duração min | Valor R$</code> (ou{" "}
+            <code>Flexível | Título</code>). Antes de aplicar, veja o que sai, o que entra, conflitos e o efeito no
+            previsto.
+          </p>
+          <label htmlFor="proposta-roteiro-dia">Novo plano para o dia</label>
+          <textarea
+            id="proposta-roteiro-dia"
+            rows={4}
+            value={textoSubstituicao}
+            onChange={(e) => setTextoSubstituicao(e.target.value)}
+            placeholder={"09:00 | Passeio de barco | 120 | 150,00\n12:30 | Almoço no porto | 90 | 80,00"}
+          />
+          <label htmlFor="motivo-substituicao-dia">Motivo da substituição (mínimo 5 caracteres)</label>
+          <input
+            id="motivo-substituicao-dia"
+            value={motivoSubstituicao}
+            onChange={(e) => setMotivoSubstituicao(e.target.value)}
+            placeholder="Previsão de chuva no turno da manhã"
+          />
+
+          {(() => {
+            try {
+              const propostas = analisarPropostaDeDia(textoSubstituicao);
+              const revisao = revisarSubstituicaoDoDia({
+                viagemId,
+                usuarioId,
+                dia: diaAberto.dia,
+                atuaisDoDia: diaAberto.atividades,
+                propostas,
+              });
+              return (
+                <div className="impacto" style={{ marginTop: 10 }}>
+                  <h4>Prévia da substituição (o que muda antes de aplicar)</h4>
+                  <ul>
+                    <li>
+                      <strong>Saem (serão canceladas com motivo):</strong>{" "}
+                      {revisao.aCancelar.length === 0
+                        ? "nenhuma atividade planejada anterior"
+                        : revisao.aCancelar.map((a) => `${a.hora ?? "Flexível"} ${a.titulo}`).join(", ")}
+                    </li>
+                    <li>
+                      <strong>Entram (novas atividades planejadas):</strong>{" "}
+                      {revisao.propostas.map((a) => `${a.hora ?? "Flexível"} ${a.titulo}`).join(", ")}
+                    </li>
+                    <li>
+                      <strong>Impacto no previsto:</strong> {revisao.resumoDiferencaOrcamento}
+                    </li>
+                    <li>
+                      <strong>Conflitos de horário no novo plano:</strong>{" "}
+                      {revisao.conflitosPropostos.length === 0
+                        ? "nenhum conflito detectado"
+                        : revisao.conflitosPropostos.map((c) => c.explicacao).join(" · ")}
+                    </li>
+                  </ul>
+                  {revisao.avisos.length > 0 ? (
+                    <ul className="impacto-atencao">
+                      {revisao.avisos.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="acoes">
+                    <button
+                      type="button"
+                      className="principal"
+                      disabled={ocupado}
+                      onClick={async () => {
+                        setErro(null);
+                        if (motivoSubstituicao.trim().length < 5) {
+                          setErro("Explique o motivo da substituição do dia (mínimo 5 caracteres).");
+                          return;
+                        }
+                        setOcupado(true);
+                        try {
+                          for (const antiga of revisao.aCancelar) {
+                            await sincronizador.enfileirar({
+                              tipo: "cancelar_atividade",
+                              viagemId,
+                              atividadeId: antiga.id,
+                              motivo: `Substituição do dia: ${motivoSubstituicao.trim()}`,
+                              versao: antiga.versao,
+                              descricao: `Substituir (cancelar): ${antiga.titulo}`,
+                            });
+                          }
+                          for (const item of propostas) {
+                            await sincronizador.enfileirar({
+                              tipo: "criar_atividade",
+                              viagemId,
+                              corpo: {
+                                dia: diaAberto.dia,
+                                titulo: item.titulo,
+                                hora: item.hora,
+                                duracaoMinutos: item.duracaoMinutos,
+                                local: null,
+                                custoCentavos: item.custoCentavos === null ? null : item.custoCentavos.toString(),
+                                custoNatureza: item.custoNatureza,
+                                custoAVerificar: false,
+                                observacao: `Incluída na revisão do dia (${motivoSubstituicao.trim()})`,
+                                reservaId: null,
+                                deslocamento: null,
+                              },
+                              descricao: `Nova atividade (substituição): ${item.titulo}`,
+                            });
+                          }
+                          setSubstituindoDia(false);
+                          setMotivoSubstituicao("");
+                          setAviso("Substituição do dia aplicada com histórico preservado.");
+                        } finally {
+                          setOcupado(false);
+                        }
+                      }}
+                    >
+                      Confirmar substituição do dia
+                    </button>
+                  </div>
+                </div>
+              );
+            } catch (falha) {
+              return (
+                <p className="suave pequeno" style={{ marginTop: 8 }}>
+                  {falha instanceof Error ? falha.message : ""}
+                </p>
+              );
+            }
+          })()}
+        </section>
+      ) : null}
 
       {aviso ? (
         <div className="aviso info" role="status">

@@ -18,8 +18,15 @@ import {
   ROTULO_ATIVIDADE,
 } from "../services/formato.ts";
 import type { Sincronizador } from "../offline/sincronizador.ts";
-import { ROTULO_ESTADO_RESERVA, ROTULO_TIPO_RESERVA, revisarImpacto, type Atividade as AtividadeDominio } from "@lia-go/domain";
-import { atividadeDoDominio, reservasDaViagem } from "../services/viagem-local.ts";
+import {
+  ROTULO_ESTADO_RESERVA,
+  ROTULO_TIPO_DOCUMENTO,
+  ROTULO_TIPO_RESERVA,
+  revisarImpacto,
+  type Atividade as AtividadeDominio,
+} from "@lia-go/domain";
+import { atividadeDoDominio, documentosDoDominio, reservasDaViagem } from "../services/viagem-local.ts";
+import { documentoVinculadoDaAtividade, vincularDocumentoNaAtividade } from "../services/roteiro-revisao.ts";
 
 interface Props {
   viagemId: string;
@@ -84,6 +91,7 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
     // e o que a pessoa salvar é exatamente o que ela viu na tela.
     observacao: "",
     reservaId: "",
+    documentoId: "",
   });
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -127,6 +135,23 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
   const reservaVinculada = useMemo(
     () => (atividade?.reservaId ? (reservas.find((reserva) => reserva.id === atividade.reservaId) ?? null) : null),
     [reservas, atividade?.reservaId],
+  );
+
+  /**
+   * Documentos visíveis para mim: o servidor já filtrou o que é privado de outra pessoa (regra 404).
+   * Se o documento não estiver aqui ou tiver sido removido/revogado, o vínculo fica invisível.
+   */
+  const documentosAtivos = useMemo(
+    () => documentosDoDominio(estado, viagemId).filter((doc) => doc.estado === "ativo"),
+    [estado, viagemId],
+  );
+  const [versaoVinculoDoc, setVersaoVinculoDoc] = useState(0);
+  const documentoVinculado = useMemo(
+    () => {
+      void versaoVinculoDoc;
+      return documentoVinculadoDaAtividade(viagemId, atividadeId, documentosAtivos);
+    },
+    [viagemId, atividadeId, documentosAtivos, versaoVinculoDoc],
   );
 
   // Histórico completo vem do servidor quando há rede; offline, a tela continua útil sem ele.
@@ -209,6 +234,8 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
         },
         descricao: `Corrigir: ${atividade.titulo}`,
       });
+      vincularDocumentoNaAtividade(viagemId, atividadeId, ajustes.documentoId || null);
+      setVersaoVinculoDoc((v) => v + 1);
       setCorrigindo(false);
       setMotivo("");
       setAviso("Correção registrada com motivo e histórico.");
@@ -358,6 +385,35 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
         </section>
       ) : null}
 
+      {documentoVinculado ? (
+        <section className="cartao">
+          <h2>Documento vinculado</h2>
+          <div className="ficha">
+            <div>
+              <span className="rotulo">Documento</span>
+              <span>
+                {ROTULO_TIPO_DOCUMENTO[documentoVinculado.tipo]}: {documentoVinculado.nome}
+              </span>
+            </div>
+            {documentoVinculado.descricao ? (
+              <div>
+                <span className="rotulo">Descrição</span>
+                <span>{documentoVinculado.descricao}</span>
+              </div>
+            ) : null}
+            {documentoVinculado.link ? (
+              <div>
+                <span className="rotulo">Link</span>
+                <span>{documentoVinculado.link}</span>
+              </div>
+            ) : null}
+          </div>
+          <p className="suave pequeno">
+            Só quem tem permissão para ver este documento enxerga este bloco (documentos privados não aparecem para mais ninguém).
+          </p>
+        </section>
+      ) : null}
+
       <section className="cartao">
         <h2>Custo</h2>
         {centavos === null ? (
@@ -475,6 +531,24 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
                 </>
               ) : null}
 
+              {documentosAtivos.length > 0 ? (
+                <>
+                  <label htmlFor="ajuste-documento">Documento vinculado (só visível para quem tem acesso)</label>
+                  <select
+                    id="ajuste-documento"
+                    value={ajustes.documentoId}
+                    onChange={(evento) => setAjustes({ ...ajustes, documentoId: evento.target.value })}
+                  >
+                    <option value="">Sem documento vinculado</option>
+                    {documentosAtivos.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {ROTULO_TIPO_DOCUMENTO[doc.tipo]}: {doc.nome}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+
               <label htmlFor="ajuste-observacao">Observações e acessibilidade</label>
               <textarea
                 id="ajuste-observacao"
@@ -512,6 +586,7 @@ export function Atividade({ viagemId, atividadeId, sincronizador, voltar }: Prop
                     natureza: (atividade.custo.natureza ?? "estimativa") as typeof ajustes.natureza,
                     observacao: atividade.observacao ?? "",
                     reservaId: atividade.reservaId ?? "",
+                    documentoId: documentoVinculado?.id ?? "",
                   });
                   setCorrigindo(true);
                 }}
