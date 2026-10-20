@@ -27,6 +27,8 @@ export interface ViagemFalsa {
   movimentos?: Record<string, unknown>[];
   /** Convites que o organizador enviou (a central avisa os que não foram aceitos). */
   convites?: Record<string, unknown>[];
+  /** Lista opcional de participantes (padrão: só Ana). */
+  participantes?: Record<string, unknown>[];
 }
 
 export interface ServidorFalso {
@@ -172,7 +174,7 @@ export function criarServidorFalso(
         mudancas: 1,
         viagem: resumo(viagem),
         papel: viagem.papel,
-        participantes: [PARTICIPANTE],
+        participantes: viagem.participantes ?? [PARTICIPANTE],
         pendencias: { despesas: 0, convites: 0 },
         sugestao: null,
         permissoes: {
@@ -550,6 +552,53 @@ export function criarServidorFalso(
       atividade["versao"] = Number(atividade["versao"] ?? 1) + 1;
       viagem.versao += 1;
       return json({ dia: atividade["dia"], atividades: [atividade], resumo: {}, conflitos: [] });
+    }
+
+    if (caminho.endsWith("/despesas") && metodo === "POST") {
+      const nova = {
+        id: `d${(viagem.despesas ?? []).length + 1}`,
+        viagemId: viagem.id,
+        autorId: usuarioId,
+        pagadorId: String(corpo.pagadorId ?? usuarioId),
+        tipo: String(corpo.tipo ?? "compartilhada"),
+        estado: "pendente",
+        valorCentavos: String(corpo.valorCentavos ?? "0"),
+        moeda: String(corpo.moeda ?? "BRL"),
+        data: String(corpo.data ?? "2026-11-20"),
+        descricao: String(corpo.descricao ?? ""),
+        rateio: (corpo.rateio as Record<string, unknown> | undefined) ?? {
+          metodo: "igualitario",
+          explicacao: "Divisão igualitária",
+          partes: [],
+        },
+        motivoContestacao: null,
+        versao: 1,
+      };
+      viagem.despesas = [nova, ...(viagem.despesas ?? [])];
+      viagem.versao += 1;
+      return json(nova, 201);
+    }
+
+    if (caminho.includes("/convites/") && caminho.endsWith("/cancelar") && metodo === "POST") {
+      const conviteId = caminho.split("/").at(-2);
+      viagem.convites = (viagem.convites ?? []).map((c) =>
+        c["id"] === conviteId ? { ...c, estado: "cancelado" } : c,
+      );
+      viagem.versao += 1;
+      return new Response(null, { status: 204 });
+    }
+
+    if (caminho.includes("/participantes/") && caminho.endsWith("/remover") && metodo === "POST") {
+      const alvoId = caminho.split("/").at(-2);
+      viagem.participantes = (viagem.participantes ?? [PARTICIPANTE]).map((p) =>
+        p["usuario_id"] === alvoId ? { ...p, estado: "removido" } : p,
+      );
+      viagem.versao += 1;
+      return new Response(null, { status: 204 });
+    }
+
+    if (caminho.endsWith("/sair") && metodo === "POST") {
+      return new Response(null, { status: 204 });
     }
 
     return json({ erro: "nao_implementado", mensagem: `A rota ${metodo} ${caminho} não existe no servidor falso.` }, 404);

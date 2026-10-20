@@ -244,4 +244,51 @@ test("configurações (tela 18): limiar do orçamento configurável (70%/80%/90%
   await digitar(raizDoDocumento.querySelector<HTMLSelectElement>("#config-limiar-orcamento")!, "80");
 });
 
+test("rateio completo (tela 11), moeda estrangeira com taxa histórica (tela 13) e gestão de participantes (tela 17)", async () => {
+  await abrirGastos({
+    id: "v1",
+    nome: "Serra",
+    destino: "Campos do Jordão",
+    estado: "planejada",
+    versao: 1,
+    papel: "organizador",
+    participantes: [
+      { usuario_id: "u1", nome: "Ana", papel: "organizador", estado: "ativo" },
+      { usuario_id: "u2", nome: "Bruno", papel: "participante", estado: "ativo" },
+    ],
+    convites: [{ id: "c1", email: "carla@exemplo.com", papel: "participante", estado: "pendente" }],
+  });
+
+  // Lançar despesa em USD com taxa histórica e rateio percentual 60% / 40%
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#descricao")!, "Museu");
+  await digitar(raizDoDocumento.querySelector<HTMLSelectElement>("#moeda-despesa")!, "USD");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#valor")!, "20,00");
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#taxa-cambio")), "campo de taxa de câmbio abrir");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#taxa-cambio")!, "5,50");
+  await esperarPor(() => textoDaTela().includes("R$ 110,00 no saldo da viagem"), "mostrar conversão para R$ 110,00");
+
+  await digitar(raizDoDocumento.querySelector<HTMLSelectElement>("#metodo-rateio")!, "percentual");
+  await esperarPor(() => Boolean(raizDoDocumento.querySelector("#rateio-percentual-u1")), "campos percentuais abrirem");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#rateio-percentual-u1")!, "60");
+  await digitar(raizDoDocumento.querySelector<HTMLInputElement>("#rateio-percentual-u2")!, "40");
+  await esperarPor(
+    () => textoDaTela().includes("Prévia do rateio: Ana: R$ 66,00 · Bruno: R$ 44,00"),
+    "mostrar prévia exata do rateio percentual",
+  );
+
+  clicar(botaoCom("Registrar despesa"));
+  await esperarPor(
+    () => textoDaTela().includes("Museu [Original: USD 20,00 · taxa 5,50"),
+    "registrar despesa com moeda e taxa originais preservadas",
+  );
+
+  // Gestão de participantes e convites na aba Mais (tela 17)
+  clicar(botaoCom("Mais"));
+  await esperarPor(() => textoDaTela().includes("Participantes e permissões"), "abrir seção de participantes");
+  assert.match(textoDaTela(), /carla@exemplo\.com/, "mostra convite pendente");
+  clicar(botaoCom("Cancelar convite"));
+  await esperarPor(() => textoDaTela().includes("Convite para carla@exemplo.com cancelado"), "cancelar convite pendente");
+});
+
+
 

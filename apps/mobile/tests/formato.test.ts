@@ -9,6 +9,7 @@ import {
   formatarDuracao,
   ROTULO_ATIVIDADE,
 } from "../src/services/formato.ts";
+import { analisarPercentualBps, analisarTaxaDeCambio, construirRateioDaTela, converterMoedaParaBRL } from "../src/services/cambio.ts";
 
 /**
  * As regras abaixo vêm de `docs/UI_VISUAL_GUIDELINES.md` §2 (custos contextuais) e são testadas aqui
@@ -70,3 +71,51 @@ test("estado da atividade tem rótulo textual (nunca só a cor do marcador)", ()
   assert.equal(ROTULO_ATIVIDADE.concluida, "Concluída");
   assert.equal(ROTULO_ATIVIDADE.cancelada, "Cancelada");
 });
+
+test("conversão de moeda estrangeira usa inteiros determinísticos e preserva valor/moeda/taxa originais", () => {
+  const { taxaEscalada, taxaFormatada } = analisarTaxaDeCambio("5,4525");
+  assert.equal(taxaEscalada, 54525n);
+  assert.equal(taxaFormatada, "5,4525");
+
+  const convertido = converterMoedaParaBRL({
+    valorTexto: "20,00",
+    moeda: "USD",
+    taxaTexto: "5,50",
+    dataCotacao: "2026-11-20",
+  });
+  assert.equal(convertido.centavosBRL, "11000");
+  assert.equal(convertido.sufixoDescricao, " [Original: USD 20,00 · taxa 5,50 em 2026-11-20]");
+  assert.match(convertido.resumoConversao ?? "", /USD 20,00 × 5,50 .* = R\$ 110,00/);
+});
+
+test("construirRateioDaTela calcula prévia com resto exato nos 3 métodos do domínio", () => {
+  const ativos = [
+    { usuario_id: "u1", nome: "Ana" },
+    { usuario_id: "u2", nome: "Bruno" },
+    { usuario_id: "u3", nome: "Carla" },
+  ];
+  const igual = construirRateioDaTela({
+    totalCentavos: 10000n,
+    metodo: "igualitario",
+    ativos,
+    selecionados: ["u1", "u2", "u3"],
+    valoresPorPessoa: {},
+    percentuaisPorPessoa: {},
+  });
+  assert.equal(igual.linhas[0]?.valorFormatado, "R$ 33,34");
+  assert.equal(igual.linhas[0]?.recebeuCentavoExtra, true);
+  assert.equal(igual.linhas[1]?.valorFormatado, "R$ 33,33");
+
+  assert.equal(analisarPercentualBps("33,33"), 3333);
+  const perc = construirRateioDaTela({
+    totalCentavos: 10000n,
+    metodo: "percentual",
+    ativos: ativos.slice(0, 2),
+    selecionados: ["u1", "u2"],
+    valoresPorPessoa: {},
+    percentuaisPorPessoa: { u1: "60", u2: "40" },
+  });
+  assert.equal(perc.linhas[0]?.valorFormatado, "R$ 60,00");
+  assert.equal(perc.linhas[1]?.valorFormatado, "R$ 40,00");
+});
+

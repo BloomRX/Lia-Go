@@ -20,7 +20,14 @@ import { Checklist } from "./Checklist.tsx";
 import { Configuracoes } from "./Configuracoes.tsx";
 import { Documentos } from "./Documentos.tsx";
 import { Fechamento } from "./Fechamento.tsx";
+import { Participantes, type ConviteItem } from "./Participantes.tsx";
 import { impactosDeCancelamento, resumirOrcamentoDoRoteiro } from "@lia-go/domain";
+import {
+  MOEDAS_SUPORTADAS,
+  construirRateioDaTela,
+  converterMoedaParaBRL,
+  type MetodoRateioTela,
+} from "../services/cambio.ts";
 import {
   atividadesDoDominio,
   checklistDoDominio,
@@ -93,6 +100,13 @@ export function Viagem({
     valor: "",
     pagadorId: "",
     tipo: "compartilhada" as "pessoal" | "compartilhada",
+    moeda: "BRL",
+    taxaCambio: "",
+    dataCotacao: "",
+    metodoRateio: "igualitario" as MetodoRateioTela,
+    excluidosRateio: [] as string[],
+    valoresRateio: {} as Record<string, string>,
+    percentuaisRateio: {} as Record<string, string>,
   });
   const [motivoContestacao, setMotivoContestacao] = useState<{ id: string; texto: string } | null>(null);
   const [acerto, setAcerto] = useState({ deId: "", paraId: "", valor: "" });
@@ -558,31 +572,129 @@ export function Viagem({
               className="cartao"
               onSubmit={(evento) => {
                 evento.preventDefault();
-                const valorCentavos = paraCentavos(novaDespesa.valor);
-                const descricao = novaDespesa.descricao;
-                void enfileirar(
-                  {
-                    tipo: "criar_despesa",
-                    viagemId,
-                    corpo: {
-                      tipo: novaDespesa.tipo,
-                      valorCentavos,
-                      data: hojeIso(),
-                      descricao,
-                      pagadorId: novaDespesa.pagadorId || usuarioId,
-                      participantes: ativos.map((pessoa) => pessoa.usuario_id),
+                setErro(null);
+                try {
+                  const dataHoje = hojeIso();
+                  const conversao = converterMoedaParaBRL({
+                    valorTexto: novaDespesa.valor,
+                    moeda: novaDespesa.moeda,
+                    taxaTexto: novaDespesa.taxaCambio,
+                    dataCotacao: novaDespesa.dataCotacao || dataHoje,
+                  });
+                  const valorCentavos = conversao.centavosBRL;
+                  const descricao = `${novaDespesa.descricao.trim()}${conversao.sufixoDescricao}`;
+                  let participantesIds = ativos.map((pessoa) => pessoa.usuario_id);
+                  let rateioApi: Record<string, unknown> | undefined;
+
+                  if (novaDespesa.tipo === "compartilhada") {
+                    const selecionados = ativos
+                      .map((p) => p.usuario_id)
+                      .filter((id) => !novaDespesa.excluidosRateio.includes(id));
+                    const previa = construirRateioDaTela({
+                      totalCentavos: BigInt(valorCentavos),
+                      metodo: novaDespesa.metodoRateio,
+                      ativos,
+                      selecionados,
+                      valoresPorPessoa: novaDespesa.valoresRateio,
+                      percentuaisPorPessoa: novaDespesa.percentuaisRateio,
+                    });
+                    participantesIds = previa.participantesIds;
+                    rateioApi = previa.rateioApi as unknown as Record<string, unknown>;
+                  }
+
+                  void enfileirar(
+                    {
+                      tipo: "criar_despesa",
+                      viagemId,
+                      corpo: {
+                        tipo: novaDespesa.tipo,
+                        valorCentavos,
+                        data: dataHoje,
+                        descricao,
+                        pagadorId: novaDespesa.pagadorId || usuarioId,
+                        participantes: participantesIds,
+                        ...(rateioApi ? { rateio: rateioApi } : {}),
+                      },
+                      descricao: `Despesa: ${descricao} (${formatarBRL(valorCentavos)})`,
                     },
-                    descricao: `Despesa: ${descricao} (${formatarBRL(valorCentavos)})`,
-                  },
-                  "Despesa registrada como pendente. Outra pessoa precisa confirmar.",
-                ).then(() => setNovaDespesa({ descricao: "", valor: "", pagadorId: "", tipo: "compartilhada" }));
+                    "Despesa registrada como pendente. Outra pessoa precisa confirmar.",
+                  ).then(() =>
+                    setNovaDespesa({
+                      descricao: "",
+                      valor: "",
+                      pagadorId: "",
+                      tipo: "compartilhada",
+                      moeda: "BRL",
+                      taxaCambio: "",
+                      dataCotacao: "",
+                      metodoRateio: "igualitario",
+                      excluidosRateio: [],
+                      valoresRateio: {},
+                      percentuaisRateio: {},
+                    }),
+                  );
+                } catch (falha) {
+                  setErro(falha instanceof Error ? falha.message : "Verifique o valor e o rateio da despesa.");
+                }
               }}
             >
               <h2>Nova despesa</h2>
               <label htmlFor="descricao">Descrição</label>
               <input id="descricao" value={novaDespesa.descricao} onChange={(e) => setNovaDespesa({ ...novaDespesa, descricao: e.target.value })} required minLength={2} />
-              <label htmlFor="valor">Valor (ex.: 87,50)</label>
+              <label htmlFor="moeda-despesa">Moeda</label>
+              <select
+                id="moeda-despesa"
+                value={novaDespesa.moeda}
+                onChange={(e) => setNovaDespesa({ ...novaDespesa, moeda: e.target.value })}
+              >
+                {MOEDAS_SUPORTADAS.map((item) => (
+                  <option key={item.codigo} value={item.codigo}>
+                    {item.rotulo}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor="valor">
+                Valor {novaDespesa.moeda === "BRL" ? "(ex.: 87,50)" : `em ${novaDespesa.moeda} (ex.: 20,00)`}
+              </label>
               <input id="valor" inputMode="decimal" value={novaDespesa.valor} onChange={(e) => setNovaDespesa({ ...novaDespesa, valor: e.target.value })} required />
+
+              {novaDespesa.moeda !== "BRL" ? (
+                <>
+                  <label htmlFor="taxa-cambio">Taxa de câmbio (1 {novaDespesa.moeda} em R$, ex.: 5,50)</label>
+                  <input
+                    id="taxa-cambio"
+                    inputMode="decimal"
+                    value={novaDespesa.taxaCambio}
+                    onChange={(e) => setNovaDespesa({ ...novaDespesa, taxaCambio: e.target.value })}
+                    placeholder="5,50"
+                    required
+                  />
+                  <label htmlFor="data-cotacao">Data da cotação (opcional)</label>
+                  <input
+                    id="data-cotacao"
+                    type="date"
+                    value={novaDespesa.dataCotacao || hojeIso()}
+                    onChange={(e) => setNovaDespesa({ ...novaDespesa, dataCotacao: e.target.value })}
+                  />
+                  {(() => {
+                    try {
+                      if (!novaDespesa.valor.trim() || !novaDespesa.taxaCambio.trim()) return null;
+                      const previa = converterMoedaParaBRL({
+                        valorTexto: novaDespesa.valor,
+                        moeda: novaDespesa.moeda,
+                        taxaTexto: novaDespesa.taxaCambio,
+                        dataCotacao: novaDespesa.dataCotacao || hojeIso(),
+                      });
+                      return previa.resumoConversao ? (
+                        <p className="suave pequeno">{previa.resumoConversao}</p>
+                      ) : null;
+                    } catch {
+                      return null;
+                    }
+                  })()}
+                </>
+              ) : null}
+
               <label htmlFor="tipo">Tipo</label>
               <select id="tipo" value={novaDespesa.tipo} onChange={(e) => setNovaDespesa({ ...novaDespesa, tipo: e.target.value as "pessoal" | "compartilhada" })}>
                 <option value="compartilhada">Compartilhada (divide entre o grupo)</option>
@@ -594,6 +706,141 @@ export function Viagem({
                   <option key={pessoa.usuario_id} value={pessoa.usuario_id}>{pessoa.nome}{pessoa.usuario_id === usuarioId ? " (você)" : ""}</option>
                 ))}
               </select>
+
+              {novaDespesa.tipo === "compartilhada" ? (
+                <>
+                  <label htmlFor="metodo-rateio">Método de rateio</label>
+                  <select
+                    id="metodo-rateio"
+                    value={novaDespesa.metodoRateio}
+                    onChange={(e) =>
+                      setNovaDespesa({ ...novaDespesa, metodoRateio: e.target.value as MetodoRateioTela })
+                    }
+                  >
+                    <option value="igualitario">Igualitário (divide igual entre os marcados)</option>
+                    <option value="valores">Valores fixos (quanto cada pessoa consumiu)</option>
+                    <option value="percentual">Percentual (% de cada pessoa, soma = 100%)</option>
+                  </select>
+
+                  {novaDespesa.metodoRateio === "igualitario" && ativos.length > 1 ? (
+                    <fieldset style={{ border: "none", padding: 0, margin: "8px 0" }}>
+                      <legend className="suave pequeno">Quem entra nesta despesa:</legend>
+                      {ativos.map((pessoa) => {
+                        const marcado = !novaDespesa.excluidosRateio.includes(pessoa.usuario_id);
+                        return (
+                          <label
+                            key={pessoa.usuario_id}
+                            className="linha"
+                            style={{ justifyContent: "flex-start", gap: 8, cursor: "pointer" }}
+                          >
+                            <input
+                              id={`rateio-incluir-${pessoa.usuario_id}`}
+                              type="checkbox"
+                              checked={marcado}
+                              onChange={(evento) => {
+                                const excluidos = evento.target.checked
+                                  ? novaDespesa.excluidosRateio.filter((id) => id !== pessoa.usuario_id)
+                                  : [...novaDespesa.excluidosRateio, pessoa.usuario_id];
+                                setNovaDespesa({ ...novaDespesa, excluidosRateio: excluidos });
+                              }}
+                            />
+                            <span>{pessoa.nome}</span>
+                          </label>
+                        );
+                      })}
+                    </fieldset>
+                  ) : null}
+
+                  {novaDespesa.metodoRateio === "valores" ? (
+                    <div style={{ margin: "8px 0" }}>
+                      {ativos.map((pessoa) => (
+                        <div key={pessoa.usuario_id}>
+                          <label htmlFor={`rateio-valor-${pessoa.usuario_id}`}>Parte de {pessoa.nome} (R$)</label>
+                          <input
+                            id={`rateio-valor-${pessoa.usuario_id}`}
+                            inputMode="decimal"
+                            value={novaDespesa.valoresRateio[pessoa.usuario_id] ?? ""}
+                            onChange={(e) =>
+                              setNovaDespesa({
+                                ...novaDespesa,
+                                valoresRateio: { ...novaDespesa.valoresRateio, [pessoa.usuario_id]: e.target.value },
+                              })
+                            }
+                            placeholder="0,00"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {novaDespesa.metodoRateio === "percentual" ? (
+                    <div style={{ margin: "8px 0" }}>
+                      {ativos.map((pessoa) => (
+                        <div key={pessoa.usuario_id}>
+                          <label htmlFor={`rateio-percentual-${pessoa.usuario_id}`}>Percentual de {pessoa.nome} (%)</label>
+                          <input
+                            id={`rateio-percentual-${pessoa.usuario_id}`}
+                            inputMode="decimal"
+                            value={novaDespesa.percentuaisRateio[pessoa.usuario_id] ?? ""}
+                            onChange={(e) =>
+                              setNovaDespesa({
+                                ...novaDespesa,
+                                percentuaisRateio: {
+                                  ...novaDespesa.percentuaisRateio,
+                                  [pessoa.usuario_id]: e.target.value,
+                                },
+                              })
+                            }
+                            placeholder="50"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {(() => {
+                    try {
+                      if (!novaDespesa.valor.trim()) return null;
+                      const conversao = converterMoedaParaBRL({
+                        valorTexto: novaDespesa.valor,
+                        moeda: novaDespesa.moeda,
+                        taxaTexto: novaDespesa.moeda === "BRL" ? "1" : novaDespesa.taxaCambio,
+                        dataCotacao: novaDespesa.dataCotacao || hojeIso(),
+                      });
+                      const selecionados = ativos
+                        .map((p) => p.usuario_id)
+                        .filter((id) => !novaDespesa.excluidosRateio.includes(id));
+                      const previa = construirRateioDaTela({
+                        totalCentavos: BigInt(conversao.centavosBRL),
+                        metodo: novaDespesa.metodoRateio,
+                        ativos,
+                        selecionados,
+                        valoresPorPessoa: novaDespesa.valoresRateio,
+                        percentuaisPorPessoa: novaDespesa.percentuaisRateio,
+                      });
+                      return (
+                        <p className="suave pequeno">
+                          Prévia do rateio:{" "}
+                          {previa.linhas
+                            .map(
+                              (l) =>
+                                `${l.nome}: ${l.valorFormatado}${l.recebeuCentavoExtra ? " (+R$ 0,01 de resto)" : ""}`,
+                            )
+                            .join(" · ")}{" "}
+                          ({previa.explicacao})
+                        </p>
+                      );
+                    } catch (falha) {
+                      return (
+                        <p className="suave pequeno">
+                          {falha instanceof Error ? falha.message : ""}
+                        </p>
+                      );
+                    }
+                  })()}
+                </>
+              ) : null}
+
               <div className="acoes">
                 <button className="principal" type="submit">Registrar despesa</button>
               </div>
@@ -766,6 +1013,19 @@ export function Viagem({
               <p><small className="suave">Organizador(a) não sai sem passar a organização para outra pessoa.</small></p>
             )}
           </section>
+
+          <Participantes
+            viagemId={viagemId}
+            usuarioId={usuarioId}
+            ehOrganizador={detalhe?.papel === "organizador"}
+            participantes={participantes}
+            convites={(estado.carga.convites ?? []) as unknown as ConviteItem[]}
+            sincronizador={sincronizador}
+            aoSairDaViagem={() => {
+              setAviso("Você saiu da viagem. O histórico permanece com o grupo.");
+              voltar();
+            }}
+          />
 
           <Reservas
             viagemId={viagemId}
