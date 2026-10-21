@@ -22,7 +22,8 @@
 ## 4. Segurança, privacidade e IA
 - Autorização no servidor em toda leitura/escrita (`404` sem vínculo; `403` para quem saiu/foi removido). Documentos privados por padrão.
 - Zero segredos ou chaves pagas do autor no cliente/repositório. **Dados sintéticos** até existir HTTPS.
-- **IA e Lia Waifu ("conversa não é autorização"):** IA só sugere rascunhos; nunca cria despesa confirmada, nunca confirma/contesta gasto ou acerto, nunca muda limite e nunca cancela viagem. Provedor de IA exige URL configurável ("Testar conexão" + "Listar modelos") e `localhost` nunca fixo.
+- **IA e Lia Waifu ("conversa não é autorização"):** IA só sugere rascunhos; nunca cria despesa confirmada, nunca confirma/contesta gasto ou acerto, nunca muda limite e nunca cancela viagem.
+- **Serviço de IA e servidor (sem marca e sem porta/localhost fixos):** nome de fornecedor de IA ou de gateway e porta fixa **não entram no código nem na interface**. O app guarda apenas **endereço + chave** (com "Testar conexão" + "Listar modelos") e na interface escreve-se sempre **"serviço de IA"**, nunca a marca. No mobile (Capacitor), endereço de servidor nunca pode ser `localhost` embutido (o aparelho não alcança a própria máquina; padrão `VITE_API_URL ?? "/api"` + endereço editável).
 
 ## 5. Verificação, build nativa e decisões
 - Suíte estreita primeiro, portão no fim: `test:domain` · `test:sync` · `test:api` · `test:app` · `test:ui` · `test:tools` → `npm test && npm run typecheck` (Windows: `LiaGo.bat`).
