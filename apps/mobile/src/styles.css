@@ -1,0 +1,462 @@
+/* Identidade do Lia Go: base escura, roxo/magenta, cartões arredondados,
+   contraste e alvos de toque pensados primeiro para celular.
+
+   Os tokens de marca abaixo são os **valores iniciais aprovados** em
+   `docs/UI_V1_DECISIONS.md` §1 (magenta #FF3EDC, roxo #A855F7, lilás #D884FE,
+   fundo #0B0A12, sucesso #22D3A3). Fundo de cartão, borda e texto suave são
+   derivados do fundo neutro para manter a leitura confortável no celular.
+   Trocar a identidade = trocar estas linhas, nada mais. */
+:root {
+  color-scheme: dark;
+  --fundo: #0b0a12;
+  --fundo-cartao: #170f27;
+  --fundo-cartao-alto: #211435;
+  --borda: #33224f;
+  --roxo: #a855f7;
+  --magenta: #ff3edc;
+  --lilas: #d884fe;
+  --texto: #f6f2ff;
+  --texto-suave: #c6b6dd;
+  --bom: #22d3a3;
+  --atencao: #fbbf24;
+  --erro: #fb7185;
+  --raio: 18px;
+  /* Escala de espaçamento (§3): múltiplos de 4, composição em 8. */
+  --e1: 4px;
+  --e2: 8px;
+  --e3: 12px;
+  --e4: 16px;
+  --e6: 24px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 50% -200px, #1d1030 0%, var(--fundo) 60%);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.app { max-width: 720px; margin: 0 auto; padding: 20px 16px 96px; }
+
+h1 { font-size: 1.6rem; margin: 0 0 4px; overflow-wrap: anywhere; }
+h2 { font-size: 1.15rem; margin: 24px 0 10px; overflow-wrap: anywhere; }
+h3 { font-size: 1rem; margin: 0; overflow-wrap: anywhere; }
+p { margin: 4px 0; color: var(--texto-suave); line-height: 1.45; overflow-wrap: anywhere; }
+
+/* Marca: pino com furo, desenhado no app (a imagem oficial vira ícone/favicon). */
+.marca { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.marca h1 { margin: 0; }
+.marca-simbolo { width: 24px; height: 30px; flex: none; }
+.marca-pino { fill: url(#gradiente-da-marca); }
+.marca-furo { fill: var(--fundo); }
+.marca-legenda { margin: 0; font-size: 0.85rem; color: var(--texto-suave); }
+
+.cartao {
+  background: var(--fundo-cartao);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 16px;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+  /* Realce de um pixel na borda de cima: dá profundidade sem virar painel luminoso (§3). */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.cartao.destaque { background: var(--fundo-cartao-alto); }
+
+.linha { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
+.linha.entre { align-items: flex-start; }
+/* Etiqueta de estado: ponto + palavra (referência do concept-02). O ponto é decorativo — quem
+   informa o estado é o texto, e a cor nunca é o único sinal (diretrizes §4). */
+.etiqueta {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 4px 10px; border-radius: 999px; background: #2f1c4d; color: var(--texto-suave);
+  white-space: nowrap;
+}
+.etiqueta::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; flex: none;
+}
+.etiqueta.estado-em_andamento { background: #2a1843; color: var(--lilas); }
+.etiqueta.estado-concluida { background: #10352c; color: var(--bom); }
+.etiqueta.estado-cancelada { background: #3b1622; color: var(--erro); }
+.etiqueta.estado-pendente { background: #3a2f12; color: var(--atencao); }
+.etiqueta.estado-confirmada { background: #10352c; color: var(--bom); }
+.etiqueta.estado-contestada { background: #3a2f12; color: var(--atencao); }
+
+.saldo-positivo { color: var(--bom); font-weight: 600; }
+.saldo-negativo { color: var(--erro); font-weight: 600; }
+
+button {
+  font: inherit; border-radius: 14px; border: 1px solid var(--borda);
+  background: #2a1843; color: var(--texto); padding: 12px 16px; cursor: pointer;
+  min-height: 44px;
+}
+button.principal {
+  background: linear-gradient(135deg, var(--roxo), var(--magenta));
+  border: 0; color: #1b0b28; font-weight: 700;
+}
+button.sutil { background: transparent; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button.perigo { border-color: #6b2233; color: #fecdd3; }
+
+.acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+label { display: block; font-size: 0.85rem; color: var(--texto-suave); margin: 12px 0 4px; }
+input, select, textarea {
+  width: 100%; font: inherit; color: var(--texto);
+  background: #160d26; border: 1px solid var(--borda); border-radius: 12px; padding: 10px 12px;
+  min-height: 44px;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--roxo); outline-offset: 1px; }
+
+.aviso { border-radius: 14px; padding: 12px 14px; margin: 12px 0; font-size: 0.92rem; }
+.aviso.erro { background: #3b1622; color: #ffd9de; }
+.aviso.ok { background: #14382c; color: #d1fae5; }
+.aviso.info { background: #241840; color: var(--texto-suave); }
+.aviso.atencao { background: #3a2f12; color: #fde68a; }
+
+.barra {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: space-around;
+  background: rgba(18, 10, 28, 0.96); border-top: 1px solid var(--borda);
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  backdrop-filter: blur(8px);
+}
+/* Ícone + rótulo, como na referência. Alvo de 48 px e estado ativo também em texto (`aria-current`). */
+.barra button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  flex: 1; min-height: 48px; padding: 6px 4px; border: 0; border-radius: var(--e3);
+  background: none; color: var(--texto-suave); font-size: 0.72rem; line-height: 1.1;
+}
+.barra button span { white-space: nowrap; }
+.barra button svg { width: 22px; height: 22px; }
+.barra button[aria-current="true"] { color: var(--magenta); font-weight: 700; }
+/* O brilho é acento, não textura (decisões §1): só no item ativo. */
+.barra button[aria-current="true"] svg { filter: drop-shadow(0 0 7px rgba(255, 62, 220, 0.55)); }
+
+.carregando { display: flex; align-items: center; gap: 10px; color: var(--texto-suave); }
+.pulso { width: 10px; height: 10px; border-radius: 50%; background: var(--magenta); animation: pulsar 1.2s infinite; }
+@keyframes pulsar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.vazio { text-align: center; padding: 28px 12px; color: var(--texto-suave); }
+small.suave { color: var(--texto-suave); }
+
+/* ---------------------------------------------------------------
+   Sincronização: a pessoa sempre sabe onde o dado dela está.
+   Estados: sincronizado (verde), aguardando/enviando (azul), problema (amarelo).
+   --------------------------------------------------------------- */
+.topo {
+  position: sticky; top: 0; z-index: 5; background: #14101f;
+  padding: calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 0 calc(16px + env(safe-area-inset-left));
+}
+.topo-linha { max-width: 720px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+
+.barra-sincro {
+  max-width: 720px;
+  margin: 8px auto 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.barra-sincro .ponto { width: 10px; height: 10px; border-radius: 50%; background: currentColor; display: inline-block; }
+.barra-sincro .ponto[data-estado="sincronizado"] { background: #43d17a; }
+.barra-sincro .ponto[data-estado="pendente"], .barra-sincro .ponto[data-estado="enviando"] { background: #58a6ff; }
+.barra-sincro .ponto[data-estado="problema"] { background: #ffb020; }
+
+.lista-fila { list-style: none; margin: 8px 0 0; padding: 0; }
+.item-fila { border-top: 1px solid rgba(255, 255, 255, 0.12); padding: 8px 0; }
+.item-fila:first-child { border-top: none; }
+
+.conflito { margin-top: 8px; background: rgba(0, 0, 0, 0.25); border-radius: 10px; padding: 10px; }
+.tabela-conflito { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.tabela-conflito th, .tabela-conflito td {
+  text-align: left; padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); vertical-align: top;
+}
+.tabela-conflito th { color: #cbb8ff; font-weight: 600; }
+
+/* ---------------------------------------------------------------
+   Roteiro: linha do tempo, conflitos e custo.
+   Regra de acessibilidade da diretriz §4: **nenhum estado é só cor** —
+   todo marcador colorido vem acompanhado de texto ou ícone.
+   --------------------------------------------------------------- */
+.dias { display: flex; gap: var(--e2); overflow-x: auto; padding: var(--e2) 0; }
+.dia-chip {
+  display: flex; flex-direction: column; gap: 2px; min-height: 44px;
+  background: var(--fundo-cartao); border: 1px solid var(--borda); color: var(--texto-suave);
+  border-radius: 14px; padding: 8px 14px; white-space: nowrap;
+}
+.dia-chip small { font-size: 0.7rem; }
+.dia-chip.ativo { border-color: var(--magenta); color: var(--texto); background: var(--fundo-cartao-alto); }
+.dia-chip.com-conflito { border-color: var(--atencao); }
+
+.dia-titulo { text-transform: capitalize; }
+
+.resumo-dia {
+  display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); align-items: baseline;
+  color: var(--texto-suave); font-size: 0.86rem; padding: 6px 2px 2px;
+}
+.resumo-dia.expandido { color: var(--texto); }
+.resumo-dia .conflito-aviso { color: var(--atencao); font-weight: 600; }
+.custo-a-verificar { color: var(--atencao); }
+
+.linha-tempo { list-style: none; margin: 8px 0 0; padding: 0; position: relative; }
+.atividade { position: relative; padding-left: 24px; }
+.atividade + .atividade { margin-top: var(--e1); }
+/* A linha vertical da timeline: discreta, só orienta a leitura. */
+.atividade::before {
+  content: ""; position: absolute; left: 7px; top: 26px; bottom: -8px;
+  width: 2px; background: var(--borda);
+}
+.atividade:last-child::before { display: none; }
+/* Brilho é acento, não textura (§1): o marcador comum fica sólido e discreto; o brilho aparece
+   onde significa algo — conflito (atenção) e atividade em andamento. */
+.marcador {
+  position: absolute; left: 2px; top: 18px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--roxo);
+}
+.atividade.concluida .marcador { background: var(--bom); box-shadow: none; }
+.atividade.cancelada .marcador { background: #6b7280; box-shadow: none; }
+.atividade.cancelada .cartao { opacity: 0.72; }
+.atividade.com-conflito .marcador { background: var(--atencao); box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+.atividade-corpo { display: block; }
+
+.cartao-atividade {
+  width: 100%; text-align: left; color: var(--texto); font: inherit; cursor: pointer;
+  min-height: 44px;
+}
+.atividade-topo { display: flex; justify-content: space-between; align-items: center; gap: var(--e2); }
+.atividade-hora { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--magenta); }
+.atividade-titulo { margin: 6px 0 4px; }
+.atividade-contexto { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); font-size: 0.84rem; color: var(--texto-suave); }
+.atividade-contexto .custo { color: var(--texto); }
+.atividade-contexto .custo-a-verificar { color: var(--atencao); }
+/* Reserva vinculada: informação, não alarme — o estado (prevista/confirmada) vai escrito no texto. */
+.atividade-contexto .reserva-vinculada { color: var(--lilas); }
+
+.alerta-conflito {
+  margin-top: 10px; border-left: 3px solid var(--atencao); padding: 6px 10px;
+  background: rgba(251, 191, 36, 0.08); border-radius: var(--e2);
+}
+.alerta-conflito p { margin: 2px 0; color: var(--texto); font-size: 0.84rem; }
+.trecho { display: flex; flex-wrap: wrap; gap: var(--e2); color: var(--texto-suave); font-size: 0.8rem; padding: 4px 0 6px; }
+.trecho.aberto { color: var(--texto); }
+.trecho-alerta { color: var(--atencao); font-style: normal; }
+
+.etiqueta.estado-planejada { background: #2a1843; color: var(--lilas); }
+.etiqueta.estado-concluida { background: #10352c; color: var(--bom); }
+.etiqueta.estado-cancelada { background: #3a2222; color: #f0a0a0; text-decoration: line-through; }
+
+.ficha { display: grid; gap: var(--e2); }
+.ficha > div { display: flex; flex-direction: column; gap: 2px; }
+.ficha .rotulo { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--texto-suave); }
+.historico { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--e2); }
+
+.duas-colunas { display: grid; gap: var(--e3); grid-template-columns: 1fr 1fr; }
+.caixa-marcacao { display: flex; align-items: center; gap: var(--e2); margin: var(--e3) 0; font-size: 0.9rem; min-height: 44px; cursor: pointer; }
+.caixa-marcacao input { width: 20px; height: 20px; min-height: 20px; flex: none; }
+button.compacto { padding: 8px 14px; font-size: 0.86rem; min-height: 44px; }
+button.perigo { background: #4a1220; border-color: #9f1239; color: #ffe4e4; }
+button.sutil.pequeno { font-size: 0.78rem; }
+.suave.pequeno { font-size: 0.8rem; }
+
+/* Acessibilidade (§4): foco sempre visível e alvos de toque confortáveis. */
+a.aba-propria {
+  display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px;
+  padding: 10px 14px; border-radius: 14px; border: 1px solid var(--borda);
+  background: #2a1843; color: var(--texto); font-weight: 600; text-decoration: none;
+}
+a.aba-propria:hover { border-color: var(--magenta); }
+
+.endereco-app { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+.endereco-app input {
+  flex: 1; min-width: 0; font: inherit; font-size: 0.85rem;
+  background: #180f26; color: var(--texto); border: 1px solid var(--borda);
+  border-radius: 12px; padding: 10px 12px; min-height: 44px;
+}
+.endereco-app button { flex: none; min-height: 44px; }
+.dica-copia { margin: 6px 0 0; font-size: 0.85rem; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, [role="tab"]:focus-visible {
+  outline: 3px solid var(--magenta);
+  outline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .duas-colunas { grid-template-columns: 1fr; }
+}
+/* Responsividade tablet/web (§9): mesmos componentes, navegação lateral e largura aproveitada. */
+@media (min-width: 900px) {
+  .topo-linha, .barra-sincro { max-width: 1080px; }
+  .app { max-width: 1080px; padding: 24px 24px 48px; }
+  .app:has(.barra) { padding-left: 228px; }
+  .barra {
+    top: 112px;
+    bottom: auto;
+    left: max(16px, calc(50% - 540px + 16px));
+    right: auto;
+    width: 196px;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: var(--e1);
+    padding: var(--e2);
+    border: 1px solid var(--borda);
+    border-radius: var(--raio);
+    background: var(--fundo-cartao);
+  }
+  .barra button {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    text-align: left;
+  }
+  .barra button[aria-current="true"] {
+    background: var(--fundo-cartao-alto);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulso { animation: none; }
+  * { transition: none !important; }
+}
+
+/* Revisão de impacto (decisões V1 §13): informa antes de mudar, com texto — cor não é o recado. */
+.impacto {
+  margin: var(--e3) 0;
+  padding: var(--e3);
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--roxo);
+  border-radius: var(--raio-medio);
+  background: rgba(168, 85, 247, 0.06);
+}
+.impacto h3 { margin: 0 0 var(--e2); font-size: 0.95rem; }
+.impacto h4 { margin: var(--e2) 0 var(--e1); font-size: 0.85rem; color: var(--atencao); }
+.impacto ul { margin: 0; padding-left: 1.1rem; }
+.impacto li { margin-bottom: var(--e1); font-size: 0.85rem; line-height: 1.45; }
+.impacto-atencao li::marker { color: var(--atencao); }
+
+/* ---------------------------------------------------------------------------
+   Referências oficiais (`assets/references/`) aplicadas na interface:
+   hero da viagem com a Lia (concept-03), orçamento com barra (concept-03),
+   próximo compromisso em destaque e listas de checklist/documentos.
+   Regra mantida (§13): nenhuma informação crítica só por cor — toda barra e
+   toda etiqueta têm texto ao lado.
+--------------------------------------------------------------------------- */
+
+.hero-viagem {
+  display: grid;
+  gap: var(--e3);
+  grid-template-columns: 1fr;
+  padding: 0;
+  overflow: hidden;
+}
+@media (min-width: 560px) {
+  .hero-viagem { grid-template-columns: 220px 1fr; align-items: stretch; }
+}
+.hero-viagem-imagem { position: relative; min-height: 150px; background: #120a1f; }
+.hero-viagem-imagem img {
+  width: 100%;
+  height: 100%;
+  min-height: 150px;
+  object-fit: cover;
+  object-position: 50% 22%;
+  display: block;
+}
+/* Véu do fundo para a foto encostar no cartão sem corte seco. */
+.hero-viagem-imagem::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(11, 10, 18, 0) 35%, rgba(23, 15, 39, 0.92) 100%);
+  pointer-events: none;
+}
+.hero-viagem-texto { padding: var(--e4) var(--e4) var(--e4) 0; }
+@media (max-width: 559px) {
+  .hero-viagem-texto { padding: 0 var(--e4) var(--e4); }
+}
+.hero-viagem-texto h2 { margin: var(--e1) 0; font-size: 1.35rem; }
+
+/* Barra do orçamento (concept-03): preenchimento com gradiente da marca,
+   espessura confortável e rótulo em texto sempre presente. */
+.barra-orcamento {
+  margin: var(--e2) 0 var(--e1);
+  height: 12px;
+  border-radius: 999px;
+  background: #241636;
+  border: 1px solid var(--borda);
+  overflow: hidden;
+}
+.barra-orcamento .preenchimento {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--roxo), var(--magenta));
+  transition: width 220ms ease-out;
+}
+.barra-orcamento.preenchimento-atencao .preenchimento { background: linear-gradient(90deg, var(--atencao), var(--magenta)); }
+.barra-orcamento.preenchimento-estourado .preenchimento { background: linear-gradient(90deg, var(--erro), var(--magneta, var(--magenta))); }
+
+.etiqueta.estado-orcamento-dentro { background: #10352c; color: var(--bom); }
+.etiqueta.estado-orcamento-atencao { background: #3a2f12; color: var(--atencao); }
+.etiqueta.estado-orcamento-estourado { background: #3b1622; color: var(--erro); }
+.etiqueta.estado-orcamento-sem_limite { background: #241636; color: var(--texto-suave); }
+
+.lista-alertas { margin: var(--e2) 0; padding-left: 1.1rem; }
+.lista-alertas li { color: var(--atencao); font-size: 0.85rem; line-height: 1.4; margin-bottom: var(--e1); }
+
+/* Checklist e documentos: listas legíveis, com alvo de toque confortável. */
+.lista-checklist, .lista-documentos { list-style: none; margin: var(--e2) 0 0; padding: 0; }
+.lista-checklist > li, .lista-documentos > li {
+  border-top: 1px solid var(--borda);
+  padding: var(--e3) 0;
+}
+.lista-checklist > li:first-child, .lista-documentos > li:first-child { border-top: 0; }
+.lista-checklist > li.item-atrasado { border-left: 3px solid var(--atencao); padding-left: var(--e3); }
+.lista-checklist > li.item-feito { opacity: 0.75; }
+.lista-documentos > li.item-removido { opacity: 0.75; }
+.lista-checklist button, .lista-documentos button { min-height: 44px; }
+
+#fechamento-texto {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  background: var(--fundo-cartao-alto);
+  color: var(--texto);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-medio);
+  padding: var(--e3);
+}
+
+/* ---------------------------------------------------------------------------
+   Central de notificações (tela 16). Prioridade aparece em texto (etiqueta com
+   palavra), nunca só por cor; alvos de toque continuam ≥ 44 px.
+   --------------------------------------------------------------------------- */
+.botao-central {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  gap: var(--e3); text-align: left; font-weight: 400;
+}
+.botao-central strong { font-size: 1.05rem; }
+
+.filtros { display: grid; gap: var(--e2); margin-top: var(--e3); }
+@media (min-width: 560px) {
+  .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.filtro-minhas { display: flex; align-items: center; gap: var(--e2); margin: var(--e3) 0 0; font-size: 0.9rem; min-height: 44px; cursor: pointer; }
+.filtro-minhas input { width: 20px; height: 20px; min-height: 20px; flex: none; }
+
+.lista-notificacoes { list-style: none; margin: var(--e3) 0 0; padding: 0; }
+.lista-notificacoes > li { border-top: 1px solid var(--borda); padding: var(--e3) 0; }
+.lista-notificacoes > li:first-child { border-top: 0; }
+.lista-notificacoes > li.prioridade-alta { border-left: 3px solid var(--magenta); padding-left: var(--e3); }
+.lista-notificacoes > li.item-dispensada { opacity: 0.7; }
+.lista-notificacoes > li.item-resolvida { opacity: 0.8; }
+.lista-notificacoes button { min-height: 44px; }
+.lista-notificacoes p { margin: var(--e2) 0 0; font-size: 0.92rem; }
+
+.etiqueta.prioridade-alta { background: #3b1622; color: #ffd9de; }
+.etiqueta.prioridade-media { background: #3a2f12; color: var(--atencao); }
+.etiqueta.prioridade-baixa { background: #1f2a3d; color: #cfe3ff; }

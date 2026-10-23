@@ -1,0 +1,14 @@
+{
+  "name": "@lia-go/sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sincronização local-first do Lia Go — fila de envio, cursor e conflitos, sem I/O",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

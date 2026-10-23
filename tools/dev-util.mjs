@@ -1,0 +1,884 @@
+/**
+ * Peças puras do orquestrador (tools/dev.mjs), separadas para poderem ser testadas.
+ *
+ * A regra que motivou este arquivo: quando uma ferramenta falha, a pessoa precisa ver o motivo
+ * real na tela — nunca um "falhou, verifique a conexão" que esconde a causa.
+ */
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+
+// ---------------------------------------------------------------------------
+// O app web está servindo de verdade?
+// ---------------------------------------------------------------------------
+
+/**
+ * Pergunta a mesma coisa que o navegador pergunta: a página responde e o **app inteiro transforma**?
+ *
+ * Não basta a porta responder, e não basta o módulo de entrada: o Vite transforma um módulo por vez,
+ * quando o navegador pede. Na rodada de 2026-10-16 o `lucide-react` não estava instalado, a página
+ * abriu, o módulo de entrada transformou — e o erro só apareceu quando o navegador pediu a tela que
+ * importava o pacote, como um aviso vermelho **dentro do navegador**. O console da rodada não disse
+ * nada. Por isso aqui o app é percorrido como o navegador faria: da entrada, seguindo os imports do
+ * próprio projeto, até o fim (com teto de módulos e de tempo).
+ */
+export async function estadoDoAppWeb(url = "http://127.0.0.1:5273/", buscar = fetch, { limiteModulos = 250 } = {}) {
+  try {
+    const pagina = await buscar(url, { signal: AbortSignal.timeout(3000) });
+    if (!pagina.ok) return { ok: false, motivo: `a página respondeu ${pagina.status}` };
+    const html = await pagina.text();
+    const entrada = html.match(/src="(\/[^"]+\.tsx)"/)?.[1] ?? "/src/main.tsx";
+
+    const fila = [entrada];
+    const vistas = new Set();
+    while (fila.length > 0 && vistas.size < limiteModulos) {
+      const caminho = fila.shift();
+      if (vistas.has(caminho)) continue;
+      const modulo = await buscar(new URL(caminho, url).href, { signal: AbortSignal.timeout(15000) });
+      const corpo = await modulo.text();
+      if (!modulo.ok || corpo.includes("Failed to resolve import")) {
+        // O nome do pacote é a parte útil para quem vai consertar — "falta a dependência X".
+        // O Vite devolve o erro como página HTML com as aspas escapadas (`\"lucide-react\"`).
+        const achado = corpo.match(/Failed to resolve import \\?["']([^"'\\]+)/);
+        const causa = achado
+          ? `falta a dependência "${achado[1]}" (o Vite não conseguiu resolver o import)`
+          : `o módulo ${caminho} não foi servido (resposta ${modulo.status})`;
+        return { ok: false, motivo: causa, modulo: caminho };
+      }
+      vistas.add(caminho);
+      // Só módulos do próprio projeto: os de biblioteca são pedidos pelo Vite já empacotados.
+      for (const achado of corpo.matchAll(/from\s+"(\/src\/[^"]+)"/g)) {
+        if (!vistas.has(achado[1])) fila.push(achado[1]);
+      }
+    }
+    return { ok: true, modulos: vistas.size };
+  } catch (causa) {
+    return { ok: false, motivo: causa instanceof Error ? causa.message : "sem resposta" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dependências instaladas (o que a rodada precisa ter no disco)
+// ---------------------------------------------------------------------------
+
+/**
+ * Toda dependência **declarada** nos `package.json` — da raiz e de cada workspace.
+ *
+ * A conferência era uma lista fixa de pacotes, e foi assim que a rodada de 2026-10-16 quebrou no PC
+ * do usuário: a fatia de identidade visual acrescentou `lucide-react`, a lista não conhecia o pacote
+ * novo, o `npm install` foi pulado e o servidor de desenvolvimento abriu com
+ * "Failed to resolve import lucide-react" — a suíte de interface caiu inteira (9 falhas) e o site
+ * ficou sem abrir. Lendo os `package.json` de verdade, pacote novo entra na conta sozinho.
+ */
+export function dependenciasDeclaradas(raiz, { grupos = ["packages", "apps"] } = {}) {
+  const nomes = new Set();
+  const lerPacote = (caminho) => {
+    if (!existsSync(caminho)) return;
+    let pacote;
+    try {
+      pacote = JSON.parse(readFileSync(caminho, "utf8"));
+    } catch {
+      return; // `package.json` estragado vira erro de instalação, não trava a conferência aqui
+    }
+    for (const grupo of ["dependencies", "devDependencies", "optionalDependencies"]) {
+      for (const nome of Object.keys(pacote[grupo] ?? {})) nomes.add(nome);
+    }
+  };
+  lerPacote(path.join(raiz, "package.json"));
+  for (const grupo of grupos) {
+    const pasta = path.join(raiz, grupo);
+    if (!existsSync(pasta)) continue;
+    for (const nome of readdirSync(pasta)) lerPacote(path.join(pasta, nome, "package.json"));
+  }
+  return [...nomes];
+}
+
+/** Onde um pacote pode estar: no node_modules da raiz ou no de um workspace (o npm escolhe sozinho). */
+export function pacoteNoDisco(raiz, nome, { grupos = ["packages", "apps"] } = {}) {
+  const partes = nome.split("/");
+  if (existsSync(path.join(raiz, "node_modules", ...partes))) return true;
+  return grupos.some((grupo) => {
+    const pasta = path.join(raiz, grupo);
+    if (!existsSync(pasta)) return false;
+    return readdirSync(pasta).some((workspace) =>
+      existsSync(path.join(pasta, workspace, "node_modules", ...partes)),
+    );
+  });
+}
+
+/**
+ * O que falta no disco agora — nome por nome.
+ *
+ * `extras` é para o que a rodada precisa e não está declarado como dependência de ninguém (ex.: o
+ * empacotador da suíte de interface). O log passa a dizer **o que** falta, em vez de só "não está
+ * pronta", que foi o que deixou a rodada do PC sem pista.
+ */
+export function dependenciasQueFaltam(raiz, { extras = [] } = {}) {
+  const pedidos = [...extras, ...dependenciasDeclaradas(raiz)];
+  return [...new Set(pedidos)].filter((nome) => !pacoteNoDisco(raiz, nome));
+}
+
+/**
+ * A árvore de dependências está de pé?
+ *
+ * `npm install` escreve `node_modules/.package-lock.json` ao terminar. Marcador velho com
+ * `package-lock.json` novo significa dependência acrescentada depois da última instalação —
+ * exatamente o caso que precisava de um `npm install` e não acontecia.
+ */
+export function arvoreDeDependenciasEmDia(raiz, { extras = [], toleranciaMs = 1000 } = {}) {
+  const marcador = path.join(raiz, "node_modules", ".package-lock.json");
+  if (!existsSync(marcador)) return false;
+  const trava = path.join(raiz, "package-lock.json");
+  if (existsSync(trava) && statSync(trava).mtimeMs > statSync(marcador).mtimeMs + toleranciaMs) return false;
+  return dependenciasQueFaltam(raiz, { extras }).length === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Execução de comandos
+// ---------------------------------------------------------------------------
+
+/**
+ * Como chamar o comando em cada sistema.
+ *
+ * No Windows, o Node (correção de segurança de abril/2024) **não deixa** executar `.cmd`/`.bat`
+ * diretamente: o processo nem começa (erro `EINVAL`). Como o `npm` do Windows é o `npm.cmd`,
+ * é obrigatório passar por um shell — mas do jeito certo.
+ *
+ * ⚠️ Mandar shell **e** programa `.cmd` juntos quebra tudo: o Node monta
+ * `cmd.exe /d /s /c "cmd.exe install"`, o `cmd.exe` interno abre em modo interativo, imprime o
+ * banner "Microsoft Windows [versão …]", **não instala nada** e ainda devolve código 0 — um
+ * "sucesso" falso que já nos custou uma rodada de depuração no PC do usuário.
+ *
+ * A forma certa é entregar a **linha inteira** em `comando`, com `args` vazio e `shell: true`:
+ * o Node executa `%ComSpec% /d /s /c "<linha>"`, que roda o `.cmd` direto — sem `cmd.exe` sobrando,
+ * sem o aviso DEP0190 (que só aparece quando se passam argumentos junto com shell) e sem o
+ * problema de `%~dp0` que fazia o `npm.cmd` se perder.
+ */
+export function montarComando(comando, args, plataforma = process.platform) {
+  if (plataforma === "win32" && /\.(cmd|bat)$/i.test(comando)) {
+    return { comando: citarParaCmd(comando, args), args: [], shell: true };
+  }
+  return { comando, args, shell: false };
+}
+
+// ---------------------------------------------------------------------------
+// Leitura da saída dos testes
+// ---------------------------------------------------------------------------
+
+/**
+ * Lê o placar dos testes na saída do Node.
+ *
+ * ⚠️ O Node muda o formato conforme **onde a saída está indo**: escrevendo num arquivo ou cano
+ * (é o caso do nosso sandbox de testes) sai o formato TAP — `# pass 181`. Escrevendo num console
+ * de verdade — o caso do duplo clique no Windows — sai o formato "spec" — `ℹ pass 181`.
+ * Ler só o TAP fez a rodada do usuário anunciar **"Testes: 0 passaram"** com 181 testes verdes na
+ * tela logo acima, e o relatório enviado ao GitHub saiu dizendo que nada havia rodado.
+ *
+ * Aqui entendemos os dois formatos. Somamos linha a linha porque cada `npm run test:*` imprime
+ * o seu próprio placar.
+ */
+export function lerPlacarDeTestes(saida) {
+  let passou = 0;
+  let falhou = 0;
+  let pulados = 0;
+  let encontrouPlacar = false;
+  for (const linha of String(saida ?? "").split(/\r?\n/)) {
+    // "ℹ" é do formato spec (console); "#" é do TAP (arquivo/cano).
+    const m = linha.match(/^\s*(?:#|ℹ️?)\s*(pass|fail|skipped)\s+(\d+)\b/);
+    if (!m) continue;
+    encontrouPlacar = true;
+    const valor = Number(m[2]);
+    if (m[1] === "pass") passou += valor;
+    else if (m[1] === "fail") falhou += valor;
+    else pulados += valor;
+  }
+  return { passou, falhou, pulados, encontrouPlacar };
+}
+
+/**
+ * A frase que resume os testes para a pessoa — nunca "0 passaram" quando na verdade o placar
+ * apenas não foi encontrado (foi o que aconteceu na primeira rodada no Windows).
+ */
+export function descreverPlacarDeTestes(testes) {
+  if (testes?.encontrouPlacar) {
+    return `${testes.passou} passaram · ${testes.falhou} falharam · ${testes.pulados} pulados`;
+  }
+  if (testes?.status === 0) {
+    return "não consegui ler o placar na tela (código de saída 0: os testes rodaram; veja o relatório)";
+  }
+  return "não chegaram a rodar (veja os avisos acima)";
+}
+
+/**
+ * Blocos de falha de uma saída de testes, prontos para o relatório.
+ *
+ * O relatório antigo guardava só as últimas 60 linhas: quando um arquivo de teste não carrega, o
+ * motivo aparece **antes** e o relatório chegava mutilado (foi o que aconteceu na rodada do Windows
+ * em 2026-10-15 — 8 arquivos falhando e nenhuma pista). Aqui cada falha vem com o contexto em volta.
+ */
+export function extrairFalhas(saida, { contexto = 8, maximo = 6 } = {}) {
+  const linhas = String(saida ?? "").split(/\r?\n/);
+  const comecaFalha = (linha) =>
+    /^\s*(?:not ok\b|[✖×]\s)/.test(linha) || /^\s*(?:Error|TypeError|RangeError|ReferenceError|SyntaxError)\b/.test(linha) || /\berror TS\d+/.test(linha);
+  const blocos = [];
+  const jaVistos = new Set();
+  for (let i = 0; i < linhas.length && blocos.length < maximo; i += 1) {
+    if (!comecaFalha(linhas[i])) continue;
+    const trecho = linhas.slice(i, Math.min(linhas.length, i + contexto)).join("\n").trimEnd();
+    if (trecho === "" || jaVistos.has(trecho)) continue;
+    jaVistos.add(trecho);
+    blocos.push(trecho);
+  }
+  return blocos;
+}
+
+/**
+ * Nomes dos arquivos de teste que o `node --test` marcou como falha.
+ *
+ * Dois formatos, porque o Node muda o relatório conforme a saída:
+ *  - console de verdade (TTY): `✖ caminho/arquivo.mjs (60ms)` — o formato `spec`;
+ *  - saída por cano/arquivo (é o caso quando a ferramenta captura a saída para o relatório): TAP,
+ *    `not ok 1 - caminho/arquivo.mjs`.
+ * Só nomes terminados em `.mjs` entram: no TAP, um teste comum também aparece como `not ok`, e ele
+ * não pode ser confundido com arquivo que não carregou.
+ */
+export function arquivosQueFalharam(saida) {
+  const nomes = new Set();
+  for (const linha of String(saida ?? "").split(/\r?\n/)) {
+    const spec = linha.match(/^\s*[✖×]\s+(.+?\.mjs)\b/);
+    const tap = linha.match(/^\s*not ok\s+\d+\s+-\s+(.+?\.mjs)\b/);
+    const caminho = spec?.[1] ?? tap?.[1];
+    if (caminho) nomes.add(caminho.trim().split(/[\\/]/).pop());
+  }
+  return [...nomes];
+}
+
+/**
+ * Junta pedaços da saída de um servidor e devolve **linhas inteiras**, guardando o resto para o
+ * próximo pedaço. Duas razões:
+ *  1. duas linhas nunca colam uma na outra (antes, a saída de dois servidores juntos virava um
+ *     bloco único e ilegível);
+ *  2. `\r\n` vira `\n` — no console do Windows, quando a saída vem de um servidor, esses dois
+ *     bytes apareceram desenhados como "♪◙" no meio do texto.
+ * Numa linha com barra de progresso (`\r`), vale só o que ficou depois do último `\r`.
+ */
+export function separarLinhas(pendente, pedaco) {
+  const texto = `${pendente ?? ""}${pedaco ?? ""}`.replace(/\r\n/g, "\n");
+  const partes = texto.split("\n");
+  const resto = partes.pop() ?? "";
+  return { linhas: partes.map(limparBarraDeProgresso), resto };
+}
+
+/** O que a tela mostraria de fato numa linha que usa `\r` para reescrever a si mesma. */
+function limparBarraDeProgresso(linha) {
+  const corte = linha.lastIndexOf("\r");
+  return corte === -1 ? linha : linha.slice(corte + 1);
+}
+
+/**
+ * Monta a linha de comando (com aspas) que o `cmd.exe /d /s /c` vai executar.
+ * Aspas no programa são obrigatórias quando o caminho tem espaço (ex.: `C:\Program Files\nodejs`).
+ */
+export function citarParaCmd(comando, args) {
+  const programa = /[\s"]/.test(comando) ? `"${comando}"` : comando;
+  return [programa, ...args].join(" ");
+}
+
+/**
+ * O Windows abriu um prompt de comando no lugar de executar o programa?
+ * É o sintoma da chamada errada de `.cmd`/`.bat`: parece que funcionou (código 0), mas nada rodou.
+ */
+export function abriuPromptDoWindows(saida) {
+  const texto = saida ?? "";
+  return /^Microsoft Windows \[/mi.test(texto) || /\(c\) Microsoft Corporation/i.test(texto);
+}
+
+/** Traduz o erro de um spawn que nem chegou a rodar (npm ausente, caminho errado, bloqueio). */
+export function erroDeSpawn(resultado) {
+  const erro = resultado?.error;
+  if (!erro) return null;
+  if (erro.code === "ENOENT") {
+    return "O comando não foi encontrado. Verifique se o Node.js está instalado e no PATH (reinstale o Node 22 LTS se necessário).";
+  }
+  if (erro.code === "EINVAL") {
+    return "O sistema bloqueou a execução do comando (Windows + script .cmd). Rode de novo depois de atualizar o Lia Go; se persistir, avise com o texto desta tela.";
+  }
+  if (erro.code === "EACCES" || erro.code === "EPERM") {
+    return "Sem permissão para executar o comando. Evite rodar dentro de pastas protegidas (Área de Trabalho sincronizada ou Program Files).";
+  }
+  return `Não foi possível executar o comando (${erro.code ?? erro.message}).`;
+}
+
+// ---------------------------------------------------------------------------
+// Falha do npm install: causa provável em linguagem simples
+// ---------------------------------------------------------------------------
+
+const REGRAS = [
+  {
+    id: "proxy",
+    // Cuidado: exigimos uma FALHA de proxy. A palavra "proxy" sozinha pega o nome do pacote
+    // `@fastify/proxy-addr` e faria a pessoa procurar problema onde não existe.
+    padrao: /(407 Proxy Authentication|proxy CONNECT|ECONNREFUSED\s+(127\.0\.0\.1|localhost)|https?-proxy)/i,
+    causa: "Seu computador usa um proxy de internet que o npm não conhece (ou que exige senha).",
+    dica: "Rode: npm config get proxy — se aparecer algo, confirme com quem cuida da sua rede. Em casa, apague com: npm config delete proxy && npm config delete https-proxy",
+    transitorio: true,
+  },
+  {
+    id: "dns",
+    padrao: /ENOTFOUND/i,
+    causa: "O endereço do servidor de pacotes não foi encontrado (internet fora, DNS com problema ou endereço de registro errado).",
+    dica: "Teste a internet em outra aba e, no terminal, rode: npm ping — se falhar, confira a conexão e o registro com: npm config get registry (o correto é https://registry.npmjs.org/). Tentar de novo sem arrumar isso não ajuda.",
+    transitorio: false,
+  },
+  {
+    id: "npm_travou",
+    padrao: /Exit handler never called/i,
+    causa: "O npm se perdeu sozinho ao terminar (sintoma conhecido do npm, quase sempre por rede que caiu no meio do download).",
+    dica: "Rode de novo — costuma funcionar. Se repetir, olhe o log do npm que foi copiado para reports/ (ele tem o motivo real) e teste a internet com: npm ping",
+    transitorio: true,
+  },
+  {
+    id: "rede",
+    padrao: /(EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED|network|fetch failed|socket hang up|ERR_SOCKET_TIMEOUT)/i,
+    causa: "O npm não conseguiu falar com o servidor de pacotes (internet ou bloqueio de rede).",
+    dica: "Confira a internet, o Wi-Fi e o firewall/antivírus. Se estiver em rede de empresa/escola, pode ser bloqueio de download: tente em outra rede. Também vale: npm config set registry https://registry.npmjs.org/",
+    transitorio: true,
+  },
+  {
+    id: "certificado",
+    padrao: /(UNABLE_TO_VERIFY_LEAF_SIGNATURE|SELF_SIGNED_CERT_IN_CHAIN|CERT_HAS_EXPIRED|unable to get local issuer certificate)/i,
+    causa: "O certificado de segurança da conexão não pôde ser verificado (antivírus ou rede que inspeciona tráfego).",
+    dica: "Costuma ser antivírus com inspeção HTTPS. Desative temporariamente a inspeção ou use outra rede. NÃO use npm config set strict-ssl false.",
+    transitorio: false,
+  },
+  {
+    id: "permissao",
+    padrao: /(EPERM|EBUSY|EACCES|operation not permitted|resource busy|locked)/i,
+    causa: "Algum arquivo está em uso ou bloqueado (antivírus, explorador de arquivos, ou o próprio app rodando em outra janela).",
+    dica: "Feche todas as janelas do Lia Go/app/API e o explorador de arquivos na pasta do projeto, e rode de novo. Se usa OneDrive na pasta do projeto, mova o projeto para C:\\dev.",
+    transitorio: true,
+  },
+  {
+    id: "caminho_longo",
+    padrao: /(ENAMETOOLONG|path too long|filename too long)/i,
+    causa: "O caminho dos arquivos ficou longo demais para o Windows.",
+    dica: "Mova o projeto para uma pasta curta (ex.: C:\\dev\\Lia-Go) e rode de novo.",
+    transitorio: false,
+  },
+  {
+    id: "arvore_pela_metade",
+    padrao: /(ENOTEMPTY|ENOTDIR|syscall rename)/i,
+    causa: "A pasta node_modules ficou pela metade (uma tentativa anterior foi interrompida no meio do download).",
+    dica: "A automação apaga essa pasta e instala de novo sozinha (é pasta gerada, nada do projeto se perde). Se estiver rodando na mão: apague node_modules e rode de novo.",
+    transitorio: true,
+  },
+  {
+    id: "cache",
+    padrao: /(EINTEGRITY|integrity checksum|checksum failed|ENOTCACHED)/i,
+    causa: "Um arquivo baixado antes está corrompido no cache do npm.",
+    dica: "Rode: npm cache verify — e depois: npm cache clean --force. Em seguida, rode o LiaGo.bat de novo.",
+    transitorio: false,
+  },
+  {
+    id: "conflito",
+    padrao: /(ERESOLVE|could not resolve dependency|peer dep)/i,
+    causa: "Conflito entre versões de pacotes (geralmente porque o package-lock.json do projeto não está atualizado).",
+    dica: "Confirme que você atualizou o projeto (o LiaGo.bat faz isso na opção 6) e rode de novo. Não edite o package.json à mão.",
+    transitorio: false,
+  },
+  {
+    id: "espaco",
+    padrao: /(ENOSPC|no space left|disk full)/i,
+    causa: "Acabou o espaço em disco.",
+    dica: "Libere espaço (o npm costuma precisar de algumas centenas de MB) e rode de novo.",
+    transitorio: false,
+  },
+  {
+    id: "versao_node",
+    padrao: /(Unsupported engine|EBADENGINE|requires Node)/i,
+    causa: "A versão do Node é mais antiga do que o projeto pede (Node 22.12 ou superior).",
+    dica: "Instale o Node 22 LTS em https://nodejs.org e rode de novo.",
+    transitorio: false,
+  },
+];
+
+/** Dicas para a falha do npm, em ordem de probabilidade. Retorna lista de objetos explicativos. */
+export function diagnosticarFalhaNpm(saida) {
+  const texto = String(saida ?? "");
+  let encontradas = REGRAS.filter((regra) => regra.padrao.test(texto));
+  // "rede" e "npm travou" são explicações genéricas: quando reconhecemos o motivo de verdade
+  // (DNS, proxy, permissão…), é ele que a pessoa precisa ler — e ele que decide sobre tentar de novo.
+  if (encontradas.length > 1) {
+    const especificas = encontradas.filter((regra) => regra.id !== "rede" && regra.id !== "npm_travou");
+    if (especificas.length > 0) encontradas = especificas;
+  }
+  if (encontradas.length === 0) {
+    return [
+      {
+        id: "desconhecida",
+        causa: "O npm não disse o motivo em uma linha que a gente reconheça.",
+        dica: "Veja as últimas linhas acima: normalmente a mensagem em inglês aponta o arquivo ou o pacote. Rode de novo com internet estável; se repetir, guarde o arquivo de log citado e avise.",
+        transitorio: true,
+      },
+    ];
+  }
+  return encontradas.map(({ id, causa, dica, transitorio }) => ({ id, causa, dica, transitorio }));
+}
+
+/**
+ * Vale tentar de novo automaticamente? Olhamos a **causa principal** (a primeira):
+ * repetir o comando só ajuda quando o problema é passageiro — não quando já sabemos o motivo.
+ */
+export function valeTentarDeNovo(dicas) {
+  return Boolean(dicas?.[0]?.transitorio);
+}
+
+// ---------------------------------------------------------------------------
+// Saída de texto
+// ---------------------------------------------------------------------------
+
+/**
+ * Linhas do log interno do npm que realmente explicam a falha.
+ * Útil porque o npm às vezes só imprime "Exit handler never called" na tela.
+ */
+const LINHA_RELEVANTE =
+  /(error code|errno|reason:|getaddrinfo|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EPERM|EACCES|ENOSPC|EINTEGRITY|ERESOLVE|EBADENGINE|proxy|407)/i;
+
+export function linhasRelevantes(texto, maximo = 6) {
+  const vistas = new Set();
+  const escolhidas = [];
+  for (const linha of String(texto ?? "").split("\n")) {
+    const limpa = linha.trim();
+    if (!limpa || !LINHA_RELEVANTE.test(limpa)) continue;
+    // O log do npm é repetitivo: cada erro aparece em várias linhas parecidas.
+    const chave = limpa.replace(/\s+/g, " ").slice(0, 120);
+    if (vistas.has(chave)) continue;
+    vistas.add(chave);
+    escolhidas.push(limpa);
+  }
+  return escolhidas.slice(-maximo);
+}
+
+/**
+ * Diagnóstico combinando o que o npm escreveu na tela e o log interno dele.
+ * Quando a tela não explica (sintomas genéricos), o log é a fonte da verdade.
+ */
+export function diagnosticarComLog(saidaDoNpm, textoDoLog = null) {
+  const daTela = diagnosticarFalhaNpm(saidaDoNpm);
+  const generica = daTela[0].id === "npm_travou" || daTela[0].id === "desconhecida";
+  if (!textoDoLog || !generica) return { dicas: daTela, linhasDoLog: [], fonte: "tela" };
+
+  const doLog = diagnosticarFalhaNpm(textoDoLog);
+  if (doLog[0].id === "desconhecida") return { dicas: daTela, linhasDoLog: linhasRelevantes(textoDoLog), fonte: "tela" };
+  // Achamos a causa de verdade no log: o sintoma genérico da tela sai da lista para não confundir
+  // (e para não provocar uma nova tentativa que já sabemos que não resolve).
+  return { dicas: doLog, linhasDoLog: linhasRelevantes(textoDoLog), fonte: "log" };
+}
+
+/**
+ * O npm esconde o motivo real em um log próprio (inclusive quando imprime
+ * "Exit handler never called"). Aqui achamos o caminho desse arquivo na saída.
+ */
+export function caminhoDoLogDoNpm(saida) {
+  const encontrado = /complete log of this run can be found in:?\s*(\S+)/i.exec(String(saida ?? ""));
+  return encontrado ? encontrado[1] : null;
+}
+
+/** Últimas linhas de uma saída longa, sem estourar a tela. */
+export function resumoSaida(saida, maxLinhas = 30) {
+  const linhas = String(saida ?? "").replace(/\r\n/g, "\n").trimEnd().split("\n").filter((linha) => linha.trim() !== "");
+  if (linhas.length === 0) return "(o comando não escreveu nada)";
+  return linhas.slice(-maxLinhas).join("\n");
+}
+
+/** Esconde a senha de uma URL de banco (usada em relatórios e mensagens). */
+export function ocultarUrl(url) {
+  return url ? String(url).replace(/:\/\/([^:/@]+):[^@/]+@/, "://$1:****@") : "(não definida)";
+}
+
+/** Lê um .env em texto puro (sem imprimir valores em lugar nenhum). */
+export function lerEnvDoTexto(texto) {
+  const valores = {};
+  for (const linha of String(texto ?? "").split("\n")) {
+    const limpa = linha.trim();
+    if (!limpa || limpa.startsWith("#")) continue;
+    const igual = limpa.indexOf("=");
+    if (igual <= 0) continue;
+    valores[limpa.slice(0, igual).trim()] = limpa.slice(igual + 1).trim().replace(/^["']|["']$/g, "");
+  }
+  return valores;
+}
+
+// ---------------------------------------------------------------------------
+// Descobrir o Python da máquina (usado pelo banco embutido em tools/db.mjs)
+// ---------------------------------------------------------------------------
+
+/** Versões de Python com binários publicados do PostgreSQL embutido (`pgserver`). */
+export const PYTHON_MIN = [3, 9];
+export const PYTHON_MAX = [3, 12];
+
+/**
+ * A versão do Python está dentro da janela com binários prontos?
+ * Fora dela, o `pip install` não teria o que baixar e a falha pareceria "sem internet".
+ */
+export function versaoCompativel(versao) {
+  const [maior, menor] = String(versao).split(".").map(Number);
+  if (!Number.isInteger(maior) || !Number.isInteger(menor)) return false;
+  if (maior !== PYTHON_MIN[0]) return false;
+  return menor >= PYTHON_MIN[1] && menor <= PYTHON_MAX[1];
+}
+
+/**
+ * Nomes de programa a tentar, na ordem, para achar um Python.
+ * No Windows o certo é o launcher `py -3` (ou `python`); **`python3` não existe lá** — foi o que
+ * fez o banco embutido falhar com "No module named pgserver" no PC do usuário.
+ */
+export function candidatosDePython(plataforma = process.platform) {
+  return plataforma === "win32"
+    ? [
+        ["py", ["-3"]],
+        ["python", []],
+        ["python3", []],
+      ]
+    : [
+        ["python3", []],
+        ["python", []],
+      ];
+}
+
+// ---------------------------------------------------------------------------
+// Banco local: transformar o log do PostgreSQL em algo acionável (tools/db.mjs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dicas em português para os erros conhecidos do log do servidor PostgreSQL local.
+ * Devolve "" quando o log não traz nenhum caso reconhecido.
+ */
+export function explicarLogDoServidor(linhas, porta = "55432") {
+  const texto = String(linhas ?? "");
+  const dicas = [];
+  if (/administrative|administrador/i.test(texto)) {
+    dicas.push(
+      "O Lia Go está sendo executado como administrador e o PostgreSQL não roda assim. Feche esta janela e abra o LiaGo.bat com um duplo clique normal.",
+    );
+  }
+  if (/Address already in use|endereço já está em uso/i.test(texto)) {
+    dicas.push(
+      `Já existe algo usando a porta ${porta} (outra instância do Lia Go ou um PostgreSQL antigo). Feche o que estiver rodando e tente de novo — ou rode com LIA_PG_PORTA=55433.`,
+    );
+  }
+  return dicas.map((dica) => `\n→ ${dica}`).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Binários portáteis do PostgreSQL (baixados do PyPI: sem Docker e sem Python)
+// ---------------------------------------------------------------------------
+//
+// Os arquivos do PyPI são imutáveis e ficam para sempre — e o pacote `pgserver` carrega dentro dele
+// o PostgreSQL **compilado**: `initdb`, `pg_ctl`, `psql` e os arquivos de apoio. Baixamos o pacote,
+// extraímos (é um zip comum) e usamos esses programas direto. Não precisa de Docker, não precisa de
+// Python instalado, e a versão do Python da máquina deixa de importar.
+
+/** Sufixo do arquivo de binários compatível com esta máquina (mesmo esquema dos wheels do PyPI). */
+export function sufixoDeBinarios(plataforma = process.platform, arquitetura = process.arch) {
+  if (plataforma === "win32") return arquitetura === "arm64" ? "win_arm64" : "win_amd64";
+  if (plataforma === "darwin") return arquitetura === "arm64" ? "macosx_11_0_arm64" : "macosx_10_9_x86_64";
+  if (arquitetura === "arm64" || arquitetura === "arm")
+    return "manylinux_2_17_aarch64.manylinux2014_aarch64";
+  return "manylinux_2_17_x86_64.manylinux2014_x86_64";
+}
+
+/**
+ * Escolhe, na resposta do PyPI, o arquivo de binários desta máquina.
+ * Devolve `null` quando não há binário publicado para a plataforma (ex.: Windows ARM, Linux ARM).
+ */
+export function escolherArquivoDeBinarios(dados, plataforma = process.platform, arquitetura = process.arch) {
+  const sufixo = sufixoDeBinarios(plataforma, arquitetura);
+  const arquivos = Array.isArray(dados?.urls) ? dados.urls : [];
+  const candidatos = arquivos.filter(
+    (arquivo) => typeof arquivo?.filename === "string" && arquivo.filename.endsWith(`${sufixo}.whl`),
+  );
+  const ordem = ["cp312", "cp311", "cp310", "cp39", "cp313"];
+  const peso = (nome) => {
+    const achado = ordem.findIndex((abi) => nome.includes(abi));
+    return achado === -1 ? ordem.length : achado;
+  };
+  candidatos.sort((a, b) => peso(a.filename) - peso(b.filename));
+  const escolhido = candidatos[0];
+  if (!escolhido) return null;
+  return {
+    nome: escolhido.filename,
+    url: escolhido.url,
+    tamanho: typeof escolhido.size === "number" && escolhido.size > 0 ? escolhido.size : 0,
+    versao: dados?.info?.version ?? "",
+  };
+}
+
+/**
+ * Programas a tentar para extrair o arquivo baixado, na ordem.
+ * No Windows o `tar.exe` (que já vem no sistema desde o Windows 10) lê zip; no Linux, `unzip`.
+ */
+export function comandosDeExtracao(plataforma, arquivo, destino) {
+  const comandos = [["tar", ["-xf", arquivo, "-C", destino]]];
+  if (plataforma === "win32") {
+    comandos.push([
+      "powershell",
+      ["-NoProfile", "-Command", `Expand-Archive -LiteralPath '${arquivo}' -DestinationPath '${destino}' -Force`],
+    ]);
+  } else {
+    comandos.push(["unzip", ["-o", arquivo, "-d", destino]]);
+    comandos.push(["python3", ["-m", "zipfile", "-e", arquivo, destino]]);
+  }
+  return comandos;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnóstico do computador (vai para reports/estado-do-computador.md e é enviado ao GitHub)
+// ---------------------------------------------------------------------------
+
+/** Monta o arquivo que conta ao responsável como está a máquina, sem precisar de print de tela. */
+export function montarDiagnostico(dados) {
+  const linhas = [
+    "# Estado do computador (gerado automaticamente pelo LiaGo.bat)",
+    "",
+    `- **Quando:** ${dados.quando ?? ""}`,
+    `- **Sistema:** ${dados.sistema ?? "?"} · **Node:** ${dados.node ?? "?"} · **npm:** ${dados.npm ?? "?"}`,
+    `- **Python:** ${dados.python ?? "não encontrado"}`,
+    `- **Docker:** ${dados.docker ?? "?"} · **Banco de dados:** ${dados.banco ?? "?"}`,
+    `- **Dependências:** ${dados.dependencias ?? "?"}`,
+    `- **Testes:** ${dados.testes ?? "não rodaram"}`,
+    `- **Branch:** ${dados.branch ?? "?"} · **Último commit local:** ${dados.commit ?? "?"}`,
+    "",
+  ];
+  if (dados.ocorrencias?.length) {
+    linhas.push("## Avisos desta rodada", "");
+    for (const aviso of dados.ocorrencias) linhas.push(`- ${aviso}`);
+    linhas.push("");
+  } else {
+    linhas.push("## Avisos desta rodada", "", "- Nenhum: tudo correu como esperado.", "");
+  }
+  if (dados.detalhes?.length) {
+    linhas.push("## Detalhes técnicos (últimas linhas)", "");
+    for (const bloco of dados.detalhes) {
+      linhas.push(`### ${bloco.titulo}`, "", "```", (bloco.texto ?? "").trim() || "(vazio)", "```", "");
+    }
+  }
+  return `${linhas.join("\n")}\n`;
+}
+
+// ---------------------------------------------------------------------------
+// Feedback de progresso: ninguém deve ficar olhando uma tela parada
+// ---------------------------------------------------------------------------
+
+/** Tamanho legível em português (12,3 MB · 480 KB · 512 B). */
+export function formatarTamanho(bytes) {
+  const valor = Number(bytes) || 0;
+  if (valor >= 1024 * 1024) return `${(valor / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  if (valor >= 1024) return `${Math.round(valor / 1024)} KB`;
+  return `${valor} B`;
+}
+
+/**
+ * Uma linha de progresso do download.
+ * `animado` é para o terminal de verdade (com barra); sem ele, sai só o percentual,
+ * para o texto continuar legível quando a saída está sendo gravada em arquivo.
+ */
+export function linhaDeProgresso(recebidos, total, segundos, animado = true) {
+  const velocidade = segundos > 0.5 ? `${formatarTamanho(recebidos / segundos)}/s` : "";
+  if (!total || total <= 0) {
+    return `  recebido ${formatarTamanho(recebidos)}${velocidade ? ` · ${velocidade}` : ""}`.trimEnd();
+  }
+  const pct = Math.min(100, Math.floor((recebidos / total) * 100));
+  if (!animado) {
+    return `  ${pct}% (${formatarTamanho(recebidos)} de ${formatarTamanho(total)})${velocidade ? ` · ${velocidade}` : ""}`;
+  }
+  const largura = 24;
+  const cheios = Math.max(0, Math.min(largura, Math.round((pct / 100) * largura)));
+  const barra = "#".repeat(cheios) + "-".repeat(largura - cheios);
+  return `  [${barra}] ${String(pct).padStart(3)}% · ${formatarTamanho(recebidos)}/${formatarTamanho(total)} · ${velocidade}`.trimEnd();
+}
+
+/** "45 segundos" / "15 minutos" — para explicar limites de tempo em linguagem simples. */
+export function descreverDuracao(milissegundos) {
+  const ms = Number(milissegundos) || 0;
+  if (ms < 60000) return `${Math.max(1, Math.round(ms / 1000))} segundo(s)`;
+  return `${Math.round(ms / 60000)} minuto(s)`;
+}
+
+/** "12s" / "1 min 5s" — para fechar cada etapa com algo concreto. */
+export function tempoDecorrido(inicioMs, agoraMs = Date.now()) {
+  const segundos = Math.max(0, Math.round((Number(agoraMs) - Number(inicioMs)) / 1000));
+  if (segundos < 60) return `${segundos}s`;
+  const minutos = Math.floor(segundos / 60);
+  return `${minutos} min ${segundos % 60}s`;
+}
+
+/**
+ * Roda um comando mostrando a saída conforme ela acontece e, quando o processo passa 15 segundos
+ * sem escrever nada, avisa que continua trabalhando — ninguém precisa adivinhar se travou.
+ * Devolve o mesmo formato do `rodar()` do orquestrador: { status, saida, error }.
+ */
+export async function rodarComSaidaAoVivo(programa, argumentos, opcoes = {}) {
+  const { spawn } = await import("node:child_process");
+  const inicio = Date.now();
+  const limite = Number(opcoes.limiteMs ?? 0);
+  return await new Promise((resolve) => {
+    const processo = spawn(programa, argumentos, {
+      cwd: opcoes.cwd,
+      env: opcoes.env ?? process.env,
+      shell: opcoes.shell ?? false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let saida = "";
+    let ultimaSaida = Date.now();
+    const ecoar = opcoes.ecoar !== false;
+    const consumir = (pedaco) => {
+      const texto = pedaco.toString();
+      saida += texto;
+      ultimaSaida = Date.now();
+      if (ecoar) process.stdout.write(texto);
+    };
+    processo.stdout.on("data", consumir);
+    processo.stderr.on("data", consumir);
+    // Teto de tempo: nenhuma etapa pode prender a rodada para sempre.
+    let expirou = false;
+    const freio =
+      limite > 0
+        ? setTimeout(() => {
+            expirou = true;
+            console.log(`   ⏱️ ${opcoes.legenda ?? "a etapa"} passou de ${descreverDuracao(limite)} — interrompi para você não ficar esperando.`);
+            processo.kill();
+          }, limite)
+        : null;
+    const relogio = setInterval(() => {
+      if (Date.now() - ultimaSaida >= 15000) {
+        console.log(`   ⏳ ${opcoes.legenda ?? "ainda trabalhando"} — sem novidades há ${tempoDecorrido(ultimaSaida)} (total ${tempoDecorrido(inicio)}). Aguarde, não travou.`);
+      }
+    }, 5000);
+    const finalizar = (status, erro) => {
+      clearInterval(relogio);
+      if (freio) clearTimeout(freio);
+      resolve({ status: status ?? 1, saida, error: erro ?? null, expirou });
+    };
+    processo.on("error", (erro) => finalizar(1, erro));
+    process.on("exit", () => clearInterval(relogio));
+    processo.on("exit", (codigo) => finalizar(codigo));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Atualizar o projeto sem perder o trabalho local (tools/dev.mjs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide de qual referência remota puxar a versão nova.
+ * Ordem: a referência "oficial" da branch (upstream) → `origin/<branch>` → nada.
+ * Devolve `null` quando a branch não existe no GitHub (aí não há o que puxar).
+ */
+export function escolherAlvoDeAtualizacao(dados) {
+  const { upstream, upstreamExiste, branchExisteNoRemoto, branch } = dados ?? {};
+  if (upstream && upstreamExiste) return upstream;
+  if (branchExisteNoRemoto && branch) return `origin/${branch}`;
+  return null;
+}
+
+/**
+ * Quais alterações locais colidem com o que está chegando do GitHub?
+ *
+ * Regra nascida de um erro real: antes, a atualização guardava tudo num `stash` e, se a devolução
+ * conflitasse, fazia `reset --hard` — isso **descartou trabalho em andamento** de dentro do editor
+ * (o conteúdo só sobrava no stash). Agora nada é guardado nem descartado: olhamos exatamente quais
+ * arquivos colidem e decidimos sem tocar no que é da pessoa.
+ */
+export function classificarAlteracoesLocais({ caminhosLocais, caminhosQueChegam, prefixosGerados = ["reports/"] }) {
+  const chegam = new Set(caminhosQueChegam ?? []);
+  const sobrepostos = (caminhosLocais ?? []).filter((caminho) => chegam.has(caminho));
+  const apenasGerados =
+    sobrepostos.length > 0 &&
+    sobrepostos.every((caminho) => prefixosGerados.some((prefixo) => caminho.startsWith(prefixo)));
+  return { sobrepostos, apenasGerados };
+}
+
+/**
+ * Decide como trazer a versão nova **sem nunca descartar trabalho local**.
+ *
+ * Um `merge --ff-only` recusa quando há qualquer commit seu (relatórios, por exemplo) ou arquivo
+ * alterado no caminho — era assim que a atualização deixava de acontecer, e o usuário precisava
+ * rodar `git pull` na mão.
+ *
+ * - `avancar` / `reaplicar-por-cima`: cópia limpa — avança direto ou reaplica os seus commits por cima.
+ * - `atualizar-com-alteracoes`: você mexeu em arquivos que o GitHub **não** mudou: atualiza direto,
+ *   sem tocar no seu trabalho.
+ * - `restaurar-gerados-e-atualizar`: as únicas colisões são relatórios gerados automaticamente em
+ *   `reports/` (regerados a cada rodada) — restaura a versão do GitHub e atualiza.
+ * - `pular-por-seguranca`: você tem alterações não commitadas em arquivos que o GitHub também mudou
+ *   (ou alterações + commits próprios, que impedem o rebase). **Não atualiza** e explica o que fazer.
+ */
+export function decidirAtualizacao({ alvo, commitsNovos, commitsLocais, alteracoes }) {
+  if (!alvo) return { acao: "sem-referencia" };
+  if (commitsNovos === 0) return { acao: "atualizado" };
+  if (alteracoes?.tem) {
+    if ((alteracoes.sobrepostos ?? []).length > 0) {
+      if (alteracoes.apenasGerados) return { acao: "restaurar-gerados-e-atualizar" };
+      // Colisão em arquivo de verdade: **commitar** o que existe aqui (nunca descartar) e só então atualizar.
+      // O rebase cuida do resto; se não der, o commit fica e nada se perde.
+      return { acao: "guardar-trabalho-e-atualizar" };
+    }
+    // Sem colisão: se existem commits locais, o rebase exige a cópia limpa — commita antes.
+    if (commitsLocais > 0) return { acao: "guardar-trabalho-e-atualizar" };
+    return { acao: "atualizar-com-alteracoes" };
+  }
+  if (commitsLocais > 0) return { acao: "reaplicar-por-cima" };
+  return { acao: "avancar" };
+}
+
+/**
+ * O repositório ficou no meio de um conflito (rebase/merge pela metade)?
+ * É o que acontece quando o seu trabalho e o do GitHub mexem no mesmo trecho do mesmo arquivo.
+ * Um fluxo de um clique **não** pode deixar a cópia nesse estado: a próxima rodada nem abre.
+ */
+export function temConflitoNoStatus(statusPorcelain) {
+  const linhas = String(statusPorcelain ?? "").split("\n");
+  return linhas.some((linha) => /^(U|A A|D D|A U|U A|D U|U D|A D|D A)/.test(linha.trim()) || /^(UU|AA|DD|AU|UA|DU|UD) /.test(linha.trim()));
+}
+
+/** O que dizer quando o envio não termina — sempre com o passo a passo, nunca um "erro" solto. */
+export function explicarEnvioQueFalhou(mensagem, ramo) {
+  return [
+    `Não consegui enviar nesta rodada: ${mensagem}`,
+    "O seu trabalho continua salvo aqui; a próxima rodada tenta enviar de novo.",
+    `Se quiser resolver na mão: git pull --rebase ${ramo ?? "origin/<sua-branch>"} e depois git push.`,
+  ].join("\n");
+}
+
+/**
+ * Roda um programa **entregando a saída direto para a tela** (sem "cano") e avisa de tempos em tempos
+ * que ele continua trabalhando.
+ *
+ * ⚠️ Por que não capturar a saída aqui: programas como o `pg_ctl` terminam deixando **outro processo
+ * vivo** (o servidor do PostgreSQL). Se a saída passar por um cano (pipe), esse processo herda o cano,
+ * o Node continua segurando a leitura e **nunca sai** — a rodada fica presa para sempre, mesmo com todo
+ * o trabalho concluído. Foi exatamente isso que travou o Lia Go por quase uma hora no Windows, logo
+ * depois de o banco subir. Com `inherit` não existe cano para herdar.
+ */
+export async function rodarHerdandoSaida(programa, argumentos, opcoes = {}) {
+  const { spawn } = await import("node:child_process");
+  return await new Promise((resolve) => {
+    const inicio = Date.now();
+    const processo = spawn(programa, argumentos, {
+      cwd: opcoes.cwd,
+      env: opcoes.env ?? process.env,
+      shell: opcoes.shell ?? false,
+      stdio: "inherit",
+    });
+    const intervalo = opcoes.intervaloMs ?? 15000;
+    const relogio = setInterval(() => {
+      console.log(`   ⏳ ${opcoes.legenda ?? "ainda trabalhando"} — ${tempoDecorrido(inicio)} até agora. Aguarde, não travou.`);
+    }, intervalo);
+    const finalizar = (status, erro) => {
+      clearInterval(relogio);
+      resolve({ status: status ?? 1, error: erro ?? null });
+    };
+    processo.on("error", (erro) => finalizar(1, erro));
+    processo.on("exit", (codigo) => finalizar(codigo));
+  });
+}

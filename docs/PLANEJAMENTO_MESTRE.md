@@ -1,5 +1,5 @@
 # Lia Go — Planejamento mestre e continuidade
-**Versão:** 1.7 — base para início da implementação incremental  
+**Versão:** 1.8 — stack técnica decidida (React + TypeScript + Capacitor); ver `ARCHITECTURE.md`  
 **Idioma:** português brasileiro  
 **Estado:** planejamento suficiente para iniciar implementação por etapas; não representa especificação final fechada.
 
@@ -155,4 +155,19 @@ V1.x: refinamentos de UX e automações de baixo risco.
 V2: integrações automáticas com reservas/Pix e automações adicionais, somente após avaliar viabilidade, segurança, custos e necessidade.
 
 ## 12. Diretriz de implementação
-Começar com um esqueleto executável e uma fatia vertical simples. Antes de escolher stack/serviços externos, inspecionar o repositório e as capacidades reais do ambiente. Registrar decisões técnicas e manter testes automatizados para cálculos, permissões e transições de estado.
+Começar com um esqueleto executável e uma fatia vertical simples. Registrar decisões técnicas e manter testes automatizados para cálculos, permissões e transições de estado.
+
+A inspeção do repositório e do ambiente já foi feita: na versão 1.8 não existe mais a pendência "escolher stack". A stack está decidida (§13), a viabilidade foi medida e registrada em `ARCHITECTURE.md`, e a implementação segue por fatias verticais testáveis.
+
+## 13. Stack e arquitetura técnica (decidida em 2026-10-12)
+- **Cliente:** React + TypeScript + **Capacitor**; uma base de código para app mobile e web.
+  **Celular é a plataforma principal**; web é complementar.
+- **Regras de negócio independentes da interface:** pacote de domínio próprio, sem I/O e sem UI,
+  usado pelo servidor (autoridade) e pelo app (prévia/offline). O resultado do app nunca é verdade oficial.
+- **Banco central compartilhado:** PostgreSQL no servidor. **SQLite local nunca é o banco central**;
+  no dispositivo existe apenas cache offline não oficial.
+- **Autenticação:** conta obrigatória para todos os participantes; e-mail e senha próprios com sessão
+  em cookie HttpOnly (detalhes e decisão pendente sobre o app nativo em `ARCHITECTURE.md` §6 e §11).
+- **Substituição da stack exige autorização** da pessoa responsável.
+- Detalhes, medidas de viabilidade, riscos e decisões pendentes: `docs/ARCHITECTURE.md` (documento único
+  de arquitetura). O backlog reflete esta stack em `docs/IMPLEMENTATION_BACKLOG.md`.

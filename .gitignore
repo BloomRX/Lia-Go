@@ -1,0 +1,65 @@
+# Dependências e artefatos de build (nunca versionar)
+node_modules/
+dist/
+dist-ssr/
+build/
+coverage/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Ambiente e segredos (o DevKit também bloqueia .env no stage)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# JavaScript emitido por engano pelo tsc (o app é TypeScript puro: fontes .ts/.tsx)
+apps/mobile/src/**/*.js
+apps/mobile/*.config.js
+
+# Testes de interface: os `.mjs` são gerados pelo empacotador a cada execução (nunca versionar)
+apps/mobile/.ui-testes/
+
+# Relatórios de execução antigos (os recentes são versionados para você ver no GitHub)
+reports/*.log
+
+# Banco de dados local de desenvolvimento
+*.sqlite
+*.sqlite3
+*.db
+.pgdata/
+# Binários portáteis do PostgreSQL (baixados do PyPI na primeira execução)
+.pgbin/
+
+# Projetos nativos do Capacitor (gerados/sincronizados)
+apps/mobile/android/app/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties
+apps/mobile/android/app/src/main/assets/public/
+apps/mobile/ios/App/Pods/
+apps/mobile/ios/App/build/
+apps/mobile/ios/App/App/public/
+apps/mobile/ios/App/DerivedData/
+
+# Python (DevKit e scripts auxiliares)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Agentes locais (o junction `.claude/skills -> .agents/skills` nunca deve ser commitado em dobro)
+.claude/
+CLAUDE.local.md
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*

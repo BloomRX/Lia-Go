@@ -1,0 +1,24 @@
+{
+  "name": "@lia-go/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "API do Lia Go — única autoridade sobre dados, permissões e dinheiro",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
+    "start": "node --env-file-if-exists=../../.env src/main.ts",
+    "migrate": "node --env-file-if-exists=../../.env src/migrate.ts",
+    "test": "node --env-file-if-exists=../../.env --test --test-concurrency=1 \"tests/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@lia-go/domain": "*",
+    "fastify": "^5.12.5",
+    "pg": "^8.23.1",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}

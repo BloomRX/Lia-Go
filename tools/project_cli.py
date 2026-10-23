@@ -521,6 +521,9 @@ def changes(p):
 def stage_project(p):
     secrets(p)
     names, tracked_changes = changes(p)
+    # Remoções já preparadas no índice: o arquivo não existe mais nem no disco nem no índice,
+    # então `git add -A` recusaria o caminho. A remoção já está pronta; nada a fazer.
+    removidos_no_indice = set(git_names(p, ["diff", "--cached", "--name-only", "--diff-filter=D"]))
     selected, skipped = [], []
     for rel in sorted(names):
         path = p / rel
@@ -530,6 +533,8 @@ def stage_project(p):
             if rel not in tracked_changes:
                 skipped.append(rel); continue
             # Remover um arquivo antes rastreado continua sendo permitido.
+        if not path.exists() and rel in removidos_no_indice:
+            continue
         if path.is_dir() and not path.is_symlink():
             raise RuntimeError(f"Submódulo/repositório aninhado com alteração: {rel}. Gerencie-o manualmente; não vou adicioná-lo como se fosse um arquivo do projeto.")
         if path.is_file() and not path.is_symlink() and path.stat().st_size > MAX_FILE:

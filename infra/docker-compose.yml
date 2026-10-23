@@ -1,0 +1,21 @@
+# PostgreSQL local de desenvolvimento (decisão confirmada pelo responsável).
+# Uso: `npm run db:up` (ou `docker compose -f infra/docker-compose.yml up -d`).
+# Só o localhost é exposto; os dados ficam em .pgdata-docker (fora do Git).
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: lia-go-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lia_go
+      POSTGRES_PASSWORD: lia_go_local
+      POSTGRES_DB: lia_go
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - ../.pgdata-docker:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lia_go -d lia_go"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
