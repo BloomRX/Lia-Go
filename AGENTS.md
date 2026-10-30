@@ -1,5 +1,9 @@
 # Lia Go — Regras Permanentes do Agente
 
+## 0. Padrão comum da marca
+- Consulte `docs/BRAND-STANDARDS.md` para nome, linguagem, identidade, licenças, privacidade e distinção entre produtos.
+- O padrão comum não substitui este contrato de negócio nem o design system específico do Lia Go.
+
 ## 1. Stack e autoridade (não substituir sem autorização)
 - Monorepo TypeScript (`npm workspaces`):
   - `packages/domain` — regras puras e determinísticas (**sem I/O e sem UI**).

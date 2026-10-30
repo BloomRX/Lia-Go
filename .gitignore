@@ -48,8 +48,11 @@ __pycache__/
 .venv/
 venv/
 
-# Agentes locais (o junction `.claude/skills -> .agents/skills` nunca deve ser commitado em dobro)
-.claude/
+# Agentes locais (espelhos/junctions e estado por máquina não devem ser commitados)
+.claude/skills/
+.claude/worktrees/
+.claude/settings.local.json
+
 CLAUDE.local.md
 
 # Sistema e editores

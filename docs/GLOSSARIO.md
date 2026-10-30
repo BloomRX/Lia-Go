@@ -12,7 +12,8 @@ Vale para humanos e para sessões de IA. Em caso de dúvida, é este arquivo que
 
 | Quando eu digo | Quero dizer | Onde vive |
 |---|---|---|
-| **modelo de IA** / peso | o arquivo de vários GB que faz a inferência (Qwen, XTTS, Live2D) | `%LOCALAPPDATA%\Lia\Modelos\`, compartilhado entre os apps |
+| **modelo de IA** / peso | o arquivo de vários GB que faz a inferência (Qwen, XTTS; Live2D é um asset/modelo de avatar, não um peso de LLM) | `%LOCALAPPDATA%\Lia\Modelos\`, compartilhado entre os apps |
+| **modelo de avatar/3D** | asset visual, por exemplo Live2D, VRM ou GLB; não é peso de IA | diretório de assets do produto ou workspace |
 | **modelo de nuvem** / tier | o nome do que se pede ao provedor (`sonnet`, `haiku`, `fable`) | é texto numa configuração, não ocupa disco |
 | **arquivo pronto** / template | um `CLAUDE.md` em branco pra copiar e preencher | pasta `arquivos-prontos/` do kit, vai pro **repositório** |
 
