@@ -18,3 +18,8 @@ Esta pasta reúne o planejamento de produto e as instruções iniciais para come
 - Para dúvidas de baixo risco e reversíveis, escolha a solução mais simples, documente a hipótese e prossiga.
 - Para decisões de alto impacto — segurança, privacidade, pagamentos, custos recorrentes, exclusão/perda de dados, permissões ou mudança de escopo — pare e peça confirmação.
 - Atualize a documentação junto com cada implementação relevante.
+
+
+## Padrão comum da marca
+
+Consulte [`docs/BRAND-STANDARDS.md`](docs/BRAND-STANDARDS.md) para identidade, linguagem, nomenclatura, privacidade e princípios comuns. As regras específicas do app mobile/web permanecem nos documentos técnicos existentes.
