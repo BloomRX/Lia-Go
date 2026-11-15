@@ -47,6 +47,12 @@ export async function construirServidor(deps: Dependencias): Promise<FastifyInst
     if (erro instanceof ErroDeDominio) {
       return reply.status(400).send({ erro: "regra_violada", mensagem: erro.message });
     }
+    // O PostgreSQL recusa texto que não é UUID em comparação com coluna uuid (código `22P02`):
+    // identificador malformado no caminho da URL é erro de quem pediu (400),
+    // não falha interna do servidor (500). A resposta segue genérica, sem ecoar o erro do banco.
+    if (codigoDeErroPg(erro) === "22P02") {
+      return reply.status(400).send({ erro: "entrada_invalida", mensagem: "Identificador inválido na requisição." });
+    }
     const status = erro instanceof ErroHttp ? erro.status : statusDoErro(erro);
     const codigo = erro instanceof ErroHttp ? erro.codigo : status === 500 ? "erro_interno" : "requisicao_invalida";
     const detalhes = erro instanceof ErroHttp ? erro.detalhes : undefined;
@@ -89,6 +95,15 @@ function statusDoErro(erro: unknown): number {
     if (typeof bruto === "number" && Number.isInteger(bruto) && bruto >= 100 && bruto <= 599) return bruto;
   }
   return 500;
+}
+
+/** Código de erro do PostgreSQL quando a falha vem do driver `pg` (p. ex. `22P02` = texto inválido para uuid). */
+function codigoDeErroPg(erro: unknown): string | undefined {
+  if (typeof erro === "object" && erro !== null) {
+    const codigo = (erro as { code?: unknown }).code;
+    if (typeof codigo === "string") return codigo;
+  }
+  return undefined;
 }
 
 function nomeDoErro(erro: unknown): string {

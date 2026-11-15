@@ -351,3 +351,25 @@ test("o organizador não pode se remover: precisa usar a ação de sair", { skip
   );
   assert.equal(vinculo.rows[0]?.estado, "ativo", "o vínculo da organizadora continua ativo");
 });
+
+test("identificador malformado no caminho devolve 400, não 500", { skip: !disponivel && "sem banco de teste (rode npm run db:up)" }, async () => {
+  const { usuario } = await registrarUsuario(ambiente.app, { nome: "Id Malformado" });
+  const viagemId = await criarViagem(ambiente.app, usuario);
+
+  // Texto que não é UUID chegando a uma coluna uuid é erro de quem pediu (400 entrada_invalida),
+  // nunca falha interna (500): o id inexistente porém bem-formado continua 404.
+  const malformado = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${viagemId}/despesas/nao-e-uuid`,
+    headers: comSessao(usuario),
+  });
+  assert.equal(malformado.statusCode, 400);
+  assert.equal(malformado.json().erro, "entrada_invalida");
+
+  const inexistente = await ambiente.app.inject({
+    method: "GET",
+    url: `/viagens/${viagemId}/despesas/11111111-1111-4111-8111-111111111111`,
+    headers: comSessao(usuario),
+  });
+  assert.equal(inexistente.statusCode, 404);
+});
