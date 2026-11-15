@@ -11,8 +11,9 @@ Se o repositório já tiver arquitetura, convenções ou código, inspecione-os 
 ## Stack (decidida — não substituir sem autorização)
 - Cliente: **React + TypeScript + Capacitor**, uma base de código para app mobile e web.
   **Celular é a plataforma principal**; web é complementar.
-- Monorepo com npm workspaces: `apps/mobile`, `apps/api`, `packages/domain` (regras puras, sem I/O e sem UI),
-  `packages/contracts` (schemas compartilhados).
+- Monorepo com npm workspaces: `apps/mobile`, `apps/api`, `packages/domain` (regras puras, sem I/O e sem UI)
+  e `packages/sync` (motor offline, sem HTTP). O `packages/contracts` ficou **postergado**: os tipos de
+  entrada/saída vivem em `apps/api/src` (zod) e no app por ora (decisão registrada no backlog).
 - Servidor é a **única autoridade**: recálculo, autorização e gravação acontecem nele. O app usa o domínio
   só para prévia/otimista e offline; resultado do cliente nunca é verdade oficial.
 - Banco central compartilhado: **PostgreSQL no servidor**. **SQLite local nunca é o banco central** —
@@ -51,7 +52,7 @@ Não contradiga decisões confirmadas para simplificar a implementação. Se hou
 - **Saída dos servidores (etapa 7) é repassada linha por linha**, com etiqueta `[api]`/`[app]`, e os servidores **não recebem o teclado** (`stdin: "ignore"`): escrevendo direto no console, as linhas de dois servidores colavam uma na outra e o Windows desenhava `\r\n` como "♪◙" (`separarLinhas`; há teste).
 - **`status 0` não prova que o banco subiu**: `pg_ctl` pode sair com código 0 sem subir nada (registro `postmaster.pid` antigo). A prova é a **porta respondendo** (`portaRespondendo`) e, antes de subir, `postmaster.pid` órfão é limpo.
 - **Feedback obrigatório em etapas longas**: saída ao vivo (npm install/teste), barra de progresso no download do banco e aviso `⏳ ainda trabalhando` após 15s de silêncio. Etapa longa nunca deve parecer travada.
-- `npm test` roda a suíte completa: ferramentas (53) + domínio (157) + sincronização (49) + app (49 de unidade) + interface (45 em jsdom) + API (92) = **445**. Sem banco, os testes de API são pulados com aviso.
+- `npm test` roda a suíte completa: ferramentas (53) + domínio (158) + sincronização (49) + app (53 de unidade) + interface (54 em jsdom) + API (95) = **462**. Sem banco, os testes de API são pulados com aviso.
 - Os testes de interface rodam **um arquivo por vez** (`--test-concurrency=1`): em paralelo, dois apps em jsdom deixavam a máquina lenta e um fluxo com espera de rede estourava o prazo (teste instável mente).
 - **Quando um teste de interface falha, o relatório diz o motivo** (não "test failed" e nada mais): `tools/teste-ui.mjs` roda o arquivo direto com `node` quando ele não carrega e grava `reports/interface-diagnostico.md`; `tools/dev.mjs` grava a saída **completa** em `reports/saida-dos-testes.md` (nome fixo) e lista no relatório os arquivos que nem chegaram a rodar. Ao investigar, ler esses dois antes de qualquer suposição — foi o que faltou na rodada do Windows de 2026-10-15 (8 arquivos falhando e nenhuma pista).
 - **Imagem nunca entra no bundle de teste**: o empacotador dos testes de interface não tem plugin de assets, então `.jpg`/`.png` vivem em `apps/mobile/public/` e são referenciados por caminho (`/lia-hero.jpg`) — import de imagem quebrava o carregamento dos 8 arquivos no Windows.

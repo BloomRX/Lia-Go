@@ -6,11 +6,13 @@ viabilidade foi medida — detalhes e evidências em `ARCHITECTURE.md`.
 ## Stack
 - **Monorepo com npm workspaces**, TypeScript em todo o projeto (implementado).
 - `apps/mobile` — React + TypeScript + Vite + Capacitor (uma base de código para app e web).
-- `apps/api` — servidor HTTP (Fastify) com validação por schema (zod, compartilhado em `packages/contracts`).
+- `apps/api` — servidor HTTP (Fastify) com validação por schema (`zod`, no servidor; o `packages/contracts`
+  ficou postergado — ver `IMPLEMENTATION_BACKLOG.md`).
 - `packages/domain` — regras de negócio puras, **sem I/O e sem UI**, importadas pelo servidor e pelo app.
 - Banco **PostgreSQL** central com migrações SQL versionadas; acesso a dados em SQL explícito
   com o driver `pg` (sem ORM, por auditabilidade — decisão registrada em `DECISIONS_AND_OPEN_QUESTIONS.md`).
-- Testes de domínio/API com `node --test` (TypeScript nativo do Node 22, sem build); interface com Vitest.
+- Testes de domínio/API com `node --test` (TypeScript nativo do Node 22, sem build); interface com
+  `node --test` + jsdom (`tools/teste-ui.mjs`, um arquivo por vez).
 
 ### Regra de autoridade (não negociável)
 O app pode calcular prévias para a interface e para o modo offline, mas **o servidor é a única autoridade**:

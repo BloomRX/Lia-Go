@@ -4,17 +4,17 @@ Aplicativo gratuito para organizar viagens em grupo: roteiro, reservas e documen
 despesas compartilhadas, rateios e acertos — com a assistente Lia.
 Celular é a plataforma principal; a versão web é complementar.
 
-## Estado atual (2026-10-15)
+## Estado atual (2026-10-21, auditoria geral)
 
 | Área | Situação |
 |---|---|
-| Planejamento de produto e regras | ✅ completo em `docs/` (445 testes verdes no total) |
+| Planejamento de produto e regras | ✅ completo em `docs/` (**462 testes verdes no total**) |
 | Decisão de stack | ✅ React + TypeScript + Capacitor; PostgreSQL central (`docs/ARCHITECTURE.md`) |
-| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, reservas, checklist, documentos e fechamento) | ✅ **109 testes** |
-| API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas, orçamento, checklist, documentos, fechamento) | ✅ **86 testes** com PostgreSQL real |
+| Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, reservas, checklist, documentos e fechamento) | ✅ **158 testes** |
+| API (auth, viagens, convites, transições, despesas, saldos, acertos, roteiro, reservas, orçamento, checklist, documentos, fechamento, sincronização) | ✅ **95 testes** com PostgreSQL real · 0 vulnerabilidades no `npm audit` |
 | App (React + Vite + Capacitor: login, viagens, gastos, acertos) | ✅ telas funcionais contra a API real |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **49 + 49 testes** (`npm run test:sync`, `npm run test:app`) |
-| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem (inclusive com rede instável), revisão de impacto, reservas, orçamento, checklist, documentos, fechamento, marca e barra inferior) | ✅ **45 testes** (`npm run test:ui`) |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **49 + 53 testes** (`npm run test:sync`, `npm run test:app`) |
+| Interface de verdade em jsdom (trocar de viagem, Sair, criar viagem (inclusive com rede instável), revisão de impacto, reservas, orçamento, checklist, documentos, fechamento, marca e barra inferior) | ✅ **54 testes** (`npm run test:ui`) |
 | Automação de execução | ✅ `LiaGo.bat` (**duplo clique faz tudo**: atualiza do GitHub, instala dependências, sobe o banco, testa, grava relatórios/diagnóstico, envia ao GitHub e deixa o app no ar) |
 | Roteiro (timeline, concluir/cancelar/corrigir) e orçamento do roteiro | ✅ funcionando (`telas/Roteiro.tsx`, `telas/Atividade.tsx`, `telas/Viagem.tsx`) |
 | Reservas (prevista → confirmada com evidência → cancelada com motivo) | ✅ funcionando (`telas/Reservas.tsx`, aba Mais) |
@@ -25,18 +25,19 @@ Celular é a plataforma principal; a versão web é complementar.
 | Ferramentas de git seguro (DevKit) | ✅ funcionando, 44 testes passando |
 
 ## Ordem de leitura
-1. `docs/AGENTS.md` — instruções obrigatórias de trabalho (fonte única; a raiz apenas aponta para ela).
-2. `docs/PLANEJAMENTO_MESTRE.md` — visão geral e decisões consolidadas (única fonte do planejamento).
-3. `docs/ARCHITECTURE.md` — arquitetura, viabilidade medida, riscos e decisões pendentes.
-4. `docs/PRODUCT_OVERVIEW.md` — proposta de produto e escopo.
-5. `docs/BUSINESS_RULES.md` — regras de negócio.
-6. `docs/UX_SCREENS.md` — navegação e comportamento das telas (+ estado real do que já existe no app).
-7. `docs/UI_VISUAL_GUIDELINES.md` — identidade visual e regras do roteiro.
-8. `docs/UI_V1_DECISIONS.md` — decisões visuais V1 fechadas (tokens, tipografia, espaçamento, acessibilidade).
-9. `docs/TECHNICAL_GUIDELINES.md` — princípios técnicos e segurança.
-10. `docs/IMPLEMENTATION_BACKLOG.md` — ordem de implementação.
-11. `docs/DECISIONS_AND_OPEN_QUESTIONS.md` — decisões confirmadas e pendências.
-10. `tools/README.md` — DevKit: git seguro, validação e PR.
+1. `AGENTS.md` (raiz) — núcleo das regras permanentes em texto literal, carregado em qualquer sessão e subpasta.
+2. `docs/AGENTS.md` — detalhes operacionais e de diagnóstico das mesmas regras.
+3. `docs/PLANEJAMENTO_MESTRE.md` — visão geral e decisões consolidadas (única fonte do planejamento).
+4. `docs/ARCHITECTURE.md` — arquitetura, viabilidade medida, riscos e decisões pendentes.
+5. `docs/PRODUCT_OVERVIEW.md` — proposta de produto e escopo.
+6. `docs/BUSINESS_RULES.md` — regras de negócio.
+7. `docs/UX_SCREENS.md` — navegação e comportamento das telas (+ estado real do que já existe no app).
+8. `docs/UI_VISUAL_GUIDELINES.md` — identidade visual e regras do roteiro.
+9. `docs/UI_V1_DECISIONS.md` — decisões visuais V1 fechadas (tokens, tipografia, espaçamento, acessibilidade).
+10. `docs/TECHNICAL_GUIDELINES.md` — princípios técnicos e segurança.
+11. `docs/IMPLEMENTATION_BACKLOG.md` — ordem de implementação.
+12. `docs/DECISIONS_AND_OPEN_QUESTIONS.md` — decisões confirmadas e pendências.
+13. `tools/README.md` — DevKit: git seguro, validação e PR.
 
 ## Como rodar
 ```text

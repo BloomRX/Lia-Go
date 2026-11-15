@@ -1,6 +1,6 @@
 # Arquitetura e análise de viabilidade — Lia Go
 
-**Estado:** primeira fatia e **sincronização offline** implementadas e testadas (2026-10-12). Decisões de §11 respondidas pelo responsável:
+**Estado:** V1 com as 21 telas implementadas e testadas (Fatias A–D em 2026-10-19; criação por conversa pendente, depende da camada de IA) e **auditoria geral executada em 2026-10-21** (`reports/AUDITORIA-GERAL-LIA-GO.md`). Decisões de §11 respondidas pelo responsável:
 Docker/PostgreSQL local, sessão híbrida (cookie na web + tokens no app), SQLite nativo/IndexedDB no aparelho
 e fatia aprovada. O que já roda de verdade está descrito em §12.1.
 **Base:** decisão confirmada de stack (React + TypeScript + Capacitor) + documentos de regras.
@@ -114,18 +114,18 @@ Lia-Go/
 |---|---|---|
 | Monorepo npm workspaces | ✅ | `package.json`, `tsconfig.base.json` |
 | Domínio (dinheiro, rateio, estados, permissões, despesas, saldos, convites, roteiro, orçamento, revisão de impacto, reservas, checklist, documentos, fechamento, notificações) | ✅ **158 testes** | `npm run test:domain` |
-| API Fastify + PostgreSQL + SQL versionado (migrações `0001`–`0008`) | ✅ **94 testes** | `npm run test:api` (banco real) |
+| API Fastify + PostgreSQL + SQL versionado (migrações `0001`–`0008`) | ✅ **95 testes** | `npm run test:api` (banco real) |
 | Autenticação (scrypt, cookie HttpOnly na web, access/refresh no app, limite de tentativas) | ✅ | `apps/api/src/routes/auth.ts` |
 | Viagens, participantes, convites, transições com autorização no servidor e auditoria | ✅ | `apps/api/src/routes/viagens.ts` |
 | Despesas (pendente → confirmação por outra pessoa → contestação), rateio com soma exata, saldos e acertos | ✅ | `apps/api/src/routes/despesas.ts` |
 | App web/mobile (React + Vite + Capacitor) com login, viagens, gastos e acertos reais | ✅ | `apps/mobile/` |
 | Automação de um clique (`LiaGo.bat`) com banco, testes, relatório e sincronização | ✅ | `LiaGo.bat`, `tools/dev.mjs` |
 | Android (SDK/JDK) | ⬜ | gera-se na máquina do responsável (`LiaGo.bat android`) |
-| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **49 testes** no pacote + 49 no app | `npm run test:sync`, `npm run test:app` |
+| Sincronização offline (fila de envio, cache local, conflito com decisão humana) | ✅ **49 testes** no pacote + 53 no app | `npm run test:sync`, `npm run test:app` |
 | Sincronização incremental por cursor de sequência (`GET /viagens/:id/mudancas`) | ✅ 9 testes de API | `apps/api/src/routes/sincronizacao.ts` |
 | Roteiro (atividades por dia, custo estimativa/compromisso/gratuito, conflitos explicados, concluir/cancelar/corrigir com motivo) | ✅ **21 testes** (9 domínio + 10 API + 2 sync) | `packages/domain/src/roteiro.ts`, `apps/api/src/routes/roteiro.ts`, `apps/mobile/src/telas/Roteiro.tsx` |
 | Acertos registrados (informado → confirmado por quem recebeu) | ✅ | `POST /viagens/:id/movimentos` + tela Gastos |
-| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem (inclusive com rede instável), revisão de impacto, reserva vinculada e observações da atividade, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero, marca e barra inferior) | ✅ **45 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
+| Interface de verdade em jsdom (app inteiro: trocar de viagem, "Sair", criar viagem (inclusive com rede instável), revisão de impacto, reserva vinculada e observações da atividade, reservas, orçamento com limite, checklist, documentos, fechamento, central de notificações, Visão geral com o hero, marca e barra inferior) | ✅ **54 testes** | `npm run test:ui` (`tools/teste-ui.mjs`) |
 | Orçamento do roteiro (planejamento × dinheiro oficial) | ✅ `resumirOrcamentoDoRoteiro` + aba Gastos | `packages/domain/src/roteiro.ts` |
 | Revisão de impacto antes de concluir/cancelar | ✅ `revisarImpacto` + bloco "Antes de continuar" | `telas/Atividade.tsx` |
 | Reservas (hospedagem, transporte, passeio, outro) | ✅ **13 testes** de domínio + **8** de API + 4 de interface | `packages/domain/src/reserva.ts`, `apps/api/src/routes/reservas.ts`, `telas/Reservas.tsx` |
@@ -251,8 +251,10 @@ rascunho. Assim a lista nunca "desatualiza sozinha": se o fato mudou, a lista mu
 Rotas: nenhuma nova — a central lê o que o sincronizador já mantém (`GET /viagens`, `GET /viagens/:id/mudancas`).
 
 ### Próxima fatia (proposta)
-1. **Configurações** (tela 18) — a única tela V1 que falta por completo; inclui preferências de
-   notificação e o limiar de atenção do orçamento configurável (hoje fixo em 80%).
-2. **Substituir o roteiro vigente com revisão de impacto** (prévia de diferenças e versões anteriores) — o impacto de concluir/cancelar já existe.
-3. Navegação lateral da web e aba **Documentos** própria na barra inferior do celular (hoje na aba Mais).
-4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS).
+
+Atualizado em **2026-10-21** (auditoria geral; as Fatias A–D já entregaram as telas 7, 8, 9, 11, 13, 17 e 18):
+1. **Reembolsos e pagamento parcial** com revisão independente e histórico — pendência declarada da Fase 2 do backlog.
+2. Navegação lateral da web e aba **Documentos** própria na barra inferior do celular (hoje na aba Mais) — pedida pelas referências visuais, adiada de propósito.
+3. **UUIDv7** nos ids de operação offline (ordenável por tempo; melhoria pequena e localizada).
+4. App Android assinado para o grupo testar (dados sintéticos até haver HTTPS) — build na máquina do responsável.
+5. **Criação de viagem por conversa** (alternável com formulário) — depende da camada de IA (provedor configurável; regras do `AGENTS.md` §4).
